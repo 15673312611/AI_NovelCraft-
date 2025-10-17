@@ -136,7 +136,9 @@ public class VolumeService {
      * @param volumeId 卷ID
      * @param userAdvice 用户建议
      * @param chunkConsumer 接收生成内容的消费者
+     * 注意：使用@Transactional(propagation = Propagation.NOT_SUPPORTED)禁用事务，因为流式处理是渐进式的
      */
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public void streamGenerateVolumeOutline(Long volumeId, String userAdvice, com.novel.dto.AIConfigRequest aiConfig, java.util.function.Consumer<String> chunkConsumer) {
         logger.info("📋 [流式] 开始为卷 {} 生成详细大纲", volumeId);
         
@@ -430,6 +432,72 @@ public class VolumeService {
             
         } catch (Exception e) {
             logger.error("❌ 基于传统大纲生成卷规划失败: {}", e.getMessage(), e);
+            logger.warn("⚠️ 使用简化卷规划");
+            return generateSimplifiedVolumePlans(novel, outline, volumeCount);
+        }
+    }
+    
+    /**
+     * 基于传统大纲生成卷规划（带AI配置）
+     */
+    private List<Map<String, Object>> generateVolumePlansFromOutline(Novel novel, 
+        com.novel.domain.entity.NovelOutline outline, Integer volumeCount, com.novel.dto.AIConfigRequest aiConfig) {
+        logger.info("📝 基于传统大纲生成卷规划（使用AI配置）");
+        
+        String volumePlanPrompt = String.format(
+            "你现在是一位专业的网络小说结构规划师，擅长将超长篇、无分卷的详细剧情大纲，按照网文连载节奏与叙事逻辑，拆解为结构清晰、节奏合理、爆点密集的'卷'式结构。\n\n" +
+            "请根据我接下来提供的完整剧情发展线路大纲（不含卷划分），执行以下操作：\n\n" +
+            "【小说信息】\n" +
+            "- 标题：%s\n" +
+            "- 类型：%s\n" +
+            "- **目标卷数（必须严格遵守）：%d**\n\n" +
+            
+            "**【重要】你必须生成恰好 %d 个卷，不能多也不能少！**\n\n" +
+            
+            "拆卷原则：\n" +
+            "不修改原剧情：\n严格基于我提供的大纲内容进行拆分，不得添加、删除或改动原有情节。\n所有事件、人物、伏笔、高潮必须原样保留，仅做'分段归卷'。\n" +
+            "按叙事阶段划分卷：\n根据主角的成长阶段、地图升级、核心目标转变、势力格局变化等维度，均匀划分为 %d 个大卷。每卷需有明确的主题定位（如'觉醒启程''势力崛起''真相初现''命运对决'等），体现阶段特征。\n" +
+            "每卷结构完整：\n每卷必须包含：\n开篇引爆：承接上一卷结尾，快速引入新冲突或目标\n中期推进：主线发展 + 至少2个中型高潮（如突破、打脸、奇遇）\n卷末高潮：一场高规格战斗、重大反转或命运转折，作为本卷收尾\n悬念钩子：为下一卷埋下期待感（如新敌人现身、真相线索浮现）\n" +
+            "节奏与长度合理：\n每卷建议控制在 50-100章（可根据剧情密度微调）。每卷至少包含 1个大型高潮事件 和 2个以上中型爽点（如越阶战斗、身份揭露、红颜登场、势力建立等）。\n" +
+            "适配多种风格：\n无论原大纲是'热血升级''权谋博弈''苟道发育''无敌碾压''群像叙事'还是'黑暗现实'，均需合理拆卷，不强行套用'废柴逆袭'等模板。\n若原大纲节奏平缓（如种田、经营类），则侧重'阶段性成果'作为高潮；若节奏激烈，则以'战斗/反转'为核心节点。\n\n" +
+            
+            "【输出要求（必须严格遵守）】\n" +
+            "1. **必须生成恰好 %d 个卷的规划！**\n" +
+            "2. 只输出一个 JSON 数组，数组长度必须为 %d，不要任何其他说明/表格/注释/Markdown。\n" +
+            "3. 数组中的每个元素仅包含以下4个字段：title（卷标题）、theme（核心主题）、description（卷描述，150-200字）、contentOutline（详细大纲）。\n" +
+            "4. 字段名必须为英文，且不得包含多余字段。\n\n" +
+            "【完整剧情发展线路大纲】\n%s\n",
+            novel.getTitle(),
+            novel.getGenre(),
+            volumeCount,
+            volumeCount,
+            volumeCount,
+            volumeCount,
+            volumeCount,
+            (outline.getPlotStructure() != null && !outline.getPlotStructure().trim().isEmpty()) ? outline.getPlotStructure() : (outline.getBasicIdea() == null ? "" : outline.getBasicIdea())
+        );
+
+        try {
+            logger.info("🤖 调用AI生成卷规划（带配置），提示词长度: {}", volumePlanPrompt.length());
+            
+            long startTime = System.currentTimeMillis();
+            // 使用带AI配置的方法
+            String response = aiWritingService.generateContent(volumePlanPrompt, "volume_planning", aiConfig);
+            long endTime = System.currentTimeMillis();
+            
+            logger.info("⏱️ AI服务响应时间: {}ms", (endTime - startTime));
+            
+            if (response != null && response.length() > 0) {
+                List<Map<String, Object>> result = parseVolumePlansFromAI(response, volumeCount);
+                logger.info("✅ 基于传统大纲成功解析出{}个卷规划", result.size());
+                return result;
+            } else {
+                logger.error("❌ AI服务返回空响应！");
+                throw new RuntimeException("AI服务返回空响应，无法生成卷规划");
+            }
+            
+        } catch (Exception e) {
+            logger.error("❌ 基于传统大纲生成卷规划失败（带AI配置）: {}", e.getMessage(), e);
             logger.warn("⚠️ 使用简化卷规划");
             return generateSimplifiedVolumePlans(novel, outline, volumeCount);
         }
@@ -1168,11 +1236,21 @@ public class VolumeService {
 
 
     /**
-     * 基于确认的大纲生成卷规划（确认大纲后调用）
-     * 说明：直接使用大纲内容，不需要重新构建提示词，并保存到数据库
+     * 基于确认的大纲生成卷规划（旧方法，保持兼容）
+     * @deprecated 请使用 generateVolumePlansFromConfirmedOutline(Long, Integer, AIConfigRequest)
      */
+    @Deprecated
     @Transactional
     public List<NovelVolume> generateVolumePlansFromConfirmedOutline(Long novelId, Integer volumeCount) {
+        return generateVolumePlansFromConfirmedOutline(novelId, volumeCount, null);
+    }
+    
+    /**
+     * 基于确认的大纲生成卷规划（确认大纲后调用，支持AI配置）
+     * 说明：直接使用大纲内容，调用AI进行智能拆分，并保存到数据库
+     */
+    @Transactional
+    public List<NovelVolume> generateVolumePlansFromConfirmedOutline(Long novelId, Integer volumeCount, com.novel.dto.AIConfigRequest aiConfig) {
         logger.info("📝 基于确认的大纲生成卷规划，小说ID: {}, 卷数: {}", novelId, volumeCount);
         
         try {
@@ -1193,7 +1271,16 @@ public class VolumeService {
             if (!outlineOpt.isPresent()) {
                 throw new RuntimeException("未找到小说大纲对象，请先创建大纲");
             }
-            List<Map<String, Object>> volumePlans = generateVolumePlansFromOutline(novel, outlineOpt.get(), volumeCount);
+            
+            // 传递AI配置到卷规划生成方法
+            List<Map<String, Object>> volumePlans;
+            if (aiConfig != null && aiConfig.isValid()) {
+                logger.info("✅ 使用AI配置生成卷规划");
+                volumePlans = generateVolumePlansFromOutline(novel, outlineOpt.get(), volumeCount, aiConfig);
+            } else {
+                logger.warn("⚠️ 未提供有效AI配置，使用默认方式生成卷规划");
+                volumePlans = generateVolumePlansFromOutline(novel, outlineOpt.get(), volumeCount);
+            }
             
             // 4. 转换为NovelVolume实体并保存到数据库
             List<NovelVolume> savedVolumes = new ArrayList<>();
@@ -1270,9 +1357,18 @@ public class VolumeService {
     }
 
     /**
-     * 基于确认的大纲异步生成卷规划
+     * 基于确认的大纲异步生成卷规划（旧方法，保持兼容）
+     * @deprecated 请使用 generateVolumePlansFromConfirmedOutlineAsync(Long, Integer, AIConfigRequest)
      */
+    @Deprecated
     public com.novel.domain.entity.AITask generateVolumePlansFromConfirmedOutlineAsync(Long novelId, Integer volumeCount) {
+        return generateVolumePlansFromConfirmedOutlineAsync(novelId, volumeCount, null);
+    }
+    
+    /**
+     * 基于确认的大纲异步生成卷规划（支持AI配置）
+     */
+    public com.novel.domain.entity.AITask generateVolumePlansFromConfirmedOutlineAsync(Long novelId, Integer volumeCount, com.novel.dto.AIConfigRequest aiConfig) {
         logger.info("🚀 提交基于确认大纲的卷规划生成任务，小说ID: {}, 卷数: {}", novelId, volumeCount);
         
         try {
@@ -1298,8 +1394,8 @@ public class VolumeService {
             aiTask.setEstimatedCompletion(java.time.LocalDateTime.now().plusMinutes(5));
             aiTask.setMaxRetries(3);
             
-            // 提交异步任务
-            Long taskId = submitVolumePlansFromConfirmedOutlineTask(aiTask, novelId, volumeCount);
+            // 提交异步任务，传递AI配置
+            Long taskId = submitVolumePlansFromConfirmedOutlineTask(aiTask, novelId, volumeCount, aiConfig);
             aiTask.setId(taskId);
             
             return aiTask;
@@ -1311,9 +1407,9 @@ public class VolumeService {
     }
 
     /**
-     * 提交基于确认大纲的卷规划生成任务
+     * 提交基于确认大纲的卷规划生成任务（支持AI配置）
      */
-    private Long submitVolumePlansFromConfirmedOutlineTask(com.novel.domain.entity.AITask aiTask, Long novelId, Integer volumeCount) {
+    private Long submitVolumePlansFromConfirmedOutlineTask(com.novel.domain.entity.AITask aiTask, Long novelId, Integer volumeCount, com.novel.dto.AIConfigRequest aiConfig) {
         logger.info("📋 提交基于确认大纲的卷规划生成任务到异步队列，小说ID: {}", novelId);
         
         try {
@@ -1330,8 +1426,8 @@ public class VolumeService {
                     aiTaskService.startTask(taskId);
                     aiTaskService.updateTaskProgress(taskId, 10, "RUNNING", "准备基于确认大纲生成卷规划");
                     
-                    // 调用基于确认大纲的生成方法
-                    List<NovelVolume> volumes = generateVolumePlansFromConfirmedOutline(novelId, volumeCount);
+                    // 调用基于确认大纲的生成方法，传递AI配置
+                    List<NovelVolume> volumes = generateVolumePlansFromConfirmedOutline(novelId, volumeCount, aiConfig);
                     
                     // 更新任务状态为完成
                     aiTaskService.updateTaskProgress(taskId, 100, "COMPLETED", "卷规划生成完成");
@@ -1382,8 +1478,10 @@ public class VolumeService {
 
     /**
      * AI优化卷大纲（流式）
+     * 注意：使用@Transactional(propagation = Propagation.NOT_SUPPORTED)禁用事务，因为流式处理是渐进式的
      */
-    public void optimizeVolumeOutlineStream(Long volumeId, String currentOutline, String suggestion, Map<String, Object> volumeInfo, java.util.function.Consumer<String> chunkConsumer) {
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
+    public void optimizeVolumeOutlineStream(Long volumeId, String currentOutline, String suggestion, Map<String, Object> volumeInfo, com.novel.dto.AIConfigRequest aiConfig, java.util.function.Consumer<String> chunkConsumer) {
         logger.info("🎨 开始流式优化卷 {} 的大纲", volumeId);
         
         try {
@@ -1434,7 +1532,7 @@ public class VolumeService {
             
             // 使用流式生成
             StringBuilder accumulated = new StringBuilder();
-            aiWritingService.streamGenerateContent(prompt.toString(), "volume_outline_optimization", chunk -> {
+            aiWritingService.streamGenerateContent(prompt.toString(), "volume_outline_optimization", aiConfig, chunk -> {
                 accumulated.append(chunk);
                 chunkConsumer.accept(chunk);
             });

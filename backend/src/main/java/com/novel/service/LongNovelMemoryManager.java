@@ -66,15 +66,12 @@ public class LongNovelMemoryManager {
     private NovelWorldDictionaryRepository worldDictionaryRepository;
 
     /**
-     * 从章节内容自动更新记忆管理系统
+     * 从章节内容自动更新记忆管理系统（使用后端配置 - 已弃用）
      * @param novelId 小说ID
      * @param chapterNumber 章节号
      * @param chapterContent 章节内容
      * @param currentMemoryBank 当前记忆库
      * @return 更新后的记忆库
-     */
-    /**
-     * 更新记忆库（使用后端配置 - 已弃用）
      * @deprecated 建议使用 {@link #updateMemoryFromChapter(Long, Integer, String, Map, com.novel.dto.AIConfigRequest)}
      */
     @Deprecated
@@ -89,7 +86,7 @@ public class LongNovelMemoryManager {
         // 确保记忆库结构完整
         Map<String, Object> memoryBank = ensureMemoryBankStructure(currentMemoryBank);
         
-        // 异步调用AI提取章节信息（使用后端配置）
+        // 异步调用AI提取章节信息
         CompletableFuture<Map<String, Object>> aiExtractionFuture = extractChapterInfoWithAIAsync(
             novelId, chapterNumber, chapterContent, memoryBank, null);
         
@@ -127,7 +124,7 @@ public class LongNovelMemoryManager {
     }
     
     /**
-     * 更新记忆库（使用前端传递的AI配置）
+     * 从章节内容自动更新记忆管理系统（使用前端传递的AI配置）
      * @param novelId 小说ID
      * @param chapterNumber 章节号
      * @param chapterContent 章节内容
@@ -143,12 +140,12 @@ public class LongNovelMemoryManager {
             com.novel.dto.AIConfigRequest aiConfig) {
         
         logger.info("🧠 开始更新长篇记忆系统（使用前端配置） - 小说ID: {}, 第{}章, provider={}", 
-                   novelId, chapterNumber, aiConfig != null ? aiConfig.getProvider() : "无");
+                   novelId, chapterNumber, aiConfig != null ? aiConfig.getProvider() : "null");
         
         // 确保记忆库结构完整
         Map<String, Object> memoryBank = ensureMemoryBankStructure(currentMemoryBank);
         
-        // 异步调用AI提取章节信息（使用前端配置）
+        // 异步调用AI提取章节信息
         CompletableFuture<Map<String, Object>> aiExtractionFuture = extractChapterInfoWithAIAsync(
             novelId, chapterNumber, chapterContent, memoryBank, aiConfig);
         
@@ -172,7 +169,7 @@ public class LongNovelMemoryManager {
             saveMemoryBankToDatabase(novelId, memoryBank, chapterNumber);
             
         } catch (Exception e) {
-            logger.error("❌ AI提取章节信息失败: {}", e.getMessage(), e);
+            logger.error("❌ AI提取第{}章信息失败: {}", chapterNumber, e.getMessage(), e);
             // 如果AI提取失败，可以回退到原来的逻辑或记录错误
         }
         
@@ -971,19 +968,10 @@ public class LongNovelMemoryManager {
     // ================================
 
     /**
-     * 异步调用AI提取章节信息
+     * 异步调用AI提取章节信息（支持AI配置参数）
      * 一次性提取角色、事件、伏笔、世界观等所有信息
      */
     @Async("novelTaskExecutor")
-    /**
-     * 异步提取章节信息（支持前端AI配置）
-     * @param novelId 小说ID
-     * @param chapterNumber 章节号
-     * @param chapterContent 章节内容
-     * @param memoryBank 记忆库
-     * @param aiConfig AI配置（可为null，为null时使用后端配置）
-     * @return 提取的信息
-     */
     public CompletableFuture<Map<String, Object>> extractChapterInfoWithAIAsync(
             Long novelId, 
             Integer chapterNumber, 
@@ -991,8 +979,7 @@ public class LongNovelMemoryManager {
             Map<String, Object> memoryBank,
             com.novel.dto.AIConfigRequest aiConfig) {
         
-        logger.info("🤖 开始AI异步提取第{}章信息, provider={}", 
-                   chapterNumber, aiConfig != null ? aiConfig.getProvider() : "后端默认");
+        logger.info("🤖 开始AI异步提取第{}章信息, 使用AI配置={}", chapterNumber, aiConfig != null);
         
         try {
             // 构建AI提示词，一次性提取所有需要的信息
@@ -1001,10 +988,10 @@ public class LongNovelMemoryManager {
             // 调用AI服务提取内容
             String aiResponse;
             if (aiConfig != null && aiConfig.isValid()) {
-                // 使用前端配置调用AI（同步方式）
+                // 使用前端传递的AI配置（同步调用）
                 aiResponse = callAIWithConfig(prompt, aiConfig);
             } else {
-                // 使用后端配置调用AI
+                // 使用后端默认配置
                 aiResponse = aiWritingService.generateContent(prompt, "chapter_memory_extraction");
             }
             
@@ -1018,76 +1005,6 @@ public class LongNovelMemoryManager {
             logger.error("❌ AI提取第{}章信息失败: {}", chapterNumber, e.getMessage(), e);
             return CompletableFuture.completedFuture(new HashMap<>());
         }
-    }
-    
-    /**
-     * 使用AIConfigRequest调用AI（同步方式）
-     */
-    @SuppressWarnings("unchecked")
-    private String callAIWithConfig(String prompt, com.novel.dto.AIConfigRequest aiConfig) throws Exception {
-        String apiUrl = aiConfig.getApiUrl();
-        String apiKey = aiConfig.getApiKey();
-        String model = aiConfig.getModel();
-        
-        // 构建请求体
-        Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("model", model);
-        requestBody.put("max_tokens", 4000);
-        requestBody.put("temperature", 0.7);
-        requestBody.put("stream", false);
-        
-        List<Map<String, String>> messages = new ArrayList<>();
-        Map<String, String> message = new HashMap<>();
-        message.put("role", "user");
-        message.put("content", prompt);
-        messages.add(message);
-        requestBody.put("messages", messages);
-        
-        // 发送HTTP请求
-        org.springframework.web.client.RestTemplate restTemplate = new org.springframework.web.client.RestTemplate();
-        org.springframework.http.client.SimpleClientHttpRequestFactory factory = 
-            new org.springframework.http.client.SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(15000);
-        factory.setReadTimeout(120000);
-        restTemplate.setRequestFactory(factory);
-        
-        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-        headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(apiKey);
-        
-        org.springframework.http.HttpEntity<Map<String, Object>> entity = 
-            new org.springframework.http.HttpEntity<>(requestBody, headers);
-        
-        logger.info("调用AI提取章节信息: {}", apiUrl);
-        org.springframework.http.ResponseEntity<String> response = 
-            restTemplate.postForEntity(apiUrl, entity, String.class);
-        
-        // 解析响应
-        String responseBody = response.getBody();
-        if (responseBody == null) {
-            throw new RuntimeException("AI响应为空");
-        }
-        
-        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-        Map<String, Object> responseMap = mapper.readValue(responseBody, Map.class);
-        
-        List<Map<String, Object>> choices = (List<Map<String, Object>>) responseMap.get("choices");
-        if (choices == null || choices.isEmpty()) {
-            throw new RuntimeException("AI响应格式错误：无choices字段");
-        }
-        
-        Map<String, Object> firstChoice = choices.get(0);
-        Map<String, Object> messageData = (Map<String, Object>) firstChoice.get("message");
-        if (messageData == null) {
-            throw new RuntimeException("AI响应格式错误：无message字段");
-        }
-        
-        String content = (String) messageData.get("content");
-        if (content == null || content.trim().isEmpty()) {
-            throw new RuntimeException("AI返回内容为空");
-        }
-        
-        return content.trim();
     }
 
     /**
@@ -2232,5 +2149,74 @@ public class LongNovelMemoryManager {
         } catch (Exception e) {
             return null;
         }
+    }
+    
+    /**
+     * 使用AIConfigRequest调用AI服务（同步方式）
+     */
+    @SuppressWarnings("unchecked")
+    private String callAIWithConfig(String prompt, com.novel.dto.AIConfigRequest aiConfig) throws Exception {
+        String apiUrl = aiConfig.getApiUrl();
+        String apiKey = aiConfig.getApiKey();
+        String model = aiConfig.getModel();
+        
+        // 构建请求体
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("model", model);
+        requestBody.put("max_tokens", 4000);
+        requestBody.put("temperature", 0.7);
+        requestBody.put("stream", false);
+        
+        List<Map<String, String>> messages = new ArrayList<>();
+        Map<String, String> message = new HashMap<>();
+        message.put("role", "user");
+        message.put("content", prompt);
+        messages.add(message);
+        requestBody.put("messages", messages);
+        
+        // 发送HTTP请求
+        org.springframework.http.client.SimpleClientHttpRequestFactory requestFactory = 
+            new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(15000);
+        requestFactory.setReadTimeout(120000);
+        org.springframework.web.client.RestTemplate restTemplate = new org.springframework.web.client.RestTemplate(requestFactory);
+        
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(apiKey);
+        
+        org.springframework.http.HttpEntity<Map<String, Object>> entity = 
+            new org.springframework.http.HttpEntity<>(requestBody, headers);
+        
+        logger.info("调用AI提取章节信息: {}", apiUrl);
+        org.springframework.http.ResponseEntity<String> response = 
+            restTemplate.postForEntity(apiUrl, entity, String.class);
+        
+        // 解析响应
+        String responseBody = response.getBody();
+        if (responseBody == null) {
+            throw new RuntimeException("AI响应为空");
+        }
+        
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        Map<String, Object> responseMap = mapper.readValue(responseBody, Map.class);
+        
+        List<Map<String, Object>> choices = (List<Map<String, Object>>) responseMap.get("choices");
+        if (choices == null || choices.isEmpty()) {
+            throw new RuntimeException("AI响应格式错误：无choices字段");
+        }
+        
+        Map<String, Object> firstChoice = choices.get(0);
+        Map<String, Object> messageData = (Map<String, Object>) firstChoice.get("message");
+        if (messageData == null) {
+            throw new RuntimeException("AI响应格式错误：无message字段");
+        }
+        
+        String content = (String) messageData.get("content");
+        if (content == null || content.trim().isEmpty()) {
+            throw new RuntimeException("AI返回内容为空");
+        }
+        
+        return content.trim();
     }
 }

@@ -105,6 +105,80 @@ public class AIWritingService {
     }
 
     /**
+     * 非流式调用AI服务（带AI配置）
+     * @param prompt 提示词
+     * @param type 生成类型
+     * @param aiConfig AI配置
+     * @return 生成的完整内容
+     */
+    public String generateContent(String prompt, String type, com.novel.dto.AIConfigRequest aiConfig) {
+        logger.info("开始生成内容（带AI配置），类型: {}", type);
+        
+        // 验证AI配置
+        if (aiConfig == null || !aiConfig.isValid()) {
+            throw new RuntimeException("AI配置无效，请先在设置页面配置AI服务");
+        }
+        
+        String baseUrl = aiConfig.getEffectiveBaseUrl();
+        String apiKey = aiConfig.getApiKey();
+        String model = aiConfig.getModel();
+        
+        // 根据提供商设置合适的 max_tokens
+        int maxTokens = getMaxTokensForProvider(aiConfig.getProvider(), model);
+        
+        // 构建请求体（非流式）
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("model", model);
+        requestBody.put("max_tokens", maxTokens);
+        requestBody.put("stream", false); // 非流式
+        
+        // 根据生成类型优化参数
+        Map<String, Object> optimizedParams = getOptimizedParameters(type);
+        requestBody.putAll(optimizedParams);
+        
+        List<Map<String, String>> messages = new ArrayList<>();
+        Map<String, String> message = new HashMap<>();
+        message.put("role", "user");
+        message.put("content", prompt);
+        messages.add(message);
+        requestBody.put("messages", messages);
+        
+        // 发送HTTP请求
+        try {
+            String url = aiConfig.getApiUrl();
+            logger.info("🌐 调用AI接口（非流式）: {}", url);
+            
+            RestTemplate restTemplate = new RestTemplate();
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(apiKey);
+            
+            HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(requestBody, headers);
+            ResponseEntity<Map> response = restTemplate.postForEntity(url, requestEntity, Map.class);
+            
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Map<String, Object> responseBody = response.getBody();
+                List<Map<String, Object>> choices = (List<Map<String, Object>>) responseBody.get("choices");
+                if (choices != null && !choices.isEmpty()) {
+                    Map<String, Object> firstChoice = choices.get(0);
+                    Map<String, Object> messageObj = (Map<String, Object>) firstChoice.get("message");
+                    if (messageObj != null) {
+                        String content = (String) messageObj.get("content");
+                        logger.info("✅ AI调用成功，返回内容长度: {} 字符", content != null ? content.length() : 0);
+                        return content;
+                    }
+                }
+            }
+            
+            throw new RuntimeException("AI返回内容为空");
+            
+        } catch (Exception e) {
+            logger.error("AI服务调用失败（带配置），类型: {}", type, e);
+            throw new RuntimeException("AI服务调用失败: " + e.getMessage());
+        }
+    }
+
+    /**
      * 流式调用AI服务（支持实时流式响应）
      * 说明：真正的流式调用，逐块返回AI生成内容
      */
@@ -125,7 +199,10 @@ public class AIWritingService {
         // 构建请求体（启用流式）
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", model);
-        requestBody.put("max_tokens", 16000); // 增加token限制以支持长文本
+        
+        // 根据提供商设置合适的 max_tokens
+        int maxTokens = getMaxTokensForProvider(aiConfigRequest.getProvider(), model);
+        requestBody.put("max_tokens", maxTokens);   
         requestBody.put("stream", true); // 启用流式响应
         
         // 根据生成类型优化参数
@@ -434,5 +511,60 @@ public class AIWritingService {
         }
         
         return params;
+    }
+    
+    /**
+     * 根据AI提供商和模型获取合适的 max_tokens 值
+     * 不同提供商对 max_tokens 的限制不同
+     */
+    private int getMaxTokensForProvider(String provider, String model) {
+        if (provider == null) {
+            return 4000; // 默认值
+        }
+        
+        String providerLower = provider.toLowerCase();
+        
+        switch (providerLower) {
+            case "deepseek":
+                // DeepSeek 模型支持较大的 max_tokens
+                if (model != null && model.contains("reasoner")) {
+                    // R1 推理模型，使用较大的值
+                    return 8000;
+                }
+                return 8000; // DeepSeek 其他模型
+                
+            case "qwen":
+            case "tongyi":
+                // 通义千问的限制
+                if (model != null && model.contains("max")) {
+                    return 8000; // qwen-max 系列
+                } else if (model != null && model.contains("longcontext")) {
+                    return 6000; // 长上下文模型
+                }
+                return 6000; // 默认
+                
+            case "kimi":
+                // Kimi (月之暗面) 的限制
+                if (model != null && model.contains("k2")) {
+                    return 8000; // K2 系列
+                } else if (model != null && model.contains("thinking")) {
+                    return 8000; // 长思考模型
+                }
+                return 6000; // 其他 Kimi 模型
+                
+            case "openai":
+                // OpenAI 模型
+                if (model != null && model.contains("gpt-4")) {
+                    return 8000;
+                } else if (model != null && model.contains("gpt-3.5")) {
+                    return 4000;
+                }
+                return 4000;
+                
+            default:
+                // 未知提供商，使用保守的默认值
+                logger.warn("未知的AI提供商: {}, 使用默认 max_tokens=4000", provider);
+                return 4000;
+        }
     }
 } 

@@ -335,6 +335,21 @@ public class VolumeController {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> volumeInfo = (Map<String, Object>) request.get("volumeInfo");
 
+                // 提取AI配置
+                com.novel.dto.AIConfigRequest aiConfig = null;
+                try {
+                    String provider = (String) request.get("provider");
+                    String apiKey = (String) request.get("apiKey");
+                    String model = (String) request.get("model");
+                    String baseUrl = (String) request.get("baseUrl");
+                    
+                    if (provider != null && apiKey != null && model != null) {
+                        aiConfig = new com.novel.dto.AIConfigRequest(provider, apiKey, model, baseUrl);
+                    }
+                } catch (Exception e) {
+                    logger.warn("解析AI配置失败: {}", e.getMessage());
+                }
+
                 logger.info("🎨 流式优化卷 {} 的大纲", volumeId);
 
                 volumeService.optimizeVolumeOutlineStream(
@@ -342,6 +357,7 @@ public class VolumeController {
                     currentOutline, 
                     suggestion,
                     volumeInfo,
+                    aiConfig,
                     chunk -> {
                         try {
                             emitter.send(SseEmitter.event().name("chunk").data(chunk));

@@ -112,9 +112,9 @@ public class NovelOutlineService {
     /**
      * 流式生成大纲内容（真正的流式AI调用）
      * 说明：使用流式AI接口，逐块返回生成内容，同时实时写入数据库
+     * 注意：移除@Transactional，因为流式处理是渐进式的，每次chunk更新都是独立的数据库操作
      */
-    @Transactional
-    public void streamGenerateOutlineContent(NovelOutline outline, java.util.function.Consumer<String> chunkConsumer) {
+    public void streamGenerateOutlineContent(NovelOutline outline, com.novel.dto.AIConfigRequest aiConfig, java.util.function.Consumer<String> chunkConsumer) {
         Novel novel = novelRepository.selectById(outline.getNovelId());
         if (novel == null) {
             throw new RuntimeException("小说不存在: " + outline.getNovelId());
@@ -127,7 +127,7 @@ public class NovelOutlineService {
         StringBuilder accumulated = new StringBuilder();
         
         try {
-            aiWritingService.streamGenerateContent(prompt, "outline_generation_stream", chunk -> {
+            aiWritingService.streamGenerateContent(prompt, "outline_generation_stream", aiConfig, chunk -> {
                 try {
                     // 累加内容
                     accumulated.append(chunk);
@@ -156,12 +156,13 @@ public class NovelOutlineService {
             
             logger.info("✅ 流式大纲生成完成，总长度: {} 字符", accumulated.length());
             
-            // 🆕 大纲生成后，自动生成世界观并保存到记忆库
-            try {
-                generateAndSaveWorldView(novel, accumulated.toString());
-            } catch (Exception worldViewError) {
-                logger.error("生成世界观失败（不影响大纲）: {}", worldViewError.getMessage());
-            }
+            // 注释掉自动生成世界观的逻辑，避免额外的AI调用
+            // 世界观可以在需要时单独生成
+            // try {
+            //     generateAndSaveWorldView(novel, accumulated.toString(), aiConfig);
+            // } catch (Exception worldViewError) {
+            //     logger.error("生成世界观失败（不影响大纲）: {}", worldViewError.getMessage());
+            // }
             
         } catch (Exception e) {
             logger.error("❌ 流式大纲生成失败: {}", e.getMessage(), e);
@@ -215,7 +216,7 @@ public class NovelOutlineService {
             "伏笔内容：是什么？（如\"母亲留下的项链会吸收月光\"）\n\n" +
             "暗示方式：如何首次呈现？（如\"主角在月圆之夜发现项链微微发烫\"）\n\n" +
             "揭示节点与影响：在哪个剧情阶段揭晓？揭晓时对主角和世界格局造成何种冲击？\n\n" +
-            "请严格按上述要求直接输出中文正文，不要使用JSON格式。不要输出卷或者分卷结构",
+            "请严格按上述要求直接输出中文正文，不要使用JSON格式。不要输出卷或者分卷结构 不要出现大纲之外的内容不要解释",
             novel.getTitle(),
             novel.getGenre(),
             targetChapters == null ? 0 : targetChapters,
@@ -253,11 +254,22 @@ public class NovelOutlineService {
     }
 
     /**
-     * 确认大纲
+     * 确认大纲（旧方法，保持兼容）
+     * 说明：确认大纲状态，并自动触发基于大纲的卷拆分
+     * @deprecated 请使用 confirmOutline(Long outlineId, AIConfigRequest aiConfig)
+     */
+    @Deprecated
+    @Transactional
+    public NovelOutline confirmOutline(Long outlineId) {
+        return confirmOutline(outlineId, null);
+    }
+    
+    /**
+     * 确认大纲（支持AI配置）
      * 说明：确认大纲状态，并自动触发基于大纲的卷拆分
      */
     @Transactional
-    public NovelOutline confirmOutline(Long outlineId) {
+    public NovelOutline confirmOutline(Long outlineId, com.novel.dto.AIConfigRequest aiConfig) {
         NovelOutline outline = outlineRepository.selectById(outlineId);
         if (outline == null) {
             throw new RuntimeException("大纲不存在: " + outlineId);
@@ -324,8 +336,14 @@ public class NovelOutlineService {
 
             logger.info("📝 开始触发卷拆分任务，小说ID: {}, 最终卷数: {}", novelId, volumeCount);
 
-            // 使用新的基于确认大纲的卷规划生成方法
-            volumeService.generateVolumePlansFromConfirmedOutlineAsync(novelId, volumeCount);
+            // 使用新的基于确认大纲的卷规划生成方法，传递AI配置
+            if (aiConfig != null && aiConfig.isValid()) {
+                logger.info("✅ 使用前端传递的AI配置生成卷规划");
+                volumeService.generateVolumePlansFromConfirmedOutlineAsync(novelId, volumeCount, aiConfig);
+            } else {
+                logger.warn("⚠️ 未提供AI配置或配置无效，使用简化模式生成卷规划");
+                volumeService.generateVolumePlansFromConfirmedOutlineAsync(novelId, volumeCount, null);
+            }
 
             logger.info("✅ 大纲确认完成，ID: {}，已触发卷拆分任务，预计生成{}卷", outlineId, volumeCount);
         } catch (Exception e) {
@@ -644,7 +662,7 @@ public class NovelOutlineService {
     /**
      * AI优化大纲（流式）
      */
-    public void optimizeOutlineStream(Long novelId, String currentOutline, String suggestion, java.util.function.Consumer<String> chunkConsumer) {
+    public void optimizeOutlineStream(Long novelId, String currentOutline, String suggestion, com.novel.dto.AIConfigRequest aiConfig, java.util.function.Consumer<String> chunkConsumer) {
         logger.info("🎨 开始流式优化小说 {} 的大纲", novelId);
         
         try {
@@ -676,7 +694,7 @@ public class NovelOutlineService {
             
             // 使用流式生成
             StringBuilder accumulated = new StringBuilder();
-            aiWritingService.streamGenerateContent(prompt.toString(), "outline_optimization", chunk -> {
+            aiWritingService.streamGenerateContent(prompt.toString(), "outline_optimization", aiConfig, chunk -> {
                 accumulated.append(chunk);
                 chunkConsumer.accept(chunk);
             });
@@ -768,15 +786,15 @@ public class NovelOutlineService {
     /**
      * 根据大纲生成世界观并保存到记忆库
      */
-    private void generateAndSaveWorldView(Novel novel, String outlineContent) {
+    private void generateAndSaveWorldView(Novel novel, String outlineContent, com.novel.dto.AIConfigRequest aiConfig) {
         logger.info("🌍 开始根据大纲生成世界观，小说ID: {}", novel.getId());
         
         try {
             // 构建AI提示词
             String prompt = buildWorldViewGenerationPrompt(novel, outlineContent);
             
-            // 调用AI生成世界观
-            String worldViewJson = aiWritingService.generateContent(prompt, "world_view_generation");
+            // 调用AI生成世界观（使用带AI配置的方法）
+            String worldViewJson = aiWritingService.generateContent(prompt, "world_view_generation", aiConfig);
             
             // 解析世界观JSON
             Map<String, Object> worldView = parseWorldViewJson(worldViewJson);

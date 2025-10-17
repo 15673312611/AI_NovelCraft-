@@ -23,6 +23,8 @@ import java.util.Optional;
 @CrossOrigin
 public class NovelOutlineController {
 
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(NovelOutlineController.class);
+
     @Autowired
     private NovelOutlineService outlineService;
 
@@ -61,6 +63,9 @@ public class NovelOutlineController {
         SseEmitter emitter = new SseEmitter(0L); // 不超时
         new Thread(() -> {
             try {
+                // 提取AI配置
+                com.novel.dto.AIConfigRequest aiConfig = request.getAiConfig();
+                
                 // 初始化大纲记录（先落库一条空的，状态为DRAFT，便于前端拿到ID并展示进度）
                 NovelOutline outline = outlineService.initOutlineRecord(
                     request.getNovelIdAsLong(),
@@ -73,7 +78,7 @@ public class NovelOutlineController {
                 emitter.send(SseEmitter.event().name("meta").data("{\"outlineId\":" + outline.getId() + "}"));
 
                 // 开始调用AI并按块写出与写库
-                outlineService.streamGenerateOutlineContent(outline, chunk -> {
+                outlineService.streamGenerateOutlineContent(outline, aiConfig, chunk -> {
                     try {
                         emitter.send(SseEmitter.event().name("chunk").data(chunk));
                     } catch (Exception sendEx) {
@@ -109,12 +114,32 @@ public class NovelOutlineController {
     }
 
     /**
-     * 确认大纲
+     * 确认大纲（支持前端传递AI配置）
      */
     @PutMapping("/{outlineId}/confirm")
-    public ResponseEntity<?> confirmOutline(@PathVariable Long outlineId) {
+    public ResponseEntity<?> confirmOutline(
+            @PathVariable Long outlineId,
+            @RequestBody(required = false) java.util.Map<String, Object> requestBody) {
         try {
-            NovelOutline outline = outlineService.confirmOutline(outlineId);
+            // 尝试从请求体中提取AI配置
+            com.novel.dto.AIConfigRequest aiConfig = null;
+            if (requestBody != null && !requestBody.isEmpty()) {
+                try {
+                    String provider = (String) requestBody.get("provider");
+                    String apiKey = (String) requestBody.get("apiKey");
+                    String model = (String) requestBody.get("model");
+                    String baseUrl = (String) requestBody.get("baseUrl");
+                    
+                    if (provider != null && apiKey != null && model != null) {
+                        aiConfig = new com.novel.dto.AIConfigRequest(provider, apiKey, model, baseUrl);
+                        logger.info("确认大纲时接收到AI配置: provider={}, model={}", provider, model);
+                    }
+                } catch (Exception e) {
+                    logger.warn("解析AI配置失败: {}", e.getMessage());
+                }
+            }
+            
+            NovelOutline outline = outlineService.confirmOutline(outlineId, aiConfig);
             return ResponseEntity.ok(outline);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
@@ -163,10 +188,14 @@ public class NovelOutlineController {
         SseEmitter emitter = new SseEmitter(0L);
         new Thread(() -> {
             try {
+                // 提取AI配置
+                com.novel.dto.AIConfigRequest aiConfig = request.getAiConfig();
+                
                 outlineService.optimizeOutlineStream(
                     request.getNovelId(),
                     request.getCurrentOutline(),
                     request.getSuggestion(),
+                    aiConfig,
                     chunk -> {
                         try {
                             emitter.send(SseEmitter.event().name("chunk").data(chunk));
@@ -192,6 +221,12 @@ public class NovelOutlineController {
         private Long novelId;
         private String currentOutline;
         private String suggestion;
+        
+        // AI配置字段
+        private String provider;
+        private String apiKey;
+        private String model;
+        private String baseUrl;
 
         public Long getNovelId() {
             return novelId;
@@ -216,6 +251,47 @@ public class NovelOutlineController {
         public void setSuggestion(String suggestion) {
             this.suggestion = suggestion;
         }
+        
+        // AI配置的getters和setters
+        public String getProvider() {
+            return provider;
+        }
+
+        public void setProvider(String provider) {
+            this.provider = provider;
+        }
+
+        public String getApiKey() {
+            return apiKey;
+        }
+
+        public void setApiKey(String apiKey) {
+            this.apiKey = apiKey;
+        }
+
+        public String getModel() {
+            return model;
+        }
+
+        public void setModel(String model) {
+            this.model = model;
+        }
+
+        public String getBaseUrl() {
+            return baseUrl;
+        }
+
+        public void setBaseUrl(String baseUrl) {
+            this.baseUrl = baseUrl;
+        }
+        
+        // 获取AIConfigRequest对象
+        public com.novel.dto.AIConfigRequest getAiConfig() {
+            if (provider != null && apiKey != null && model != null) {
+                return new com.novel.dto.AIConfigRequest(provider, apiKey, model, baseUrl);
+            }
+            return null;
+        }
     }
 
     // 请求DTO类
@@ -224,6 +300,12 @@ public class NovelOutlineController {
         private String basicIdea;
         private Integer targetWordCount;
         private Integer targetChapterCount;
+        
+        // AI配置字段
+        private String provider;
+        private String apiKey;
+        private String model;
+        private String baseUrl;
 
         // Getters and Setters
         public String getNovelId() {
@@ -266,6 +348,47 @@ public class NovelOutlineController {
         public void setTargetChapterCount(Integer targetChapterCount) {
             this.targetChapterCount = targetChapterCount;
         }
+        
+        // AI配置的getters和setters
+        public String getProvider() {
+            return provider;
+        }
+
+        public void setProvider(String provider) {
+            this.provider = provider;
+        }
+
+        public String getApiKey() {
+            return apiKey;
+        }
+
+        public void setApiKey(String apiKey) {
+            this.apiKey = apiKey;
+        }
+
+        public String getModel() {
+            return model;
+        }
+
+        public void setModel(String model) {
+            this.model = model;
+        }
+
+        public String getBaseUrl() {
+            return baseUrl;
+        }
+
+        public void setBaseUrl(String baseUrl) {
+            this.baseUrl = baseUrl;
+        }
+        
+        // 获取AIConfigRequest对象
+        public com.novel.dto.AIConfigRequest getAiConfig() {
+            if (provider != null && apiKey != null && model != null) {
+                return new com.novel.dto.AIConfigRequest(provider, apiKey, model, baseUrl);
+            }
+            return null;
+        }
     }
 
     public static class OutlineRevisionRequest {
@@ -296,3 +419,4 @@ public class NovelOutlineController {
         }
     }
 }
+

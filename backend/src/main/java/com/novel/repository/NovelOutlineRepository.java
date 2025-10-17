@@ -14,12 +14,17 @@ import java.util.Optional;
 
 @Mapper
 public interface NovelOutlineRepository extends BaseMapper<NovelOutline> {
-    // 单条查找：根据 novel_id 取一条（MP 默认表 novel_outlines）
+    // 单条查找：根据 novel_id 取最新的一条（MP 默认表 novel_outlines）
     default Optional<NovelOutline> findByNovelId(Long novelId) {
         QueryWrapper<NovelOutline> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("novel_id", novelId);
-        NovelOutline outline = selectOne(queryWrapper);
-        return Optional.ofNullable(outline);
+        queryWrapper.orderByDesc("updated_at"); // 按更新时间降序，取最新的
+        queryWrapper.last("LIMIT 1"); // 只取一条
+        java.util.List<NovelOutline> outlines = selectList(queryWrapper);
+        if (outlines != null && !outlines.isEmpty()) {
+            return Optional.of(outlines.get(0));
+        }
+        return Optional.empty();
     }
 
     // 单条查找：根据 novel_id 和 status
