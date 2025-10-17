@@ -1,0 +1,45 @@
+.novel-edit-page {
+  padding: 24px;
+}
+
+.edit-form-card {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.loading-container {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.loading-container .ant-typography {
+  margin-top: 16px;
+  color: #666;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.page-title {
+  margin: 0 !important;
+}
+
+.config-section {
+  border-radius: 8px;
+  border: 1px solid #d9d9d9;
+  padding: 20px;
+  margin: 24px 0;
+  background-color: #fafafa;
+}
+
+.config-section .ant-form-item {
+  margin-bottom: 16px;
+}
+
+.config-section .ant-form-item:last-child {
+  margin-bottom: 0;
+} 

@@ -1,0 +1,388 @@
+.ai-task-creator-modal {
+  max-width: 90vw;
+}
+
+.task-creator-content {
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+/* 任务类型选择卡片 */
+.type-selection-card {
+  margin-bottom: 16px;
+}
+
+.type-card {
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+  height: 120px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.type-card:hover {
+  border-color: #1890ff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.15);
+}
+
+.type-card.selected {
+  border-color: #1890ff;
+  background-color: #e6f7ff;
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.2);
+}
+
+.type-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+
+.type-card .ant-card-body {
+  padding: 12px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.type-card .ant-typography {
+  margin: 0;
+}
+
+.type-card .ant-typography h5 {
+  margin: 4px 0;
+  font-size: 14px;
+}
+
+.type-card .ant-typography-text {
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+/* AI配置卡片 */
+.ai-config-card {
+  margin-bottom: 16px;
+}
+
+.ai-config-card .ant-card-head {
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.ai-config-card .ant-slider {
+  margin: 8px 0;
+}
+
+.ai-config-card .ant-slider-mark {
+  font-size: 11px;
+  color: #666;
+}
+
+/* 成本估算卡片 */
+.cost-estimate-card {
+  margin-bottom: 16px;
+}
+
+.cost-estimate-card .ant-alert {
+  margin-top: 12px;
+}
+
+.cost-estimate-card .ant-alert-message {
+  font-weight: 600;
+}
+
+.cost-estimate-card .ant-alert-description {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 表单操作区域 */
+.form-actions {
+  text-align: center;
+  padding: 16px 0;
+  border-top: 1px solid #f0f0f0;
+  margin-top: 16px;
+}
+
+/* 表单样式优化 */
+.task-creator-content .ant-form-item {
+  margin-bottom: 16px;
+}
+
+.task-creator-content .ant-form-item-label > label {
+  font-weight: 600;
+  color: #333;
+}
+
+.task-creator-content .ant-input,
+.task-creator-content .ant-input-number,
+.task-creator-content .ant-select-selector {
+  border-radius: 6px;
+}
+
+.task-creator-content .ant-textarea {
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.task-creator-content .ant-slider-track {
+  background-color: #1890ff;
+}
+
+.task-creator-content .ant-slider-handle {
+  border-color: #1890ff;
+}
+
+.task-creator-content .ant-slider-handle:focus {
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .ai-task-creator-modal {
+    width: 95vw !important;
+    max-width: 95vw;
+  }
+  
+  .task-creator-content {
+    max-height: 70vh;
+  }
+  
+  .type-card {
+    height: 100px;
+  }
+  
+  .type-icon {
+    font-size: 20px;
+    margin-bottom: 4px;
+  }
+  
+  .type-card .ant-typography h5 {
+    font-size: 12px;
+  }
+  
+  .type-card .ant-typography-text {
+    font-size: 10px;
+  }
+  
+  .task-creator-content .ant-form-item {
+    margin-bottom: 12px;
+  }
+  
+  .form-actions {
+    padding: 12px 0;
+  }
+  
+  .form-actions .ant-space {
+    gap: 8px !important;
+  }
+}
+
+/* 暗色主题支持 */
+@media (prefers-color-scheme: dark) {
+  .type-card {
+    background-color: #2a2a2a;
+    border-color: #333;
+  }
+  
+  .type-card:hover {
+    border-color: #1890ff;
+    background-color: #1a365d;
+  }
+  
+  .type-card.selected {
+    background-color: #1a365d;
+    border-color: #1890ff;
+  }
+  
+  .ai-config-card .ant-card-head {
+    background-color: #2a2a2a;
+    border-color: #333;
+  }
+  
+  .task-creator-content .ant-form-item-label > label {
+    color: #e0e0e0;
+  }
+  
+  .task-creator-content .ant-input,
+  .task-creator-content .ant-input-number,
+  .task-creator-content .ant-select-selector,
+  .task-creator-content .ant-textarea {
+    background-color: #2a2a2a;
+    border-color: #333;
+    color: #e0e0e0;
+  }
+  
+  .task-creator-content .ant-input:focus,
+  .task-creator-content .ant-input-number:focus,
+  .task-creator-content .ant-select-focused .ant-select-selector,
+  .task-creator-content .ant-textarea:focus {
+    border-color: #1890ff;
+    box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+  }
+  
+  .form-actions {
+    border-color: #333;
+  }
+  
+  .cost-estimate-card .ant-alert {
+    background-color: #1a365d;
+    border-color: #2d5a8b;
+  }
+  
+  .cost-estimate-card .ant-alert-message {
+    color: #e0e0e0;
+  }
+  
+  .cost-estimate-card .ant-alert-description {
+    color: #b0b0b0;
+  }
+}
+
+/* 动画效果 */
+.type-card {
+  animation: fadeInUp 0.3s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 滚动条样式 */
+.task-creator-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.task-creator-content::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.task-creator-content::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.task-creator-content::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* 暗色主题滚动条 */
+@media (prefers-color-scheme: dark) {
+  .task-creator-content::-webkit-scrollbar-track {
+    background: #2a2a2a;
+  }
+  
+  .task-creator-content::-webkit-scrollbar-thumb {
+    background: #555;
+  }
+  
+  .task-creator-content::-webkit-scrollbar-thumb:hover {
+    background: #666;
+  }
+}
+
+/* 加载状态 */
+.task-creator-content .ant-spin {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100px;
+}
+
+/* 按钮样式优化 */
+.form-actions .ant-btn {
+  border-radius: 6px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.form-actions .ant-btn-primary {
+  background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
+  border: none;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.3);
+}
+
+.form-actions .ant-btn-primary:hover {
+  background: linear-gradient(135deg, #40a9ff 0%, #1890ff 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.4);
+}
+
+.form-actions .ant-btn:not(.ant-btn-primary):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* 分割线样式 */
+.task-creator-content .ant-divider {
+  margin: 24px 0;
+  border-color: #f0f0f0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .task-creator-content .ant-divider {
+    border-color: #333;
+  }
+}
+
+/* 卡片样式优化 */
+.task-creator-content .ant-card {
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border: 1px solid #f0f0f0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .task-creator-content .ant-card {
+    background-color: #1f1f1f;
+    border-color: #333;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* 输入框焦点效果 */
+.task-creator-content .ant-input:focus,
+.task-creator-content .ant-input-number:focus,
+.task-creator-content .ant-select-focused .ant-select-selector,
+.task-creator-content .ant-textarea:focus {
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+/* 选择器样式 */
+.task-creator-content .ant-select-item {
+  padding: 8px 12px;
+}
+
+.task-creator-content .ant-select-item-option-selected {
+  background-color: #e6f7ff;
+}
+
+@media (prefers-color-scheme: dark) {
+  .task-creator-content .ant-select-item {
+    background-color: #2a2a2a;
+    color: #e0e0e0;
+  }
+  
+  .task-creator-content .ant-select-item-option-selected {
+    background-color: #1a365d;
+  }
+  
+  .task-creator-content .ant-select-item:hover {
+    background-color: #333;
+  }
+} 

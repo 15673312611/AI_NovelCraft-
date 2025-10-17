@@ -1,0 +1,259 @@
+.chapter-manager {
+  width: 100%;
+  height: 100%;
+}
+
+.chapter-manager-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.chapter-manager-card .ant-card-head {
+  border-bottom: 1px solid #f0f0f0;
+  padding: 0 16px;
+}
+
+.chapter-manager-card .ant-card-body {
+  flex: 1;
+  padding: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.chapter-search {
+  margin-bottom: 16px;
+}
+
+.chapter-search .ant-input-search {
+  width: 100%;
+}
+
+.chapter-manager .ant-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.chapter-item {
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  border: 1px solid #f0f0f0;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.chapter-item:hover {
+  border-color: #1890ff;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+.chapter-item.selected {
+  border-color: #1890ff;
+  background-color: #e6f7ff;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.2);
+}
+
+.chapter-item .ant-list-item-meta {
+  align-items: center;
+}
+
+.chapter-number {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: #1890ff;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.chapter-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.chapter-title:hover {
+  color: #1890ff;
+}
+
+.chapter-info {
+  margin-top: 4px;
+}
+
+.chapter-item .ant-list-item-actions {
+  margin-left: 16px;
+}
+
+.chapter-item .ant-list-item-actions li {
+  margin-left: 8px;
+}
+
+.chapter-item .ant-btn-text {
+  color: #666;
+  transition: all 0.3s ease;
+}
+
+.chapter-item .ant-btn-text:hover {
+  color: #1890ff;
+  background-color: rgba(24, 144, 255, 0.1);
+}
+
+.chapter-item .ant-btn-text.ant-btn-dangerous:hover {
+  color: #ff4d4f;
+  background-color: rgba(255, 77, 79, 0.1);
+}
+
+.empty-chapters {
+  text-align: center;
+  padding: 40px 20px;
+  color: #999;
+}
+
+.empty-chapters .anticon {
+  margin-bottom: 16px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .chapter-manager-card .ant-card-head {
+    padding: 0 12px;
+  }
+  
+  .chapter-manager-card .ant-card-body {
+    padding: 12px;
+  }
+  
+  .chapter-item {
+    padding: 8px 12px;
+  }
+  
+  .chapter-item .ant-list-item-actions {
+    margin-left: 8px;
+  }
+  
+  .chapter-item .ant-list-item-actions li {
+    margin-left: 4px;
+  }
+}
+
+/* 暗色主题支持 */
+@media (prefers-color-scheme: dark) {
+  .chapter-manager-card {
+    background-color: #1f1f1f;
+    border-color: #333;
+  }
+  
+  .chapter-manager-card .ant-card-head {
+    border-color: #333;
+  }
+  
+  .chapter-item {
+    border-color: #333;
+    background-color: #2a2a2a;
+  }
+  
+  .chapter-item:hover {
+    border-color: #1890ff;
+    background-color: #2a2a2a;
+  }
+  
+  .chapter-item.selected {
+    background-color: #1a365d;
+    border-color: #1890ff;
+  }
+  
+  .chapter-number {
+    background-color: #1890ff;
+  }
+  
+  .chapter-item .ant-btn-text {
+    color: #999;
+  }
+  
+  .chapter-item .ant-btn-text:hover {
+    color: #1890ff;
+    background-color: rgba(24, 144, 255, 0.2);
+  }
+  
+  .empty-chapters {
+    color: #666;
+  }
+}
+
+/* 滚动条样式 */
+.chapter-manager .ant-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chapter-manager .ant-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.chapter-manager .ant-list::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.chapter-manager .ant-list::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* 暗色主题滚动条 */
+@media (prefers-color-scheme: dark) {
+  .chapter-manager .ant-list::-webkit-scrollbar-track {
+    background: #2a2a2a;
+  }
+  
+  .chapter-manager .ant-list::-webkit-scrollbar-thumb {
+    background: #555;
+  }
+  
+  .chapter-manager .ant-list::-webkit-scrollbar-thumb:hover {
+    background: #666;
+  }
+}
+
+/* 动画效果 */
+.chapter-item {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 加载状态 */
+.chapter-manager .ant-list-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
+/* 徽章样式优化 */
+.chapter-title .ant-badge {
+  margin-left: 8px;
+}
+
+.chapter-title .ant-badge-status-text {
+  font-size: 12px;
+  margin-left: 4px;
+} 

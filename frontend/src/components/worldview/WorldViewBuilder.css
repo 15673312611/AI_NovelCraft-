@@ -1,0 +1,153 @@
+.world-view-builder {
+  padding: 24px;
+  background: #f5f5f5;
+  min-height: 100vh;
+}
+
+.world-view-builder .ant-card {
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.world-view-builder .ant-steps-vertical {
+  max-width: 400px;
+}
+
+.world-view-builder .step-content {
+  margin-top: 24px;
+  min-height: 400px;
+}
+
+.world-view-builder .step-card {
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  padding: 24px;
+}
+
+.world-view-builder .step-completed {
+  display: flex;
+  align-items: center;
+  margin-top: 16px;
+  padding: 12px;
+  background: #f6ffed;
+  border: 1px solid #b7eb8f;
+  border-radius: 6px;
+}
+
+.world-view-builder .ai-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  background: #fafafa;
+  border-radius: 8px;
+  border: 2px dashed #d9d9d9;
+}
+
+.world-view-builder .ai-loading .ant-spin {
+  margin-bottom: 16px;
+}
+
+.world-view-builder .ai-suggestion {
+  background: #f0f9ff;
+  border: 1px solid #91d5ff;
+  border-radius: 8px;
+  padding: 20px;
+  margin-top: 16px;
+}
+
+.world-view-builder .suggestion-content {
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+  padding: 16px;
+  margin-top: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.world-view-builder .ai-failed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  background: #fff2f0;
+  border: 1px solid #ffccc7;
+  border-radius: 8px;
+  margin-top: 16px;
+}
+
+.world-view-builder .step-navigation {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #e8e8e8;
+}
+
+.world-view-builder-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 400px;
+  background: #f5f5f5;
+}
+
+.world-view-builder-loading .ant-spin {
+  margin-bottom: 16px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .world-view-builder {
+    padding: 16px;
+  }
+  
+  .world-view-builder .ant-steps-vertical {
+    max-width: 100%;
+  }
+  
+  .world-view-builder .step-card {
+    padding: 16px;
+  }
+  
+  .world-view-builder .ai-loading,
+  .world-view-builder .ai-failed {
+    padding: 24px;
+  }
+}
+
+/* 暗色主题支持 */
+@media (prefers-color-scheme: dark) {
+  .world-view-builder {
+    background: #141414;
+  }
+  
+  .world-view-builder .step-card {
+    background: #1f1f1f;
+    border-color: #303030;
+  }
+  
+  .world-view-builder .ai-loading {
+    background: #1f1f1f;
+    border-color: #434343;
+  }
+  
+  .world-view-builder .ai-suggestion {
+    background: #111b26;
+    border-color: #177ddc;
+  }
+  
+  .world-view-builder .suggestion-content {
+    background: #1f1f1f;
+    border-color: #303030;
+  }
+  
+  .world-view-builder .ai-failed {
+    background: #2a1215;
+    border-color: #a61d24;
+  }
+} 

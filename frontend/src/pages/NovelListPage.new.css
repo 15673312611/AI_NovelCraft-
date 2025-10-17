@@ -1,0 +1,487 @@
+/* ==========================================
+   现代化小说列表页样式
+   ========================================== */
+
+.modern-novel-list {
+  width: 100%;
+  padding: var(--space-6);
+  background: linear-gradient(to bottom, #f8fafc 0%, #f1f5f9 100%);
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+/* ==========================================
+   页面头部 - 紧凑布局
+   ========================================== */
+.page-header {
+  background: var(--bg-base);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-5);
+  gap: var(--space-4);
+}
+
+.page-title {
+  font-size: var(--text-3xl);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-1) 0;
+  line-height: 1.2;
+}
+
+.page-subtitle {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  margin: 0;
+}
+
+.create-button {
+  height: 40px !important;
+  border-radius: var(--radius-md) !important;
+  font-weight: var(--font-medium) !important;
+  padding: 0 var(--space-5) !important;
+  flex-shrink: 0;
+}
+
+/* ==========================================
+   统计卡片 - 紧凑横向布局
+   ========================================== */
+.stats-grid {
+  display: flex;
+  gap: var(--space-6);
+  justify-content: flex-start;
+}
+
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-subtle);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  border: 1px solid transparent;
+}
+
+.stat-card:hover {
+  background: var(--primary-50);
+  border-color: var(--primary-200);
+}
+
+.stat-icon {
+  width: 36px;
+  height: 36px;
+  background: var(--primary-100);
+  color: var(--primary-600);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.stat-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-value {
+  font-size: var(--text-xl);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  line-height: 1;
+}
+
+/* ==========================================
+   搜索和筛选区
+   ========================================== */
+.filters-section {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+  background: var(--bg-base);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-base);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.search-input {
+  flex: 1 1 auto;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.search-input .ant-input-affix-wrapper {
+  border-radius: var(--radius-md) !important;
+  border: 1px solid var(--border-base) !important;
+  height: 40px !important;
+  background: var(--bg-subtle) !important;
+  transition: all var(--transition-fast) !important;
+}
+
+.search-input .ant-input-affix-wrapper:hover {
+  border-color: var(--primary-300) !important;
+  background: var(--bg-base) !important;
+}
+
+.search-input .ant-input-affix-wrapper-focused {
+  border-color: var(--primary-500) !important;
+  box-shadow: 0 0 0 2px var(--primary-100) !important;
+  background: var(--bg-base) !important;
+}
+
+.search-input input {
+  background: transparent !important;
+  font-size: var(--text-sm) !important;
+}
+
+.filter-group {
+  display: flex;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.filter-group .ant-select {
+  min-width: 140px;
+}
+
+.filter-group .ant-select-selector {
+  border-radius: var(--radius-md) !important;
+  border: 1px solid var(--border-base) !important;
+  height: 40px !important;
+  background: var(--bg-subtle) !important;
+  transition: all var(--transition-fast) !important;
+}
+
+.filter-group .ant-select-selector:hover {
+  background: var(--bg-base) !important;
+  border-color: var(--primary-300) !important;
+}
+
+.filter-group .ant-select-focused .ant-select-selector {
+  border-color: var(--primary-500) !important;
+  box-shadow: 0 0 0 2px var(--primary-100) !important;
+  background: var(--bg-base) !important;
+}
+
+.filter-group .ant-select-selection-item {
+  font-size: var(--text-sm) !important;
+  line-height: 38px !important;
+}
+
+/* ==========================================
+   小说网格
+   ========================================== */
+.novels-grid {
+  margin-bottom: var(--space-8);
+}
+
+/* ==========================================
+   小说卡片 - 极简风格
+   ========================================== */
+.novel-card {
+  background: var(--bg-base);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  position: relative;
+  overflow: hidden;
+}
+
+.novel-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary-500), var(--primary-400));
+  transform: scaleX(0);
+  transition: transform var(--transition-base);
+  transform-origin: left;
+}
+
+.novel-card:hover::before {
+  transform: scaleX(1);
+}
+
+.novel-card:hover {
+  border-color: var(--primary-300);
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+  transform: translateY(-4px);
+}
+
+.card-header {
+  margin-bottom: var(--space-4);
+}
+
+.card-title {
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-3) 0;
+  line-height: var(--leading-tight);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card-tags {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.genre-tag {
+  background: var(--primary-50) !important;
+  color: var(--primary-700) !important;
+  border: 1px solid var(--primary-200) !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 2px 10px !important;
+  font-size: var(--text-xs) !important;
+  font-weight: var(--font-medium) !important;
+}
+
+.card-description {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: var(--leading-relaxed);
+  margin-bottom: var(--space-4);
+  flex: 1;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 卡片统计 */
+.card-stats {
+  display: flex;
+  gap: var(--space-6);
+  padding: var(--space-4);
+  background: var(--bg-muted);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+}
+
+.stat-number {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.stat-text {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-top: var(--space-1);
+}
+
+/* 卡片操作 */
+.card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.card-actions .ant-btn-primary {
+  height: 40px !important;
+  border-radius: var(--radius-md) !important;
+  font-weight: var(--font-medium) !important;
+  background: var(--primary-500) !important;
+  border: none !important;
+}
+
+.card-actions .ant-btn-primary:hover {
+  background: var(--primary-600) !important;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.action-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.action-buttons .ant-btn {
+  border-radius: var(--radius-md) !important;
+  height: 36px !important;
+  font-size: var(--text-sm) !important;
+}
+
+.action-buttons .ant-btn:not(.ant-btn-dangerous) {
+  border: 1px solid var(--border-base) !important;
+  color: var(--text-secondary) !important;
+}
+
+.action-buttons .ant-btn:not(.ant-btn-dangerous):hover {
+  border-color: var(--primary-300) !important;
+  color: var(--primary-600) !important;
+}
+
+.action-buttons .ant-btn-dangerous {
+  border-color: var(--border-base) !important;
+  color: var(--error) !important;
+  background: var(--bg-base) !important;
+}
+
+.action-buttons .ant-btn-dangerous:hover {
+  border-color: var(--error) !important;
+  background: var(--error-light) !important;
+}
+
+/* ==========================================
+   加载状态
+   ========================================== */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-16) var(--space-4);
+  gap: var(--space-4);
+}
+
+.loading-state p {
+  font-size: var(--text-base);
+  color: var(--text-tertiary);
+}
+
+/* ==========================================
+   空状态
+   ========================================== */
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-16) var(--space-4);
+  background: var(--bg-base);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-lg);
+}
+
+.empty-text {
+  font-size: var(--text-lg);
+  color: var(--text-secondary);
+  margin-bottom: 0;
+}
+
+/* ==========================================
+   响应式设计
+   ========================================== */
+@media (max-width: 768px) {
+  .modern-novel-list {
+    padding: var(--space-4);
+  }
+
+  .page-header {
+    padding: var(--space-4);
+  }
+
+  .header-content {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .page-title {
+    font-size: var(--text-2xl);
+  }
+
+  .create-button {
+    width: 100%;
+  }
+
+  .stats-grid {
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .stat-card {
+    flex: 1;
+    min-width: 100px;
+  }
+
+  .filters-section {
+    flex-direction: column;
+    align-items: stretch;
+    padding: var(--space-3);
+    gap: var(--space-3);
+  }
+
+  .search-input {
+    width: 100%;
+    min-width: auto;
+  }
+
+  .filter-group {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .filter-group .ant-select {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 120px;
+  }
+
+  .card-title {
+    font-size: var(--text-lg);
+  }
+
+  .card-description {
+    font-size: var(--text-sm);
+  }
+}
+
+/* ==========================================
+   Ant Design 组件覆盖
+   ========================================== */
+.modern-novel-list .ant-btn {
+  border-radius: var(--radius-md);
+  font-weight: var(--font-medium);
+  transition: all var(--transition-fast);
+}
+
+.modern-novel-list .ant-btn-lg {
+  height: 44px;
+  padding: 0 var(--space-6);
+  font-size: var(--text-base);
+}
+
+.modern-novel-list .ant-empty-description {
+  color: var(--text-secondary);
+}
+

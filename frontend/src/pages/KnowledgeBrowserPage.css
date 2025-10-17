@@ -1,0 +1,6 @@
+.knowledge-browser-page .page-header { margin-bottom: 16px; }
+.knowledge-browser-page .toolbar-card { margin-bottom: 16px; }
+.knowledge-browser-page {
+  height: 100vh;
+  overflow: hidden;
+} 

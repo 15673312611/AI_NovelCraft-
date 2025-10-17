@@ -1,0 +1,471 @@
+/* 应用布局样式 - 性能优化版本 */
+.app-layout {
+  min-height: 100vh;
+  background: radial-gradient(1200px 600px at 20% 0%, #f6f8ff 0%, #f9fbff 40%, #f8fafc 100%);
+}
+
+.app-content {
+  padding: 24px;
+  background: var(--bg-primary);
+  margin: 16px;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(99, 102, 241, 0.08), 0 4px 12px rgba(0,0,0,0.06);
+  min-height: calc(100vh - 160px);
+  border: none;
+}
+
+/* Header 样式 - 简化版本 */
+.ant-layout-header {
+  background: var(--bg-primary);
+  padding: 0 24px;
+  height: 64px;
+  line-height: 64px;
+  border-bottom: none;
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.08);
+}
+
+.ant-layout-sider {
+  background: var(--bg-primary);
+  border-right: 0;
+  box-shadow: none;
+  position: relative;
+}
+.ant-layout-sider::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 0;
+  background: transparent;
+}
+
+.ant-layout-footer {
+  text-align: center;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  padding: 20px 32px;
+  height: auto;
+  line-height: 1.6;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  color: var(--text-secondary);
+}
+
+/* Logo 样式 */
+.logo {
+  color: var(--text-primary);
+  font-size: 24px;
+  font-weight: 700;
+  text-decoration: none;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logo:hover {
+  transform: scale(1.05);
+  filter: brightness(1.1);
+}
+
+/* Header Menu 样式 */
+.header-menu {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.header-menu .ant-menu-item {
+  color: var(--text-primary);
+  border-radius: 8px;
+  margin: 0 4px;
+  transition: all 0.3s ease;
+}
+
+.header-menu .ant-menu-item:hover {
+  color: var(--primary-color);
+  background: rgba(99, 102, 241, 0.1);
+  transform: translateY(-1px);
+}
+
+.header-menu .ant-menu-item-selected {
+  color: var(--primary-color);
+  background: rgba(99, 102, 241, 0.15);
+  font-weight: 600;
+}
+
+/* Sider Menu 样式 */
+.sider-menu {
+  border-right: none;
+  background: transparent;
+  padding: 16px 8px;
+}
+
+.sider-menu .ant-menu-item {
+  margin: 4px 8px;
+  border-radius: 6px;
+  height: 40px;
+  line-height: 40px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.sider-menu .ant-menu-item:hover {
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.sider-menu .ant-menu-item-selected {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.sider-menu .ant-menu-item .anticon {
+  font-size: 16px;
+  margin-right: 12px;
+}
+
+/* 页面容器样式 */
+.page-container {
+  padding: 32px;
+}
+
+.page-header {
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 2px solid var(--border-secondary);
+  position: relative;
+}
+
+.page-header::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 80px;
+  height: 4px;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  border-radius: 2px;
+}
+
+.page-title {
+  margin-bottom: 12px;
+  font-size: 2.5rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1.2;
+}
+
+.page-description {
+  color: var(--text-secondary);
+  font-size: 16px;
+  line-height: 1.6;
+  max-width: 600px;
+}
+
+/* 表单容器样式 */
+.form-container {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 40px;
+  background: var(--bg-primary);
+  border-radius: 20px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--border-secondary);
+  position: relative;
+  overflow: hidden;
+}
+
+.form-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  border-radius: 20px 20px 0 0;
+}
+
+.card-container {
+  margin-bottom: 24px;
+}
+
+/* 按钮组样式 */
+.button-group {
+  margin-top: 24px;
+  text-align: right;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.button-group .ant-btn {
+  margin-left: 0;
+  border-radius: 10px;
+  font-weight: 500;
+  height: 40px;
+  padding: 0 20px;
+  transition: all 0.3s ease;
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.button-group .ant-btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+}
+
+.button-group .ant-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+}
+
+.button-group .ant-btn:not(.ant-btn-primary) {
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+}
+
+.button-group .ant-btn:not(.ant-btn-primary):hover {
+  transform: translateY(-2px);
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+}
+
+/* 小说卡片样式 */
+.novel-card {
+  margin-bottom: 24px;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-primary);
+  position: relative;
+}
+
+.novel-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  transform: scaleX(0);
+  transition: transform 0.3s ease;
+}
+
+.novel-card:hover::before {
+  transform: scaleX(1);
+}
+
+.novel-card:hover {
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+  transform: translateY(-8px);
+  border-color: var(--primary-color);
+}
+
+.novel-card .ant-card-body {
+  padding: 24px;
+}
+
+.novel-card .ant-card-meta-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: var(--text-primary);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.novel-card .ant-card-meta-description {
+  color: var(--text-secondary);
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+/* 小说统计样式 */
+.novel-stats {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-secondary);
+  gap: 16px;
+}
+
+.novel-stat {
+  text-align: center;
+  flex: 1;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg-tertiary);
+  transition: all 0.3s ease;
+}
+
+.novel-stat:hover {
+  background: rgba(99, 102, 241, 0.1);
+  transform: translateY(-2px);
+}
+
+.novel-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 4px;
+}
+
+.novel-stat-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* 状态标签样式 */
+.status-tag {
+  border-radius: 20px;
+  font-weight: 500;
+  font-size: 12px;
+  padding: 4px 12px;
+  border: none;
+}
+
+.status-tag.draft {
+  background: rgba(156, 163, 175, 0.2);
+  color: #6b7280;
+}
+
+.status-tag.published {
+  background: rgba(16, 185, 129, 0.2);
+  color: #059669;
+}
+
+.status-tag.completed {
+  background: rgba(99, 102, 241, 0.2);
+  color: #6366f1;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .novel-stats {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .novel-stat {
+    padding: 8px;
+  }
+
+  .novel-stat-value {
+    font-size: 16px;
+  }
+
+  .page-title {
+    font-size: 2rem;
+  }
+
+  .form-container {
+    padding: 24px;
+    margin: 16px;
+  }
+
+  .button-group {
+    justify-content: center;
+  }
+}
+
+/* 加载动画 */
+@keyframes shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+.loading-shimmer {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200px 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* 自定义 Ant Design 组件样式 */
+.ant-card {
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--border-secondary);
+}
+
+.ant-card-head {
+  border-bottom: 1px solid var(--border-secondary);
+  background: var(--bg-tertiary);
+}
+
+.ant-btn {
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.ant-btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+}
+
+.ant-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+}
+
+.ant-input,
+.ant-input-affix-wrapper {
+  border-radius: 8px;
+  border: 1px solid var(--border-primary);
+  transition: all 0.3s ease;
+}
+
+.ant-input:focus,
+.ant-input-affix-wrapper:focus,
+.ant-input-affix-wrapper-focused {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.ant-table {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.ant-table-thead > tr > th {
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-secondary);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: rgba(99, 102, 241, 0.05);
+}

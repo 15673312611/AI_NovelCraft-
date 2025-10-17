@@ -1,0 +1,225 @@
+/* ==========================================
+   新建小说向导 - 现代简洁
+   ========================================== */
+
+.novel-create-wizard {
+  min-height: 100vh;
+  background: #f8fafc;
+}
+
+/* ==========================================
+   Hero区域
+   ========================================== */
+.wizard-hero {
+  background: #ffffff;
+  padding: var(--space-8) var(--space-6) var(--space-6);
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.hero-content {
+  max-width: 800px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.hero-title {
+  font-size: 28px !important;
+  font-weight: 700 !important;
+  color: #0f172a !important;
+  margin: 0 0 var(--space-2) 0 !important;
+  line-height: 1.2 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+}
+
+.title-icon {
+  color: #3b82f6;
+  font-size: 28px;
+}
+
+.hero-subtitle {
+  font-size: 15px !important;
+  color: #64748b !important;
+  line-height: 1.6 !important;
+}
+
+/* ==========================================
+   容器
+   ========================================== */
+.wizard-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-6) var(--space-10);
+  position: relative;
+}
+
+.back-btn {
+  margin-bottom: var(--space-4);
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+  transition: all 0.2s ease;
+  border-radius: var(--radius-lg);
+}
+
+.back-btn:hover {
+  border-color: #cbd5e1;
+  color: #3b82f6;
+  background: #f8fafc;
+}
+
+/* ==========================================
+   表单卡片
+   ========================================== */
+.wizard-card {
+  border-radius: var(--radius-xl) !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+  background: #ffffff !important;
+  margin-bottom: var(--space-5);
+}
+
+.wizard-card .ant-card-body {
+  padding: var(--space-8);
+}
+
+/* 表单样式 */
+.form-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.form-input,
+.form-select,
+.form-textarea {
+  border-radius: var(--radius-lg) !important;
+  border: 2px solid #e2e8f0 !important;
+  transition: all 0.2s ease !important;
+}
+
+.form-input:hover,
+.form-select:hover,
+.form-textarea:hover {
+  border-color: #cbd5e1 !important;
+}
+
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}
+
+.form-textarea {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.form-extra {
+  font-size: 13px;
+  color: #94a3b8;
+  line-height: 1.5;
+  margin-top: 8px;
+}
+
+.form-actions {
+  margin-top: var(--space-8);
+  margin-bottom: 0;
+}
+
+.submit-btn {
+  height: 50px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  border-radius: var(--radius-xl) !important;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+  border: none !important;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2) !important;
+  transition: all 0.3s ease !important;
+}
+
+.submit-btn:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.35) !important;
+  transform: translateY(-2px) !important;
+}
+
+/* ==========================================
+   提示卡片
+   ========================================== */
+.tips-card {
+  border-radius: var(--radius-xl) !important;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important;
+  border: none !important;
+  box-shadow: 0 2px 8px rgba(251, 191, 36, 0.2) !important;
+}
+
+.tips-card .ant-card-body {
+  padding: var(--space-5);
+}
+
+.tips-content {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+
+.tips-icon {
+  font-size: 28px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.tips-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tips-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #78350f;
+  display: block;
+}
+
+.tips-desc {
+  font-size: 14px;
+  color: #92400e;
+  line-height: 1.6;
+}
+
+/* ==========================================
+   响应式
+   ========================================== */
+@media (max-width: 768px) {
+  .wizard-hero {
+    padding: var(--space-6) var(--space-4) var(--space-4);
+  }
+
+  .hero-title {
+    font-size: 22px !important;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .title-icon {
+    font-size: 24px;
+  }
+
+  .hero-subtitle {
+    font-size: 14px !important;
+  }
+
+  .wizard-container {
+    padding: var(--space-4) var(--space-4) var(--space-8);
+  }
+
+  .wizard-card .ant-card-body {
+    padding: var(--space-5);
+  }
+}
+

@@ -1,0 +1,213 @@
+.rich-text-editor {
+  width: 100%;
+  height: 100%;
+}
+
+.editor-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  background-color: #fafafa;
+  border-radius: 8px 8px 0 0;
+}
+
+.editor-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.quill-editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.quill-editor .ql-container {
+  flex: 1;
+  font-size: 16px;
+  line-height: 1.6;
+  border: none;
+  border-radius: 0 0 8px 8px;
+}
+
+.quill-editor .ql-toolbar {
+  border: none;
+  border-bottom: 1px solid #f0f0f0;
+  background-color: #fafafa;
+  padding: 8px 16px;
+}
+
+.quill-editor .ql-editor {
+  flex: 1;
+  padding: 20px;
+  min-height: 400px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  line-height: 1.8;
+  color: #333;
+}
+
+.quill-editor .ql-editor p {
+  margin-bottom: 1em;
+}
+
+.quill-editor .ql-editor h1,
+.quill-editor .ql-editor h2,
+.quill-editor .ql-editor h3 {
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+}
+
+.quill-editor .ql-editor h1 {
+  font-size: 1.8em;
+  color: #1a1a1a;
+}
+
+.quill-editor .ql-editor h2 {
+  font-size: 1.5em;
+  color: #2a2a2a;
+}
+
+.quill-editor .ql-editor h3 {
+  font-size: 1.3em;
+  color: #3a3a3a;
+}
+
+.preview-content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  background-color: #fff;
+  border-radius: 0 0 8px 8px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  line-height: 1.8;
+  color: #333;
+}
+
+.preview-content h1,
+.preview-content h2,
+.preview-content h3 {
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+}
+
+.preview-content h1 {
+  font-size: 1.8em;
+  color: #1a1a1a;
+}
+
+.preview-content h2 {
+  font-size: 1.5em;
+  color: #2a2a2a;
+}
+
+.preview-content h3 {
+  font-size: 1.3em;
+  color: #3a3a3a;
+}
+
+.preview-content p {
+  margin-bottom: 1em;
+}
+
+.word-count {
+  font-size: 12px;
+  color: #666;
+}
+
+.last-saved {
+  font-size: 12px;
+  color: #666;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .editor-header {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  
+  .quill-editor .ql-editor {
+    padding: 16px;
+    min-height: 300px;
+  }
+  
+  .preview-content {
+    padding: 16px;
+  }
+}
+
+/* 暗色主题支持 */
+@media (prefers-color-scheme: dark) {
+  .editor-card {
+    background-color: #1f1f1f;
+    border-color: #333;
+  }
+  
+  .editor-header {
+    background-color: #2a2a2a;
+    border-color: #333;
+  }
+  
+  .quill-editor .ql-toolbar {
+    background-color: #2a2a2a;
+    border-color: #333;
+  }
+  
+  .quill-editor .ql-editor {
+    background-color: #1f1f1f;
+    color: #e0e0e0;
+  }
+  
+  .preview-content {
+    background-color: #1f1f1f;
+    color: #e0e0e0;
+  }
+  
+  .word-count,
+  .last-saved {
+    color: #999;
+  }
+}
+
+/* 编辑器焦点状态 */
+.quill-editor .ql-editor:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px #1890ff;
+}
+
+/* 工具栏按钮样式优化 */
+.quill-editor .ql-toolbar button {
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.quill-editor .ql-toolbar button:hover {
+  background-color: #e6f7ff;
+  border-color: #1890ff;
+}
+
+.quill-editor .ql-toolbar button.ql-active {
+  background-color: #1890ff;
+  color: white;
+}
+
+/* 占位符样式 */
+.quill-editor .ql-editor.ql-blank::before {
+  color: #999;
+  font-style: italic;
+} 

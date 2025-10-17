@@ -1,0 +1,49 @@
+/* ==========================================
+   应用主布局样式 - 现代化版本
+   ========================================== */
+
+.app-layout {
+  min-height: 100vh;
+  background: var(--bg-subtle);
+}
+
+/* 主内容区域 */
+.app-content {
+  background: var(--bg-subtle);
+  min-height: calc(100vh - 64px);
+  padding: 0;
+  margin: 0;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* 移除旧版装饰性元素 */
+.app-content::before {
+  display: none;
+}
+
+/* 确保Ant Design Layout组件正常工作 */
+.ant-layout {
+  background: var(--bg-subtle);
+}
+
+.ant-layout-content {
+  background: var(--bg-subtle);
+}
+
+/* 为没有自定义容器的页面提供默认内边距 */
+.app-content > div:not([class*="modern-"]):not([class*="-page"]):not([class*="-studio"]) {
+  padding: var(--space-8) var(--space-6);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* ==========================================
+   响应式布局
+   ========================================== */
+@media (max-width: 768px) {
+  .app-content {
+    min-height: calc(100vh - 56px);
+  }
+}
+

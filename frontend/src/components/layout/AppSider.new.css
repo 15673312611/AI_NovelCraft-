@@ -1,0 +1,154 @@
+/* ==========================================
+   现代化侧边栏样式 - 精致版
+   ========================================== */
+
+.app-sider {
+  background: var(--bg-base);
+  border-right: 1px solid var(--border-base);
+  box-shadow: none;
+  position: relative;
+}
+
+/* Sider Menu 样式 */
+.sider-menu {
+  border-right: none;
+  height: 100%;
+  background: transparent;
+  padding: var(--space-4) var(--space-3);
+}
+
+.sider-menu .ant-menu-item {
+  margin: 2px var(--space-2);
+  border-radius: var(--radius-md);
+  height: 40px;
+  line-height: 40px;
+  transition: all var(--transition-fast);
+  font-weight: var(--font-medium);
+  border: none;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+}
+
+.sider-menu .ant-menu-item::before,
+.sider-menu .ant-menu-item::after {
+  display: none;
+}
+
+/* 默认状态 */
+.sider-menu .ant-menu-item {
+  color: var(--text-secondary);
+}
+
+/* 悬停状态 - 更明显的反馈 */
+.sider-menu .ant-menu-item:hover {
+  background: var(--primary-50);
+  color: var(--primary-600);
+}
+
+/* 选中状态 - 更明显 */
+.sider-menu .ant-menu-item-selected {
+  background: var(--primary-500);
+  color: var(--text-inverse);
+  font-weight: var(--font-semibold);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
+}
+
+/* 图标样式 */
+.sider-menu .ant-menu-item .anticon {
+  margin-right: var(--space-3);
+  font-size: 18px;
+  transition: all var(--transition-fast);
+}
+
+.sider-menu .ant-menu-item:hover .anticon {
+  color: var(--primary-600);
+}
+
+.sider-menu .ant-menu-item-selected .anticon {
+  color: var(--text-inverse);
+}
+
+/* 菜单项文字 */
+.sider-menu .ant-menu-item > span {
+  transition: all var(--transition-fast);
+  font-size: var(--text-sm);
+}
+
+.sider-menu .ant-menu-item-selected > span {
+  color: var(--text-inverse);
+}
+
+/* 子菜单样式 */
+.sider-menu .ant-menu-submenu {
+  margin: var(--space-1) var(--space-2);
+}
+
+.sider-menu .ant-menu-submenu-title {
+  border-radius: var(--radius-md);
+  height: 44px;
+  line-height: 44px;
+  transition: all var(--transition-fast);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
+}
+
+.sider-menu .ant-menu-submenu-title:hover {
+  background: var(--bg-muted);
+  color: var(--primary-600);
+}
+
+.sider-menu .ant-menu-submenu-title .anticon {
+  margin-right: var(--space-3);
+  font-size: 18px;
+}
+
+.sider-menu .ant-menu-submenu .ant-menu-item {
+  margin: var(--space-1) var(--space-2) var(--space-1) var(--space-6);
+  height: 40px;
+  line-height: 40px;
+  border-radius: var(--radius-md);
+}
+
+/* 折叠状态样式 */
+.app-sider.ant-layout-sider-collapsed .sider-menu {
+  padding: var(--space-6) var(--space-1);
+}
+
+.app-sider.ant-layout-sider-collapsed .sider-menu .ant-menu-item {
+  margin: var(--space-1);
+  text-align: center;
+  padding: 0;
+}
+
+.app-sider.ant-layout-sider-collapsed .sider-menu .ant-menu-item .anticon {
+  margin-right: 0;
+  font-size: 20px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .app-sider {
+    position: fixed;
+    left: 0;
+    top: 56px;
+    bottom: 0;
+    z-index: var(--z-fixed);
+    transform: translateX(-100%);
+    transition: transform var(--transition-base);
+  }
+
+  .app-sider.mobile-open {
+    transform: translateX(0);
+  }
+
+  .sider-menu {
+    padding: var(--space-4) var(--space-2);
+  }
+
+  .sider-menu .ant-menu-item {
+    height: 44px;
+    line-height: 44px;
+  }
+}
+

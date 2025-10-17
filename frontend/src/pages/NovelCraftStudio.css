@@ -1,0 +1,402 @@
+/* NovelCraftStudio 样式文件 */
+
+.novel-craft-studio {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f5f5f5;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: 16px;
+}
+
+/* 顶部工具栏 */
+.studio-header {
+  background: #001529;
+  padding: 0 24px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.novel-title {
+  color: white !important;
+  margin: 0 !important;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+}
+
+/* 主体布局 */
+.studio-layout {
+  flex: 1;
+  min-height: 0;
+}
+
+.main-content {
+  padding: 16px;
+  background: white;
+  overflow-y: auto;
+}
+
+.side-panel {
+  background: white;
+  border-left: 1px solid #f0f0f0;
+  overflow-y: auto;
+}
+
+/* 主标签页 */
+.main-tabs {
+  height: 100%;
+}
+
+.main-tabs .ant-tabs-content-holder {
+  overflow-y: auto;
+}
+
+.main-tabs .ant-tabs-tab {
+  padding: 12px 20px;
+  font-weight: 500;
+}
+
+/* 大纲面板 */
+.outline-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+}
+
+.idea-card {
+  margin-bottom: 16px;
+}
+
+.idea-card .ant-card-body {
+  padding: 24px;
+}
+
+.idea-card .ant-slider {
+  margin-bottom: 8px;
+}
+
+.idea-card .ant-slider-mark {
+  font-size: 12px;
+}
+
+.idea-card .ant-slider-mark-text {
+  color: #666;
+  font-weight: 500;
+}
+
+.idea-card .ant-slider-track {
+  background: linear-gradient(90deg, #1890ff, #52c41a);
+}
+
+.idea-card .ant-slider-handle {
+  border: 2px solid #1890ff;
+  background: white;
+  box-shadow: 0 2px 6px rgba(24, 144, 255, 0.3);
+}
+
+.idea-card .ant-input-number-group-wrapper {
+  width: 100%;
+}
+
+.idea-card .ant-input-number {
+  width: 100%;
+}
+
+.outline-structure {
+  flex: 1;
+  min-height: 400px;
+}
+
+.outline-tree {
+  padding: 16px;
+}
+
+.outline-phase {
+  padding: 8px;
+  margin: 4px 0;
+  border-radius: 6px;
+  border-left: 4px solid #1890ff;
+  background: #f8f9ff;
+}
+
+.outline-arc {
+  padding: 6px 12px;
+  margin: 2px 0 2px 20px;
+  border-radius: 4px;
+  background: #fafafa;
+  border-left: 2px solid #52c41a;
+  font-size: 14px;
+}
+
+/* 章节面板 */
+.chapters-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+}
+
+.chapters-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
+.chapters-table {
+  flex: 1;
+}
+
+.chapters-table .ant-table-tbody > tr:hover > td {
+  background: #f0f7ff;
+}
+
+/* 写作面板 */
+.writing-panel {
+  height: 100%;
+}
+
+.chapter-details {
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.chapter-content-editor {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  line-height: 1.8;
+  font-size: 14px;
+}
+
+.writing-actions {
+  margin-top: 16px;
+  text-align: right;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.empty-state .anticon {
+  margin-bottom: 16px;
+}
+
+/* AI建议面板 */
+.suggestions-panel {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.suggestions-panel .ant-list-item {
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: #fafafa;
+  padding: 12px 16px;
+  transition: all 0.2s;
+}
+
+.suggestions-panel .ant-list-item:hover {
+  background: #f0f7ff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* 记忆库面板 */
+.memory-bank {
+  height: 100%;
+}
+
+.memory-bank .ant-collapse-item {
+  margin-bottom: 8px;
+  border-radius: 6px;
+  border: 1px solid #e8e8e8;
+}
+
+.memory-bank .ant-collapse-header {
+  border-radius: 6px 6px 0 0;
+  background: #fafafa;
+}
+
+.memory-bank .ant-list-item {
+  padding: 8px 12px;
+  border-radius: 4px;
+  margin-bottom: 4px;
+  background: white;
+}
+
+/* 一致性面板 */
+.consistency-panel {
+  padding: 20px;
+  text-align: center;
+}
+
+.consistency-panel .ant-progress {
+  margin-bottom: 12px;
+}
+
+/* AI对话面板 */
+.ai-chat-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.chat-message {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  align-items: flex-start;
+}
+
+.chat-message.user {
+  justify-content: flex-end;
+}
+
+.chat-message.user .message-content {
+  background: #1890ff;
+  color: white;
+  margin-left: auto;
+}
+
+.chat-message.assistant .message-content {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.message-content {
+  padding: 8px 12px;
+  border-radius: 12px;
+  max-width: 70%;
+  word-wrap: break-word;
+  line-height: 1.4;
+}
+
+.chat-input {
+  padding: 8px;
+  border-top: 1px solid #f0f0f0;
+}
+
+/* 任务进度模态框 */
+.task-modal .ant-modal-body {
+  padding: 30px;
+}
+
+.task-progress {
+  text-align: center;
+}
+
+.task-progress .ant-progress {
+  margin-bottom: 20px;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .studio-layout .side-panel {
+    width: 300px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .studio-header {
+    padding: 0 12px;
+  }
+  
+  .header-left .novel-title {
+    font-size: 18px;
+  }
+  
+  .main-content {
+    padding: 8px;
+  }
+  
+  .studio-layout .side-panel {
+    width: 250px !important;
+  }
+}
+
+/* 动画效果 */
+.ant-card {
+  transition: all 0.3s cubic-bezier(0.645, 0.045, 0.355, 1);
+}
+
+.ant-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.ant-btn {
+  transition: all 0.2s cubic-bezier(0.645, 0.045, 0.355, 1);
+}
+
+/* 滚动条美化 */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f0f0f0;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d0d0d0;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #b0b0b0;
+}
+
+/* 特殊效果 */
+.ant-statistic-content {
+  color: #1890ff;
+  font-weight: 600;
+}
+
+.ant-tag {
+  border-radius: 12px;
+}
+
+.ant-progress-circle .ant-progress-text {
+  font-weight: 600;
+}
+
+/* 主题色彩调整 */
+.ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #1890ff;
+  font-weight: 600;
+}
+
+.ant-tabs-ink-bar {
+  background: linear-gradient(90deg, #1890ff, #096dd9);
+  height: 3px;
+}

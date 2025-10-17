@@ -1,0 +1,514 @@
+/* 卷写作工作室样式 */
+.volume-writing-studio {
+  padding: 24px;
+  background: #f5f5f5;
+  min-height: 100vh;
+}
+
+/* AI消痕光标闪烁动画 */
+@keyframes blink {
+  0%, 49% {
+    opacity: 1;
+  }
+  50%, 100% {
+    opacity: 0;
+  }
+}
+
+/* 文本选中样式 */
+.writing-textarea::selection,
+.writing-textarea *::selection {
+  background-color: #bae7ff !important;
+  color: #000000 !important;
+}
+
+.writing-textarea::-moz-selection,
+.writing-textarea *::-moz-selection {
+  background-color: #bae7ff !important;
+  color: #000000 !important;
+}
+
+/* 全局文本选中样式 */
+::selection {
+  background-color: #bae7ff;
+  color: #000000;
+}
+
+::-moz-selection {
+  background-color: #bae7ff;
+  color: #000000;
+}
+
+.studio-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding: 0 8px;
+}
+
+.studio-header .ant-typography {
+  margin: 0;
+  color: #1890ff;
+}
+
+/* 写作卡片样式 */
+.writing-card {
+  height: fit-content;
+}
+
+.writing-card .ant-card-body {
+  padding: 16px;
+}
+
+.writing-stats {
+  padding: 12px 16px;
+  background: #fafafa;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  border: 1px solid #f0f0f0;
+}
+
+.writing-textarea {
+  font-family: 'Source Han Serif CN', 'Songti SC', 'SimSun', 'FangSong', serif !important;
+  line-height: 1.8 !important;
+  font-size: 16px !important;
+  padding: 40px 80px !important;
+  border: none !important;
+  border-radius: 0 !important;
+  transition: all 0.3s ease;
+  background: #ffffff !important;
+  color: #2c2c2c !important;
+  letter-spacing: 0.8px !important;
+  word-spacing: 2px !important;
+  white-space: pre-wrap !important; /* 保留空格和换行 */
+  word-break: normal !important; /* 正常断词 */
+  word-wrap: break-word !important; /* 长单词换行 */
+  overflow-wrap: break-word !important;
+}
+
+.writing-textarea:focus {
+  outline: none !important;
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.1) !important;
+  background: #fafafa !important;
+}
+
+/* 流式写作动画 */
+@keyframes pulse {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.2);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.writing-textarea.streaming {
+  background: linear-gradient(135deg, #fefcf8 0%, #fffbf5 100%) !important;
+  box-shadow: inset 0 0 0 2px #3b82f6 !important;
+  animation: writing-pulse 3s ease-in-out infinite;
+  position: relative;
+}
+
+.writing-textarea.streaming::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    #3b82f6 50%, 
+    transparent 100%);
+  animation: progress-bar 2s linear infinite;
+}
+
+@keyframes writing-pulse {
+  0%, 100% {
+    box-shadow: inset 0 0 0 2px #3b82f6;
+  }
+  50% {
+    box-shadow: inset 0 0 0 2px #60a5fa, 0 0 20px rgba(59, 130, 246, 0.15);
+  }
+}
+
+@keyframes progress-bar {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* 指导面板样式 */
+.guidance-card {
+  height: fit-content;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.guidance-card .ant-card-body {
+  padding: 16px;
+}
+
+.guidance-card .ant-tabs {
+  height: 100%;
+}
+
+.guidance-card .ant-tabs-content-holder {
+  height: calc(100% - 44px);
+}
+
+.guidance-tab, .toolkit-tab {
+  height: 100%;
+}
+
+.guidance-content {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.guidance-section {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.guidance-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.guidance-section .ant-typography-title {
+  margin-bottom: 12px;
+  color: #262626;
+  font-size: 14px;
+}
+
+.no-guidance {
+  text-align: center;
+  padding: 40px 20px;
+  color: #8c8c8c;
+}
+
+/* 建议列表样式 */
+.ant-list-item {
+  padding: 8px 0 !important;
+  border-bottom: 1px solid #f5f5f5 !important;
+}
+
+.ant-list-item:last-child {
+  border-bottom: none !important;
+}
+
+.ant-list-item-meta-title {
+  margin-bottom: 4px !important;
+  font-size: 13px;
+}
+
+.ant-list-item-meta-description {
+  font-size: 12px;
+  color: #595959;
+  line-height: 1.4;
+}
+
+/* 标签样式 */
+.ant-tag {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-right: 4px;
+}
+
+/* 警告框样式 */
+.ant-alert {
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.ant-alert-message {
+  font-weight: 500;
+}
+
+/* 抽屉样式 */
+.ant-drawer-header {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.ant-drawer-body {
+  padding: 20px;
+}
+
+/* 历史记录卡片样式 */
+.ant-list-item .ant-card {
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.ant-list-item .ant-card:hover {
+  border-color: #d9d9d9;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .volume-writing-studio .ant-col:first-child {
+    span: 24;
+    margin-bottom: 24px;
+  }
+  
+  .volume-writing-studio .ant-col:last-child {
+    span: 24;
+  }
+}
+
+@media (max-width: 768px) {
+  .volume-writing-studio {
+    padding: 16px;
+  }
+  
+  .studio-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  
+  .writing-stats {
+    padding: 8px 12px;
+  }
+  
+  .writing-textarea {
+    font-size: 14px !important;
+    padding: 12px !important;
+  }
+  
+  .guidance-card {
+    max-height: 60vh;
+  }
+  
+  .ant-drawer {
+    width: 95% !important;
+  }
+}
+
+/* 字数统计样式 */
+.writing-stats .ant-typography {
+  margin: 0;
+}
+
+.writing-stats strong {
+  color: #1890ff;
+  font-weight: 600;
+}
+
+/* 按钮样式 */
+.ant-btn-link {
+  padding: 0;
+  height: auto;
+  font-size: 12px;
+}
+
+/* 分割线样式 */
+.ant-divider-vertical {
+  margin: 0 12px;
+  border-color: #d9d9d9;
+}
+
+/* 滚动条样式 */
+.guidance-content::-webkit-scrollbar,
+.guidance-card::-webkit-scrollbar {
+  width: 6px;
+}
+
+.guidance-content::-webkit-scrollbar-track,
+.guidance-card::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.guidance-content::-webkit-scrollbar-thumb,
+.guidance-card::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.guidance-content::-webkit-scrollbar-thumb:hover,
+.guidance-card::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* 加载状态 */
+.guidance-loading {
+  text-align: center;
+  padding: 20px;
+}
+
+/* 段落样式 */
+.ant-typography p {
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+
+/* 表单样式 */
+.ant-form-item-label > label {
+  font-weight: 500;
+  color: #262626;
+}
+
+/* 成功、警告、错误文本颜色调整 */
+.ant-typography-success {
+  color: #52c41a;
+}
+
+.ant-typography-warning {
+  color: #faad14;
+}
+
+.ant-typography-danger {
+  color: #f5222d;
+}
+
+/* 格式工具栏样式 */
+.format-toolbar {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-bottom: 1px solid #e2e8f0;
+  padding: 12px 20px;
+}
+
+.format-toolbar .ant-btn {
+  border-radius: 6px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.format-toolbar .ant-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.format-toolbar .ant-btn-primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border: none;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+}
+
+/* 专业写作区域样式 */
+.professional-editor {
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.professional-editor .writing-textarea {
+  font-family: 'Source Han Serif CN', 'Songti SC', 'SimSun', serif !important;
+  font-size: 17px !important;
+  line-height: 2.2 !important;
+  padding: 40px 80px !important;
+  letter-spacing: 0.5px !important;
+  color: #1a202c !important;
+  background: #ffffff !important;
+  border: none !important;
+  outline: none !important;
+  resize: none !important;
+}
+
+/* 段落样式优化 */
+.writing-textarea::placeholder {
+  color: #a0a0a0 !important;
+  font-size: 14px !important;
+  line-height: 1.8 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif !important;
+  letter-spacing: 0.5px !important;
+}
+
+/* 文本框容器美化 */
+.professional-editor {
+  position: relative;
+}
+
+.professional-editor::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    #e2e8f0 20%,
+    #e2e8f0 80%, 
+    transparent 100%);
+}
+
+/* 滚动条美化 */
+.writing-textarea::-webkit-scrollbar {
+  width: 8px;
+}
+
+.writing-textarea::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.writing-textarea::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.writing-textarea::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* 优化移动端体验 */
+@media (max-width: 768px) {
+  .professional-editor .writing-textarea {
+    padding: 20px !important;
+    font-size: 16px !important;
+    line-height: 2 !important;
+  }
+  
+  .format-toolbar {
+    padding: 8px 12px;
+    flex-wrap: wrap;
+  }
+  
+  .format-toolbar .ant-btn {
+    margin-bottom: 4px;
+  }
+}
+
+@media (max-width: 576px) {
+  .studio-header .ant-typography-title {
+    font-size: 18px;
+  }
+  
+  .guidance-section .ant-typography-title {
+    font-size: 13px;
+  }
+  
+  .writing-stats {
+    text-align: center;
+  }
+  
+  .ant-space {
+    justify-content: center;
+    width: 100%;
+  }
+  
+  .professional-editor .writing-textarea {
+    padding: 16px !important;
+    font-size: 15px !important;
+  }
+}

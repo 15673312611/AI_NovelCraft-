@@ -1,0 +1,714 @@
+/* AI Task List 样式 */
+.ai-task-list {
+  width: 100%;
+  padding: 24px;
+  background: var(--bg-secondary);
+  min-height: 100vh;
+}
+
+.task-list-card {
+  border-radius: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-primary);
+  overflow: hidden;
+  position: relative;
+}
+
+.task-list-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+}
+
+.task-list-card .ant-card-head {
+  border-bottom: 1px solid var(--border-secondary);
+  padding: 0 32px;
+  background: var(--bg-tertiary);
+  height: 72px;
+  display: flex;
+  align-items: center;
+}
+
+.task-list-card .ant-card-head-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.task-list-card .ant-card-body {
+  padding: 32px;
+}
+
+.task-table {
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.task-table .ant-table-thead > tr > th {
+  background: linear-gradient(135deg, var(--bg-tertiary) 0%, rgba(99, 102, 241, 0.05) 100%);
+  border-bottom: 2px solid var(--border-secondary);
+  font-weight: 700;
+  color: var(--text-primary);
+  font-size: 14px;
+  padding: 20px 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.task-table .ant-table-tbody > tr {
+  transition: all 0.3s ease;
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+.task-table .ant-table-tbody > tr:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.task-table .ant-table-tbody > tr > td {
+  padding: 20px 16px;
+  border-bottom: 1px solid var(--border-secondary);
+  vertical-align: top;
+}
+
+.task-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.task-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.task-title .anticon {
+  color: var(--primary-color);
+  font-size: 18px;
+}
+
+.task-description {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+}
+
+.task-meta {
+  display: flex;
+  gap: 20px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+}
+
+.task-novel,
+.task-user {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.task-novel .anticon,
+.task-user .anticon {
+  color: var(--primary-color);
+  font-size: 12px;
+}
+
+.task-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+}
+
+.task-progress {
+  width: 80px;
+}
+
+.task-progress .ant-progress-text {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.task-cost {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 100px;
+}
+
+.task-cost-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--success-color);
+}
+
+.task-tokens {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  background: var(--bg-tertiary);
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+.task-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  min-width: 140px;
+}
+
+.task-time .anticon {
+  color: var(--info-color);
+}
+
+/* 状态标签样式 */
+.status-tag {
+  border-radius: 16px;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 6px 12px;
+  border: none;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-tag.pending {
+  background: linear-gradient(135deg, rgba(156, 163, 175, 0.2) 0%, rgba(156, 163, 175, 0.1) 100%);
+  color: #6b7280;
+}
+
+.status-tag.running {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(59, 130, 246, 0.1) 100%);
+  color: #2563eb;
+}
+
+.status-tag.completed {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(16, 185, 129, 0.1) 100%);
+  color: #059669;
+}
+
+.status-tag.failed {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(239, 68, 68, 0.1) 100%);
+  color: #dc2626;
+}
+
+/* 任务详情模态框样式 */
+.task-detail {
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.task-detail .ant-descriptions {
+  background: var(--bg-primary);
+}
+
+.task-detail .ant-descriptions-item-label {
+  font-weight: 700;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-radius: 8px 0 0 8px;
+  padding: 12px 16px;
+}
+
+.task-detail .ant-descriptions-item-content {
+  background: var(--bg-primary);
+  border-radius: 0 8px 8px 0;
+  padding: 12px 16px;
+  border: 1px solid var(--border-secondary);
+  border-left: none;
+}
+
+.task-prompt,
+.task-result {
+  margin-top: 24px;
+}
+
+.task-prompt h4,
+.task-result h4 {
+  margin-bottom: 12px;
+  color: var(--text-primary);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.prompt-content,
+.result-content {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  position: relative;
+}
+
+.prompt-content::before {
+  content: 'Prompt';
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  background: var(--bg-primary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.result-content {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.05) 0%, rgba(16, 185, 129, 0.02) 100%);
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.result-content::before {
+  content: 'Result';
+  color: var(--success-color);
+}
+
+/* 操作按钮样式 */
+.task-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.task-actions .ant-btn {
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.task-actions .ant-btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.task-actions .ant-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+}
+
+.task-actions .ant-btn-text {
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+}
+
+.task-actions .ant-btn-text:hover {
+  color: var(--primary-color);
+  background: rgba(99, 102, 241, 0.1);
+  transform: translateY(-2px);
+}
+
+.task-actions .ant-btn-text.ant-btn-dangerous:hover {
+  color: var(--error-color);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* 筛选和搜索区域 */
+.task-filters {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding: 20px;
+  background: var(--bg-primary);
+  border-radius: 16px;
+  border: 1px solid var(--border-secondary);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.task-filters .ant-select,
+.task-filters .ant-input-search {
+  min-width: 200px;
+}
+
+.task-filters .ant-select .ant-select-selector,
+.task-filters .ant-input-search .ant-input {
+  border-radius: 8px;
+  border: 1px solid var(--border-primary);
+  transition: all 0.3s ease;
+}
+
+.task-filters .ant-select:hover .ant-select-selector,
+.task-filters .ant-input-search:hover .ant-input {
+  border-color: var(--primary-color);
+}
+
+/* 分页样式 */
+.task-pagination {
+  margin-top: 32px;
+  text-align: center;
+}
+
+.task-pagination .ant-pagination {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.task-pagination .ant-pagination-item {
+  border-radius: 8px;
+  border: 1px solid var(--border-secondary);
+  transition: all 0.3s ease;
+}
+
+.task-pagination .ant-pagination-item:hover {
+  border-color: var(--primary-color);
+  transform: translateY(-2px);
+}
+
+.task-pagination .ant-pagination-item-active {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: var(--primary-color);
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .ai-task-list {
+    padding: 16px;
+  }
+
+  .task-list-card .ant-card-body {
+    padding: 24px;
+  }
+}
+
+@media (max-width: 768px) {
+  .ai-task-list {
+    padding: 12px;
+  }
+
+  .task-list-card .ant-card-head {
+    padding: 0 20px;
+    height: 64px;
+  }
+
+  .task-list-card .ant-card-body {
+    padding: 20px;
+  }
+
+  .task-description {
+    max-width: 250px;
+  }
+
+  .task-meta {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .task-table .ant-table-thead > tr > th,
+  .task-table .ant-table-tbody > tr > td {
+    padding: 12px 8px;
+  }
+
+  .task-table .ant-table-column-title {
+    font-size: 12px;
+  }
+
+  .task-filters {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .task-filters .ant-select,
+  .task-filters .ant-input-search {
+    min-width: auto;
+    width: 100%;
+  }
+
+  .task-actions {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .task-actions .ant-btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .task-list-card .ant-card-head-title {
+    font-size: 18px;
+  }
+
+  .task-title {
+    font-size: 14px;
+  }
+
+  .task-description {
+    font-size: 12px;
+    max-width: 200px;
+  }
+
+  .task-detail {
+    padding: 16px;
+  }
+
+  .prompt-content,
+  .result-content {
+    padding: 16px;
+    font-size: 13px;
+  }
+}
+
+/* 动画效果 */
+@keyframes taskRowSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.task-table .ant-table-tbody > tr {
+  animation: taskRowSlideIn 0.3s ease-out;
+}
+
+.task-table .ant-table-tbody > tr:nth-child(1) { animation-delay: 0.1s; }
+.task-table .ant-table-tbody > tr:nth-child(2) { animation-delay: 0.15s; }
+.task-table .ant-table-tbody > tr:nth-child(3) { animation-delay: 0.2s; }
+.task-table .ant-table-tbody > tr:nth-child(4) { animation-delay: 0.25s; }
+.task-table .ant-table-tbody > tr:nth-child(5) { animation-delay: 0.3s; }
+
+/* 加载状态 */
+.task-table .ant-table-loading {
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.task-loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 40px;
+}
+
+.task-loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border-secondary);
+  border-top: 3px solid var(--primary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* 空状态 */
+.task-table .ant-table-empty {
+  padding: 60px 20px;
+}
+
+.task-empty-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: var(--text-secondary);
+}
+
+.task-empty-icon {
+  font-size: 48px;
+  color: var(--text-tertiary);
+  opacity: 0.6;
+}
+
+.task-empty-text {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.task-empty-description {
+  font-size: 14px;
+  color: var(--text-tertiary);
+  text-align: center;
+  max-width: 300px;
+  line-height: 1.5;
+}
+
+/* 标签样式优化 */
+.task-title .ant-tag {
+  margin: 0;
+  font-size: 10px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: none;
+}
+
+.task-title .ant-tag.priority-high {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(239, 68, 68, 0.1) 100%);
+  color: #dc2626;
+}
+
+.task-title .ant-tag.priority-medium {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(245, 158, 11, 0.1) 100%);
+  color: #d97706;
+}
+
+.task-title .ant-tag.priority-low {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(16, 185, 129, 0.1) 100%);
+  color: #059669;
+}
+
+/* 滚动条样式 */
+.task-detail::-webkit-scrollbar {
+  width: 8px;
+}
+
+.task-detail::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+
+.task-detail::-webkit-scrollbar-thumb {
+  background: var(--border-primary);
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.task-detail::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+.prompt-content::-webkit-scrollbar,
+.result-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.prompt-content::-webkit-scrollbar-track,
+.result-content::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+  border-radius: 3px;
+}
+
+.prompt-content::-webkit-scrollbar-thumb,
+.result-content::-webkit-scrollbar-thumb {
+  background: var(--border-primary);
+  border-radius: 3px;
+}
+
+.prompt-content::-webkit-scrollbar-thumb:hover,
+.result-content::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* 深色模式支持 */
+@media (prefers-color-scheme: dark) {
+  .ai-task-list {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  }
+
+  .task-list-card {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .task-list-card .ant-card-head {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .task-table .ant-table-thead > tr > th {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .task-table .ant-table-tbody > tr > td {
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .task-table .ant-table-tbody > tr:hover {
+    background: rgba(99, 102, 241, 0.1);
+  }
+
+  .prompt-content,
+  .result-content {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .result-content {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.2);
+  }
+}
+
+/* 打印样式 */
+@media print {
+  .ai-task-list {
+    background: white;
+    padding: 0;
+  }
+
+  .task-list-card {
+    box-shadow: none;
+    border: 1px solid #ddd;
+  }
+
+  .task-actions {
+    display: none;
+  }
+
+  .task-pagination {
+    display: none;
+  }
+
+  .task-filters {
+    display: none;
+  }
+}

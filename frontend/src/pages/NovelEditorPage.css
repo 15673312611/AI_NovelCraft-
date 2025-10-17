@@ -1,0 +1,324 @@
+.novel-editor-layout {
+  height: 100vh;
+  overflow: hidden;
+}
+
+.novel-editor-layout.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1000;
+}
+
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background-color: #fff;
+  border-bottom: 1px solid #f0f0f0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  min-width: 200px;
+}
+
+.header-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0 20px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  min-width: 200px;
+  justify-content: flex-end;
+}
+
+.novel-title {
+  margin: 0;
+  color: #1890ff;
+  font-weight: 600;
+}
+
+.chapter-title {
+  font-size: 16px;
+  color: #333;
+  font-weight: 500;
+}
+
+.editor-content-layout {
+  height: calc(100vh - 64px);
+  overflow: hidden;
+}
+
+.chapter-sider {
+  background-color: #fff;
+  border-right: 1px solid #f0f0f0;
+  overflow: hidden;
+}
+
+.chapter-sider .ant-layout-sider-children {
+  height: 100%;
+  overflow: hidden;
+}
+
+.editor-main-content {
+  background-color: #f5f5f5;
+  padding: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-editor {
+  flex: 1;
+  height: 100%;
+}
+
+.no-chapter-selected {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.no-chapter-content {
+  text-align: center;
+  padding: 40px;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: 16px;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .header-left,
+  .header-right {
+    min-width: 150px;
+  }
+  
+  .header-center {
+    padding: 0 10px;
+  }
+  
+  .chapter-title {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 768px) {
+  .editor-header {
+    padding: 0 12px;
+    flex-wrap: wrap;
+    min-height: 64px;
+  }
+  
+  .header-left,
+  .header-center,
+  .header-right {
+    min-width: auto;
+    width: 100%;
+    justify-content: center;
+    margin-bottom: 8px;
+  }
+  
+  .header-center {
+    order: 3;
+    margin-bottom: 0;
+  }
+  
+  .novel-title {
+    font-size: 16px;
+  }
+  
+  .chapter-title {
+    font-size: 12px;
+  }
+  
+  .editor-content-layout {
+    height: calc(100vh - 120px);
+  }
+  
+  .chapter-sider {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+  }
+  
+  .editor-main-content {
+    padding: 8px;
+  }
+}
+
+/* 暗色主题支持 */
+@media (prefers-color-scheme: dark) {
+  .editor-header {
+    background-color: #1f1f1f;
+    border-color: #333;
+  }
+  
+  .novel-title {
+    color: #1890ff;
+  }
+  
+  .chapter-title {
+    color: #e0e0e0;
+  }
+  
+  .chapter-sider {
+    background-color: #1f1f1f;
+    border-color: #333;
+  }
+  
+  .editor-main-content {
+    background-color: #141414;
+  }
+  
+  .no-chapter-selected {
+    background-color: #1f1f1f;
+  }
+}
+
+/* 全屏模式样式 */
+.novel-editor-layout.fullscreen .editor-header {
+  position: sticky;
+  top: 0;
+}
+
+.novel-editor-layout.fullscreen .editor-content-layout {
+  height: calc(100vh - 64px);
+}
+
+/* 侧边栏折叠动画 */
+.chapter-sider {
+  transition: all 0.3s ease;
+}
+
+.chapter-sider.ant-layout-sider-collapsed {
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+}
+
+/* 按钮悬停效果 */
+.editor-header .ant-btn-text:hover {
+  background-color: rgba(24, 144, 255, 0.1);
+  color: #1890ff;
+}
+
+/* 滚动条样式 */
+.editor-main-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.editor-main-content::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.editor-main-content::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.editor-main-content::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* 暗色主题滚动条 */
+@media (prefers-color-scheme: dark) {
+  .editor-main-content::-webkit-scrollbar-track {
+    background: #2a2a2a;
+  }
+  
+  .editor-main-content::-webkit-scrollbar-thumb {
+    background: #555;
+  }
+  
+  .editor-main-content::-webkit-scrollbar-thumb:hover {
+    background: #666;
+  }
+}
+
+/* 动画效果 */
+.novel-editor-layout {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 编辑器内容区域优化 */
+.editor-main-content .rich-text-editor {
+  height: 100%;
+  min-height: 500px;
+}
+
+/* 加载状态优化 */
+.loading-container .ant-spin {
+  margin-bottom: 16px;
+}
+
+.loading-container .ant-typography {
+  color: #666;
+}
+
+/* 按钮组样式 */
+.header-right .ant-space {
+  gap: 8px;
+}
+
+.header-right .ant-btn {
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+
+/* 分割线样式 */
+.editor-header .ant-divider-vertical {
+  height: 20px;
+  margin: 0 12px;
+  border-color: #d9d9d9;
+}
+
+/* 全屏模式下的特殊处理 */
+@media (max-width: 768px) {
+  .novel-editor-layout.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 1000;
+  }
+  
+  .novel-editor-layout.fullscreen .editor-header {
+    position: sticky;
+    top: 0;
+    z-index: 1001;
+  }
+} 

@@ -1,0 +1,231 @@
+/* App Sider 样式 */
+.app-sider {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-right: 0;
+  box-shadow: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.app-sider::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0; /* remove gradient rail */
+  height: 100%;
+  background: transparent;
+  opacity: 0;
+}
+
+/* Sider Menu 样式 */
+.sider-menu {
+  border-right: none;
+  height: 100%;
+  background: transparent;
+  padding: 24px 8px;
+}
+
+.sider-menu .ant-menu-item {
+  margin: 8px 12px;
+  border-radius: 16px;
+  height: 52px;
+  line-height: 52px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  font-weight: 500;
+  border: 1px solid transparent;
+}
+
+.sider-menu .ant-menu-item::before { display: none; }
+.sider-menu .ant-menu-item::after { display: none; }
+
+.sider-menu .ant-menu-item:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%);
+  transform: translateX(6px);
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.2);
+  color: var(--primary-color);
+}
+
+.sider-menu .ant-menu-item-selected {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%);
+  color: var(--primary-color);
+  font-weight: 600;
+  transform: translateX(6px);
+  box-shadow: 0 6px 25px rgba(99, 102, 241, 0.25);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.sider-menu .ant-menu-item .anticon {
+  margin-right: 16px;
+  font-size: 18px;
+  transition: all 0.3s ease;
+  position: relative;
+  z-index: 2;
+}
+
+.sider-menu .ant-menu-item:hover .anticon,
+.sider-menu .ant-menu-item-selected .anticon {
+  color: var(--primary-color);
+  transform: scale(1.1);
+}
+
+.sider-menu .ant-menu-item-selected .anticon {
+  filter: drop-shadow(0 2px 4px rgba(99, 102, 241, 0.3));
+}
+
+/* 菜单项文字 */
+.sider-menu .ant-menu-item > span {
+  position: relative;
+  z-index: 2;
+  transition: all 0.3s ease;
+}
+
+.sider-menu .ant-menu-item:hover > span,
+.sider-menu .ant-menu-item-selected > span {
+  font-weight: 600;
+}
+
+/* 子菜单样式 */
+.sider-menu .ant-menu-submenu {
+  margin: 8px 12px;
+}
+
+.sider-menu .ant-menu-submenu-title {
+  border-radius: 16px;
+  height: 52px;
+  line-height: 52px;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  position: relative;
+  overflow: hidden;
+}
+
+.sider-menu .ant-menu-submenu-title:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%);
+  color: var(--primary-color);
+  transform: translateX(6px);
+}
+
+.sider-menu .ant-menu-submenu-title .anticon {
+  margin-right: 16px;
+  font-size: 18px;
+}
+
+.sider-menu .ant-menu-submenu .ant-menu-item {
+  margin: 4px 8px 4px 24px;
+  height: 44px;
+  line-height: 44px;
+  border-radius: 12px;
+}
+
+/* 折叠状态样式 */
+.app-sider.ant-layout-sider-collapsed .sider-menu {
+  padding: 24px 4px;
+}
+
+.app-sider.ant-layout-sider-collapsed .sider-menu .ant-menu-item {
+  margin: 8px 8px;
+  text-align: center;
+  padding: 0;
+}
+
+.app-sider.ant-layout-sider-collapsed .sider-menu .ant-menu-item .anticon {
+  margin-right: 0;
+  font-size: 20px;
+}
+
+/* 分割线样式 */
+.sider-divider {
+  margin: 16px 20px;
+  border-top: 1px solid var(--border-secondary);
+  position: relative;
+}
+
+.sider-divider::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 2px;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  border-radius: 1px;
+}
+
+/* 菜单组标题 */
+.menu-group-title {
+  padding: 16px 20px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  position: relative;
+}
+
+.menu-group-title::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  left: 20px;
+  right: 20px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--primary-color), transparent);
+  opacity: 0.3;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .app-sider {
+    position: fixed;
+    left: 0;
+    top: 64px;
+    bottom: 0;
+    z-index: 999;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+
+  .app-sider.mobile-open {
+    transform: translateX(0);
+  }
+
+  .sider-menu {
+    padding: 16px 8px;
+  }
+
+  .sider-menu .ant-menu-item {
+    height: 48px;
+    line-height: 48px;
+  }
+}
+
+/* 动画效果 */
+@keyframes menuItemSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.sider-menu .ant-menu-item {
+  animation: menuItemSlideIn 0.3s ease-out;
+}
+
+.sider-menu .ant-menu-item:nth-child(1) { animation-delay: 0.1s; }
+.sider-menu .ant-menu-item:nth-child(2) { animation-delay: 0.15s; }
+.sider-menu .ant-menu-item:nth-child(3) { animation-delay: 0.2s; }
+.sider-menu .ant-menu-item:nth-child(4) { animation-delay: 0.25s; }
+.sider-menu .ant-menu-item:nth-child(5) { animation-delay: 0.3s; }
+.sider-menu .ant-menu-item:nth-child(6) { animation-delay: 0.35s; }
+.sider-menu .ant-menu-item:nth-child(7) { animation-delay: 0.4s; }
+.sider-menu .ant-menu-item:nth-child(8) { animation-delay: 0.45s; }

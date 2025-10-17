@@ -1,0 +1,330 @@
+/* 卷管理页面样式 */
+.volume-management-page {
+  min-height: 100vh;
+  background: radial-gradient(1200px 600px at 10% -10%, rgba(102,126,234,.15), transparent 40%),
+              radial-gradient(1000px 600px at 100% 0%, rgba(118,75,162,.12), transparent 40%),
+              linear-gradient(180deg, #f6f7fb 0%, #eef1f8 100%);
+  padding: 24px;
+}
+
+/* 动画效果 */
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.9;
+  }
+}
+
+@keyframes blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* 页面头部 */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  background: rgba(255,255,255,0.85);
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.quickstart-center{
+  display:flex;
+  justify-content:center;
+  margin: 16px 0 24px;
+}
+
+.quickstart-card{
+  width:100%;
+  max-width: 960px;
+  border-radius: 14px !important;
+  border: 1px solid #eef2fb !important;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(40, 54, 90, 0.06) !important;
+}
+
+.quickstart-content{
+  text-align:center;
+  padding: 24px 16px;
+}
+
+.quickstart-title{
+  font-size: 20px;
+  font-weight: 700;
+  color:#1f2d3d;
+  margin-bottom: 6px;
+}
+
+.quickstart-desc{
+  color:#6b7c93;
+  margin-bottom: 16px;
+}
+
+.header-left {
+  flex: 1;
+}
+
+.header-left .ant-typography {
+  margin-bottom: 8px;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 统计仪表板 */
+.stats-dashboard {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.stats-dashboard .ant-card-body {
+  padding: 24px;
+}
+
+.stats-dashboard .ant-statistic-title {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.stats-dashboard .ant-statistic-content {
+  color: white;
+}
+
+.stats-dashboard .ant-progress-inner {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.stats-dashboard .ant-progress-bg {
+  background: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* 现代卷卡片 */
+.modern-volume-card {
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  overflow: hidden;
+  border: none;
+}
+
+.modern-volume-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+.volume-card-header {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: white;
+  position: relative;
+}
+
+.volume-card-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.volume-number {
+  font-size: 16px;
+  font-weight: 600;
+  z-index: 1;
+  position: relative;
+}
+
+.volume-status {
+  z-index: 1;
+  position: relative;
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.modern-volume-card .ant-card-body {
+  padding: 20px;
+}
+
+.modern-volume-card .ant-card-meta-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 12px;
+}
+
+.volume-stats {
+  display: flex;
+  justify-content: space-between;
+  margin: 16px 0;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.volume-stat-item {
+  text-align: center;
+  flex: 1;
+}
+
+.volume-stat-item .ant-typography {
+  display: block;
+  margin-bottom: 4px;
+}
+
+/* 时间轴视图 */
+.timeline-volume-card {
+  border-radius: 8px;
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+}
+
+.timeline-volume-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.volume-timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.ant-timeline-item-dot {
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* 按钮样式优化 */
+.ant-btn {
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.ant-btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.ant-btn-primary:hover {
+  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  transform: translateY(-1px);
+}
+
+/* 快速开始按钮 */
+.ant-btn-lg {
+  height: 48px;
+  padding: 0 32px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* 进度条样式 */
+.ant-progress-line {
+  margin: 0;
+}
+
+.ant-progress-bg {
+  border-radius: 4px;
+}
+
+.ant-progress[data-status="success"] .ant-progress-bg {
+  background: linear-gradient(90deg, #52c41a 0%, #73d13d 100%);
+}
+
+.ant-progress[data-status="active"] .ant-progress-bg {
+  background: linear-gradient(90deg, #1890ff 0%, #40a9ff 100%);
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .volume-management-page {
+    padding: 16px;
+  }
+  
+  .page-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+  }
+  
+  .header-actions {
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 768px) {
+  .volume-management-page {
+    padding: 12px;
+  }
+  
+  .page-header {
+    padding: 16px;
+  }
+  
+  .stats-dashboard .ant-card-body {
+    padding: 16px;
+  }
+  
+  .modern-volume-card .ant-card-body {
+    padding: 16px;
+  }
+  
+  .volume-stats {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .volume-stat-item {
+    text-align: left;
+  }
+}

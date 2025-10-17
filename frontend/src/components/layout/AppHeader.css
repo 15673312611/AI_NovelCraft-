@@ -1,0 +1,434 @@
+/* App Header 样式 */
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 32px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  height: 72px;
+  line-height: 72px;
+  border-bottom: none;
+  box-shadow: none;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  transition: all 0.3s ease;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+
+.logo {
+  color: var(--text-primary);
+  font-size: 28px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  position: relative;
+}
+
+.logo::before {
+  content: '📚';
+  font-size: 24px;
+  margin-right: 4px;
+  filter: none;
+  -webkit-text-fill-color: initial;
+}
+
+.logo:hover {
+  transform: scale(1.05);
+  filter: brightness(1.1);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  height: 100%;
+}
+
+.user-info {
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 12px 16px;
+  border-radius: 16px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 500;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.user-info::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.1), transparent);
+  transition: left 0.5s ease;
+}
+
+.user-info:hover::before {
+  left: 100%;
+}
+
+.user-info:hover {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(99, 102, 241, 0.25);
+}
+
+.user-details {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.2;
+}
+
+.username {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 14px;
+  margin: 0;
+}
+
+.user-level {
+  color: rgba(99, 102, 241, 0.8);
+  font-size: 12px;
+  font-weight: 500;
+  margin: 0;
+}
+
+.user-avatar-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 16px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+.user-avatar:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+}
+
+.user-status-dot {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 12px;
+  height: 12px;
+  background: #52c41a;
+  border: 2px solid white;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+/* Header Menu 样式 */
+.header-menu {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-weight: 500;
+  line-height: 72px;
+}
+
+.header-menu .ant-menu-item {
+  color: var(--text-primary);
+  border-bottom: none;
+  border-radius: 8px;
+  margin: 0 4px;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.header-menu .ant-menu-item::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  transition: all 0.3s ease;
+  transform: translateX(-50%);
+  border-radius: 2px;
+}
+
+.header-menu .ant-menu-item:hover::before,
+.header-menu .ant-menu-item-selected::before {
+  width: 80%;
+}
+
+.header-menu .ant-menu-item:hover {
+  color: var(--primary-color);
+  background: rgba(99, 102, 241, 0.1);
+  transform: translateY(-1px);
+}
+
+.header-menu .ant-menu-item-selected {
+  color: var(--primary-color);
+  background: rgba(99, 102, 241, 0.15);
+  font-weight: 600;
+}
+
+/* 搜索框样式 */
+.header-search {
+  width: 300px;
+  transition: all 0.3s ease;
+}
+
+.header-search .ant-input {
+  border-radius: 20px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-secondary);
+  padding: 8px 16px;
+  transition: all 0.3s ease;
+}
+
+.header-search .ant-input:focus {
+  background: var(--bg-primary);
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+  width: 350px;
+}
+
+.header-search .ant-input-search-button {
+  border-radius: 0 20px 20px 0;
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+/* 通知图标样式 */
+.notification-icon {
+  font-size: 20px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.notification-icon:hover {
+  color: var(--primary-color);
+  background: rgba(99, 102, 241, 0.1);
+  transform: scale(1.1);
+}
+
+.notification-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  background: var(--error-color);
+  border-radius: 50%;
+  border: 2px solid var(--bg-primary);
+}
+
+/* Header Action Buttons */
+.header-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-size: 18px;
+  position: relative;
+  overflow: hidden;
+}
+
+
+/* Guest Actions */
+.guest-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  text-decoration: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.header-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.header-btn:hover::before {
+  left: 100%;
+}
+
+.header-btn.secondary {
+  background: rgba(255, 255, 255, 0.9);
+  color: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.header-btn.secondary:hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.header-btn.primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: 1px solid rgba(102, 126, 234, 0.3);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.header-btn.primary:hover {
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+  filter: brightness(1.05);
+}
+
+/* User Dropdown Customization */
+:global(.user-dropdown .ant-dropdown-menu) {
+  border-radius: 16px;
+  padding: 8px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  min-width: 200px;
+}
+
+:global(.user-dropdown .ant-dropdown-menu-item) {
+  border-radius: 10px;
+  margin: 2px 0;
+  padding: 12px 16px;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+:global(.user-dropdown .ant-dropdown-menu-item:hover) {
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+}
+
+:global(.user-dropdown .ant-dropdown-menu-item.ant-dropdown-menu-item-danger:hover) {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+:global(.user-dropdown .ant-dropdown-menu-item-icon) {
+  margin-right: 10px;
+  font-size: 16px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .app-header {
+    padding: 0 16px;
+    height: 64px;
+    line-height: 64px;
+  }
+
+  .logo {
+    font-size: 24px;
+  }
+
+  .header-search {
+    display: none;
+  }
+
+  .header-menu {
+    display: none;
+  }
+
+  .user-info {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+  
+  .user-details {
+    display: none;
+  }
+  
+  .user-avatar {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .header-action-btn {
+    width: 40px;
+    height: 40px;
+  }
+  
+}
+
+@media (max-width: 480px) {
+  .app-header {
+    padding: 0 12px;
+  }
+
+  .logo {
+    font-size: 20px;
+  }
+
+  .header-right {
+    gap: 8px;
+  }
+}

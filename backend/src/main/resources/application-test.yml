@@ -1,0 +1,3 @@
+# AI配置已移至前端，通过请求参数传递
+# 前端会在浏览器缓存中存储AI配置（provider, apiKey, model, baseUrl）
+# 所有AI接口调用时都会携带这些配置参数

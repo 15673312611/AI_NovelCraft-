@@ -1,0 +1,98 @@
+.world-view-builder-page {
+  padding: 24px;
+  background: #f5f5f5;
+  min-height: 100vh;
+}
+
+.world-view-builder-page .page-header {
+  margin-bottom: 24px;
+  padding: 24px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.world-view-builder-page .page-actions {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.world-view-builder-page .ant-card {
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.world-view-builder-page .empty-state {
+  text-align: center;
+  padding: 48px;
+  color: #999;
+}
+
+.world-view-builder-page .ant-list-item {
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  transition: all 0.3s ease;
+}
+
+.world-view-builder-page .ant-list-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.world-view-builder-page .ant-statistic-title {
+  font-size: 14px;
+  color: #666;
+}
+
+.world-view-builder-page .ant-statistic-content {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .world-view-builder-page {
+    padding: 16px;
+  }
+  
+  .world-view-builder-page .page-header {
+    padding: 16px;
+  }
+  
+  .world-view-builder-page .page-actions {
+    padding: 12px;
+  }
+  
+  .world-view-builder-page .ant-list-item {
+    padding: 12px;
+  }
+  
+  .world-view-builder-page .ant-statistic-content {
+    font-size: 20px;
+  }
+}
+
+/* 暗色主题支持 */
+@media (prefers-color-scheme: dark) {
+  .world-view-builder-page {
+    background: #141414;
+  }
+  
+  .world-view-builder-page .page-header,
+  .world-view-builder-page .page-actions,
+  .world-view-builder-page .ant-card,
+  .world-view-builder-page .ant-list-item {
+    background: #1f1f1f;
+    border-color: #303030;
+  }
+  
+  .world-view-builder-page .ant-list-item:hover {
+    background: #262626;
+  }
+} 

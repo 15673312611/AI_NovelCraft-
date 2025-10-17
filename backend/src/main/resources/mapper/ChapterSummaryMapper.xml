@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novel.repository.ChapterSummaryRepository">
+    
+    <!-- Result Map -->
+    <resultMap id="ChapterSummaryResultMap" type="com.novel.domain.entity.ChapterSummary">
+        <id property="id" column="id"/>
+        <result property="novelId" column="novel_id"/>
+        <result property="chapterNumber" column="chapter_number"/>
+        <result property="summary" column="summary"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <!-- 根据小说ID和章节号查找概括 -->
+    <select id="findByNovelIdAndChapterNumber" resultMap="ChapterSummaryResultMap">
+        SELECT * FROM chapter_summaries 
+        WHERE novel_id = #{novelId} AND chapter_number = #{chapterNumber}
+        LIMIT 1
+    </select>
+
+    <!-- 根据小说ID和章节号范围查找概括 -->
+    <select id="findByNovelIdAndChapterNumberBetween" resultMap="ChapterSummaryResultMap">
+        SELECT * FROM chapter_summaries 
+        WHERE novel_id = #{novelId} 
+        AND chapter_number BETWEEN #{startChapter} AND #{endChapter}
+        ORDER BY chapter_number ASC
+    </select>
+
+    <!-- 根据小说ID查找所有概括，按章节号排序 -->
+    <select id="findByNovelIdOrderByChapterNumber" resultMap="ChapterSummaryResultMap">
+        SELECT * FROM chapter_summaries 
+        WHERE novel_id = #{novelId}
+        ORDER BY chapter_number ASC
+    </select>
+
+    <!-- 获取小说的最新章节号 -->
+    <select id="getMaxChapterNumber" resultType="Integer">
+        SELECT MAX(chapter_number) FROM chapter_summaries 
+        WHERE novel_id = #{novelId}
+    </select>
+
+    <!-- 删除小说的所有章节概括 -->
+    <delete id="deleteByNovelId">
+        DELETE FROM chapter_summaries WHERE novel_id = #{novelId}
+    </delete>
+
+</mapper>

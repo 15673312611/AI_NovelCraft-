@@ -1,0 +1,246 @@
+/* ==========================================
+   现代化导航栏样式
+   ========================================== */
+
+.modern-header {
+  background: var(--bg-base);
+  border-bottom: 1px solid var(--border-base);
+  padding: 0;
+  height: 64px;
+  line-height: 64px;
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.header-container {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 var(--space-6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+}
+
+/* ==========================================
+   Logo 区域
+   ========================================== */
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  cursor: pointer;
+  user-select: none;
+  transition: opacity var(--transition-fast);
+}
+
+.header-logo:hover {
+  opacity: 0.8;
+}
+
+.logo-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.logo-text {
+  font-size: var(--text-lg);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+/* ==========================================
+   导航菜单
+   ========================================== */
+.header-menu {
+  flex: 1;
+  border: none;
+  background: transparent;
+  margin-left: var(--space-8);
+}
+
+.header-menu .ant-menu-item {
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-weight: var(--font-medium);
+  transition: all var(--transition-fast);
+  padding: 0 var(--space-4);
+}
+
+.header-menu .ant-menu-item:hover {
+  color: var(--primary-600);
+  background: transparent;
+  border-bottom-color: var(--primary-200);
+}
+
+.header-menu .ant-menu-item-selected {
+  color: var(--primary-600);
+  background: transparent;
+  border-bottom-color: var(--primary-600);
+}
+
+.header-menu .ant-menu-item::after {
+  display: none;
+}
+
+/* ==========================================
+   用户操作区
+   ========================================== */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+/* 用户按钮 */
+.user-button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+  line-height: 1;
+}
+
+.user-button:hover {
+  background: var(--bg-muted);
+}
+
+.user-name {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+/* ==========================================
+   按钮系统
+   ========================================== */
+.header-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  height: 36px;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  line-height: 1;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.header-btn:focus-visible {
+  outline: 2px solid var(--primary-500);
+  outline-offset: 2px;
+}
+
+/* Ghost Button */
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.btn-ghost:hover {
+  background: var(--bg-muted);
+  color: var(--text-primary);
+}
+
+/* Primary Button */
+.btn-primary {
+  background: var(--primary-500);
+  color: var(--text-inverse);
+}
+
+.btn-primary:hover {
+  background: var(--primary-600);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+/* ==========================================
+   下拉菜单样式（全局）
+   ========================================== */
+:global(.modern-user-dropdown) {
+  padding: var(--space-2);
+}
+
+:global(.modern-user-dropdown .ant-dropdown-menu) {
+  background: var(--bg-elevated);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-base);
+  padding: var(--space-2);
+  min-width: 200px;
+}
+
+:global(.modern-user-dropdown .ant-dropdown-menu-item) {
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin: var(--space-1) 0;
+  font-size: var(--text-sm);
+  transition: all var(--transition-fast);
+}
+
+:global(.modern-user-dropdown .ant-dropdown-menu-item:hover) {
+  background: var(--bg-muted);
+  color: var(--text-primary);
+}
+
+:global(.modern-user-dropdown .ant-dropdown-menu-item-danger:hover) {
+  background: var(--error-light);
+  color: var(--error);
+}
+
+:global(.modern-user-dropdown .ant-dropdown-menu-item-icon) {
+  margin-right: var(--space-3);
+  font-size: 16px;
+}
+
+:global(.modern-user-dropdown .ant-dropdown-menu-item-divider) {
+  margin: var(--space-2) 0;
+  background: var(--border-base);
+}
+
+/* ==========================================
+   响应式设计
+   ========================================== */
+@media (max-width: 768px) {
+  .modern-header {
+    height: 56px;
+    line-height: 56px;
+  }
+
+  .header-container {
+    padding: 0 var(--space-4);
+  }
+
+  .logo-text {
+    font-size: var(--text-base);
+  }
+
+  .user-name {
+    display: none;
+  }
+
+  .header-btn {
+    padding: 0 var(--space-3);
+    font-size: var(--text-xs);
+  }
+}
+
