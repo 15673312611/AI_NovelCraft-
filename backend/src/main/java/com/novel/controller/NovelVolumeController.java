@@ -25,6 +25,8 @@ import java.util.Map;
 @CrossOrigin
 public class NovelVolumeController {
 
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(NovelVolumeController.class);
+
     @Autowired
     private VolumeService volumeService;
 
@@ -58,9 +60,18 @@ public class NovelVolumeController {
             Long novelId = ((Number) requestMap.get("novelId")).longValue();
             String userAdvice = (String) requestMap.get("userAdvice");
             
-            // 解析AI配置
+            // 解析AI配置（前端withAIConfig是扁平化的，直接从根级别读取）
             AIConfigRequest aiConfig = new AIConfigRequest();
-            if (requestMap.get("aiConfig") instanceof Map) {
+            if (requestMap.containsKey("provider")) {
+                aiConfig.setProvider((String) requestMap.get("provider"));
+                aiConfig.setApiKey((String) requestMap.get("apiKey"));
+                aiConfig.setModel((String) requestMap.get("model"));
+                aiConfig.setBaseUrl((String) requestMap.get("baseUrl"));
+                
+                logger.info("✅ 批量生成卷大纲 - 收到AI配置: provider={}, model={}", 
+                    aiConfig.getProvider(), aiConfig.getModel());
+            } else if (requestMap.get("aiConfig") instanceof Map) {
+                // 兼容旧的嵌套格式
                 @SuppressWarnings("unchecked")
                 Map<String, String> aiConfigMap = (Map<String, String>) requestMap.get("aiConfig");
                 aiConfig.setProvider(aiConfigMap.get("provider"));
@@ -70,7 +81,8 @@ public class NovelVolumeController {
             }
             
             if (!aiConfig.isValid()) {
-                return ResponseEntity.badRequest().body(new ErrorResponse("AI配置无效"));
+                logger.error("❌ 批量生成卷大纲 - AI配置无效: {}", requestMap);
+                return ResponseEntity.badRequest().body(new ErrorResponse("AI配置无效，请先在设置页面配置AI服务"));
             }
 
             // 如果未传具体卷ID，默认取该小说的全部卷

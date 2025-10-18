@@ -78,6 +78,10 @@ const VolumeManagementPage: React.FC = () => {
   const [singleVolumeAdvice, setSingleVolumeAdvice] = useState('');
   const [adviceInputVisible, setAdviceInputVisible] = useState(false);
 
+  // 总字数动态计算状态
+  const [totalWords, setTotalWords] = useState(1500000); // 默认 500章 × 3000字 (快速开始弹窗)
+  const [totalWordsGenerate, setTotalWordsGenerate] = useState(1500000); // 默认 500章 × 3000字 (生成大纲弹窗)
+
   const { novelId } = useParams<{ novelId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
@@ -167,7 +171,8 @@ const VolumeManagementPage: React.FC = () => {
       outlineForm.setFieldsValue({
         basicIdea: state.initialIdea,
         targetChapters: 500,
-        targetWords: 1500000,
+        wordsPerChapter: 3000,
+        targetWords: 500 * 3000, // 自动计算：500章 × 3000字/章 = 1500000字
         volumeCount: 5
       });
       
@@ -277,13 +282,22 @@ const VolumeManagementPage: React.FC = () => {
       const outline = await novelOutlineService.getOutlineByNovelId(novelId);
       console.log('🔍 获取到的大纲:', outline);
 
-      const hasOutline = !!(outline && typeof (outline as any).outline === 'string' && (outline as any).outline.trim());
+      // 检查大纲内容：优先检查 plotStructure，然后检查 outline 字段
+      const outlineContent = (outline as any)?.plotStructure || (outline as any)?.outline;
+      const hasOutline = !!(outline && outlineContent && outlineContent.trim());
+      
+      console.log('🔍 大纲内容检查:', {
+        hasOutline,
+        plotStructure: (outline as any)?.plotStructure?.substring(0, 100),
+        outline: (outline as any)?.outline?.substring(0, 100)
+      });
+      
       if (hasOutline) {
         // 如果需要显示内容，将后端返回的大纲文本映射到 UI 期望的字段
         setHasSuperOutline(true);
         setCurrentSuperOutline({
           ...(outline as any),
-          plotStructure: (outline as any).outline || (outline as any).plotStructure
+          plotStructure: outlineContent
         } as any);
 
         // 重要：只有当status为CONFIRMED时，才设置为已确认状态
@@ -446,6 +460,11 @@ const VolumeManagementPage: React.FC = () => {
       await novelOutlineService.updateOutline(novelId!, outlineText);
 
       // 2) 尝试触发卷生成（优先确认大纲记录，失败则兜底触发）
+      // 检查 AI 配置
+      if (!checkAIConfig()) {
+        message.warning('未配置AI服务，卷规划生成可能使用简化模式');
+      }
+      
       let triggered = false;
       try {
         console.log('[confirmSuperOutline] 尝试获取大纲记录并确认');
@@ -453,7 +472,8 @@ const VolumeManagementPage: React.FC = () => {
         const outlineId = outlineRes?.id || outlineRes?.data?.id;
         if (outlineId) {
           console.log('[confirmSuperOutline] 确认大纲记录，outlineId=', outlineId);
-          await api.put(`/outline/${outlineId}/confirm`);
+          // 传递 AI 配置
+          await api.put(`/outline/${outlineId}/confirm`, withAIConfig({}));
           message.success('大纲确认成功，已触发卷规划生成！');
           triggered = true;
         }
@@ -609,6 +629,43 @@ const VolumeManagementPage: React.FC = () => {
         }
       }
 
+      // 检查AI配置
+      console.log('[handleGenerateVolumes] 检查AI配置...');
+      const aiConfigValid = checkAIConfig();
+      console.log('[handleGenerateVolumes] AI配置有效性:', aiConfigValid);
+      
+      if (!aiConfigValid) {
+        // 显示详细的配置信息帮助调试
+        const configFromStorage = localStorage.getItem('novel-ai-config');
+        console.error('[handleGenerateVolumes] AI配置无效！localStorage内容:', configFromStorage);
+        
+        if (configFromStorage) {
+          try {
+            const parsedConfig = JSON.parse(configFromStorage);
+            console.error('[handleGenerateVolumes] 解析后的配置:', parsedConfig);
+            console.error('[handleGenerateVolumes] provider:', parsedConfig.provider);
+            console.error('[handleGenerateVolumes] apiKey:', parsedConfig.apiKey ? '已设置（长度:' + parsedConfig.apiKey.length + '）' : '未设置');
+            console.error('[handleGenerateVolumes] model:', parsedConfig.model);
+            console.error('[handleGenerateVolumes] baseUrl:', parsedConfig.baseUrl);
+          } catch (e) {
+            console.error('[handleGenerateVolumes] 配置解析失败:', e);
+          }
+        } else {
+          console.error('[handleGenerateVolumes] localStorage中没有找到AI配置');
+        }
+        
+        message.error({
+          content: AI_CONFIG_ERROR_MESSAGE + '（请检查浏览器控制台查看详细信息）',
+          duration: 5
+        });
+        setIsGeneratingOutline(false);
+        setLoading(false);
+        setIsGenerating(false);
+        return;
+      }
+      
+      console.log('[handleGenerateVolumes] ✅ AI配置验证通过');
+
       // 流式生成大纲（SSE）
       setIsGeneratingOutline(true);
       setCurrentSuperOutline(null);
@@ -619,13 +676,18 @@ const VolumeManagementPage: React.FC = () => {
           'Content-Type': 'application/json',
           ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
         },
-        body: JSON.stringify({
+        body: JSON.stringify(withAIConfig({
           novelId: novelId,
           basicIdea: values.basicIdea,
           targetWordCount: values.targetWords || 1500000,
           targetChapterCount: values.targetChapters || 500
-        })
+        }))
       });
+
+      if (!sseResp.ok) {
+        const errorText = await sseResp.text();
+        throw new Error(`服务器错误 (${sseResp.status}): ${errorText}`);
+      }
 
       const reader = (sseResp as any).body?.getReader();
       if (!reader) throw new Error('浏览器不支持流式读取');
@@ -678,6 +740,9 @@ const VolumeManagementPage: React.FC = () => {
               updatedAt: new Date().toISOString(),
             } as any);
           } else if (eventName === 'done') {
+            console.log('[SSE done] 生成完成，当前 currentSuperOutline:', currentSuperOutline);
+            console.log('[SSE done] plotStructure 长度:', currentSuperOutline?.plotStructure?.length);
+            
             setIsGeneratingOutline(false);
             setHasSuperOutline(true);
             
@@ -685,6 +750,9 @@ const VolumeManagementPage: React.FC = () => {
             // 前端只需提示用户生成完成即可
             console.log('✅ 大纲生成完成，后端已自动保存为草稿状态');
             message.success('大纲生成完成！您可以查看、修改或确认大纲');
+            
+            // 保持 currentSuperOutline，这样页面会继续显示大纲内容而不是回到"准备开始创作"状态
+            // currentSuperOutline 已经在 chunk 事件中不断更新
             
             // 重新加载大纲数据，确保获取到最新的status
             setTimeout(() => {
@@ -696,9 +764,21 @@ const VolumeManagementPage: React.FC = () => {
         }
       }
     } catch (error: any) {
-      message.error(error.response?.data?.message || error.message || '生成失败');
+      console.error('[生成大纲失败]', error);
+      const errorMsg = error.response?.data?.message || error.message || '生成大纲失败';
+      message.error({
+        content: errorMsg,
+        duration: 5,
+        style: { marginTop: '20vh' }
+      });
+      
+      // 确保完全重置状态
       setIsGeneratingOutline(false);
+      setCurrentSuperOutline(null);
+      setLoading(false);
+      setIsGenerating(false);
     } finally {
+      // 防止状态残留
       setLoading(false);
       setIsGenerating(false);
     }
@@ -1771,9 +1851,35 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                     maxWidth: '600px',
                     fontSize: '14px',
                     color: '#92400e',
-                    lineHeight: '1.6'
+                    lineHeight: '1.6',
+                    marginBottom: '24px'
                   }}>
-                    💡 如果弹窗已关闭，请刷新页面重新开始
+                    💡 如果弹窗已关闭或生成失败，请点击下方按钮重新开始
+                  </div>
+                  <div>
+                    <Button 
+                      type="primary" 
+                      size="large"
+                      onClick={() => {
+                        // 重置所有状态
+                        setIsGeneratingOutline(false);
+                        setCurrentSuperOutline(null);
+                        setLoading(false);
+                        setIsGenerating(false);
+                        // 打开配置弹窗
+                        setQuickStartVisible(true);
+                        message.info('请重新配置参数');
+                      }}
+                      style={{
+                        height: '48px',
+                        fontSize: '16px',
+                        borderRadius: '8px',
+                        padding: '0 40px',
+                        fontWeight: 500
+                      }}
+                    >
+                      🔄 重新开始
+                    </Button>
                   </div>
                 </div>
               )}
@@ -2570,24 +2676,61 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                   max={1000}
                   style={{ width: '100%' }}
                   addonAfter="章"
+                  onChange={(value) => {
+                    const wordsPerChapter = generateForm.getFieldValue('wordsPerChapter') || 3000;
+                    const total = (value || 500) * wordsPerChapter;
+                    setTotalWordsGenerate(total);
+                    generateForm.setFieldValue('targetWords', total);
+                  }}
                 />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item
-                name="targetWords"
-                label="目标字数"
-                initialValue={1500000}
+                name="wordsPerChapter"
+                label="每章字数"
+                initialValue={3000}
               >
                 <InputNumber
-                  min={50000}
-                  max={5000000}
+                  min={2000}
+                  max={10000}
                   style={{ width: '100%' }}
-                  addonAfter="字"
+                  addonAfter="字/章"
+                  onChange={(value) => {
+                    const chapters = generateForm.getFieldValue('targetChapters') || 500;
+                    const total = (value || 3000) * chapters;
+                    setTotalWordsGenerate(total);
+                    generateForm.setFieldValue('targetWords', total);
+                  }}
                 />
               </Form.Item>
             </Col>
           </Row>
+
+          {/* 显示计算出的总字数 */}
+          <div style={{
+            marginBottom: '16px',
+            padding: '10px 12px',
+            background: '#f0f9ff',
+            borderRadius: '6px',
+            border: '1px solid #bfdbfe',
+            fontSize: '13px',
+            color: '#1e40af',
+          }}>
+            <strong>📊 预计总字数：</strong>
+            <span style={{ fontSize: '16px', fontWeight: 600, color: '#2563eb', marginLeft: '8px' }}>
+              {(totalWordsGenerate / 10000).toFixed(1)}
+            </span>
+            <span> 万字</span>
+            <span style={{ marginLeft: '8px', fontSize: '12px', color: '#3b82f6' }}>
+              ({totalWordsGenerate.toLocaleString()}字)
+            </span>
+          </div>
+
+          {/* 隐藏的总字数字段 */}
+          <Form.Item name="targetWords" hidden initialValue={1500000}>
+            <InputNumber />
+          </Form.Item>
 
           <Form.Item
             name="volumeCount"
@@ -2628,7 +2771,16 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
           </div>
         }
         open={quickStartVisible}
-        onCancel={() => setQuickStartVisible(false)}
+        onCancel={() => {
+          setQuickStartVisible(false);
+          // 如果正在生成中被取消，需要重置状态
+          if (isGeneratingOutline) {
+            setIsGeneratingOutline(false);
+            setLoading(false);
+            setIsGenerating(false);
+            message.info('已取消大纲生成');
+          }
+        }}
         onOk={() => outlineForm.submit()}
         confirmLoading={isGeneratingOutline}
         okText={isGeneratingOutline ? '正在生成...' : '确认并生成大纲'}
@@ -2690,25 +2842,69 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                     max={1000}
                     style={{ width: '100%', fontSize: '15px' }}
                     addonAfter="章"
-                size="large"
+                    size="large"
+                    onChange={(value) => {
+                      // 自动计算总字数
+                      const wordsPerChapter = outlineForm.getFieldValue('wordsPerChapter') || 3000;
+                      const total = (value || 500) * wordsPerChapter;
+                      setTotalWords(total);
+                      outlineForm.setFieldValue('targetWords', total);
+                    }}
                   />
                 </Form.Item>
               </Col>
               <Col span={12}>
                 <Form.Item
-                  name="targetWords"
-                  label={<span style={{ fontSize: '14px', fontWeight: 500 }}>目标字数</span>}
+                  name="wordsPerChapter"
+                  label={<span style={{ fontSize: '14px', fontWeight: 500 }}>每章字数</span>}
+                  initialValue={3000}
                 >
                   <InputNumber
-                    min={50000}
-                    max={5000000}
+                    min={2000}
+                    max={10000}
                     style={{ width: '100%', fontSize: '15px' }}
-                    addonAfter="字"
+                    addonAfter="字/章"
                     size="large"
+                    onChange={(value) => {
+                      // 自动计算总字数
+                      const chapters = outlineForm.getFieldValue('targetChapters') || 500;
+                      const total = (value || 3000) * chapters;
+                      setTotalWords(total);
+                      outlineForm.setFieldValue('targetWords', total);
+                    }}
                   />
                 </Form.Item>
               </Col>
             </Row>
+
+            {/* 显示计算出的总字数 */}
+            <div style={{
+              marginTop: '-8px',
+              marginBottom: '16px',
+              padding: '12px 16px',
+              background: 'linear-gradient(135deg, #e0e7ff 0%, #f0f4ff 100%)',
+              borderRadius: '8px',
+              border: '1px solid #c7d2fe',
+              fontSize: '14px',
+              color: '#4338ca',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <span style={{ fontWeight: 600 }}>📊 预计总字数：</span>
+              <span style={{ fontSize: '18px', fontWeight: 700, color: '#4f46e5' }}>
+                {(totalWords / 10000).toFixed(1)}
+              </span>
+              <span style={{ fontWeight: 600 }}>万字</span>
+              <span style={{ marginLeft: '8px', fontSize: '12px', color: '#6366f1' }}>
+                ({totalWords.toLocaleString()}字)
+              </span>
+            </div>
+
+            {/* 隐藏的总字数字段，用于提交 */}
+            <Form.Item name="targetWords" hidden initialValue={1500000}>
+              <InputNumber />
+            </Form.Item>
 
             <Form.Item
               name="volumeCount"

@@ -442,9 +442,19 @@ public class NovelCraftController {
                 }
             }
 
-            // 解析AI配置
+            // 解析AI配置（前端withAIConfig是扁平化的，直接从根级别读取）
             AIConfigRequest aiConfig = new AIConfigRequest();
-            if (request.get("aiConfig") instanceof Map) {
+            if (request.containsKey("provider")) {
+                // 从根级别直接读取（扁平化格式）
+                aiConfig.setProvider((String) request.get("provider"));
+                aiConfig.setApiKey((String) request.get("apiKey"));
+                aiConfig.setModel((String) request.get("model"));
+                aiConfig.setBaseUrl((String) request.get("baseUrl"));
+                
+                logger.info("✅ 流式章节写作 - 收到AI配置: provider={}, model={}", 
+                    aiConfig.getProvider(), aiConfig.getModel());
+            } else if (request.get("aiConfig") instanceof Map) {
+                // 兼容旧的嵌套格式
                 @SuppressWarnings("unchecked")
                 Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
                 aiConfig.setProvider(aiConfigMap.get("provider"));
@@ -454,7 +464,8 @@ public class NovelCraftController {
             }
 
             if (!aiConfig.isValid()) {
-                emitter.send(SseEmitter.event().name("error").data("AI配置无效"));
+                logger.error("❌ 流式章节写作 - AI配置无效: {}", request);
+                emitter.send(SseEmitter.event().name("error").data("AI配置无效，请先在设置页面配置AI服务"));
                 emitter.completeWithError(new IOException("AI配置无效"));
                 return emitter;
             }

@@ -34,8 +34,6 @@ public class AIController {
         
         try {
             String content = (String) request.get("content");
-            @SuppressWarnings("unchecked")
-            Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
             
             if (content == null || content.trim().isEmpty()) {
                 emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
@@ -44,9 +42,20 @@ public class AIController {
                 return emitter;
             }
             
-            // 构建AI配置
+            // 解析AI配置（前端withAIConfig是扁平化的，直接从根级别读取）
             AIConfigRequest aiConfig = new AIConfigRequest();
-            if (aiConfigMap != null) {
+            if (request.containsKey("provider")) {
+                aiConfig.setProvider((String) request.get("provider"));
+                aiConfig.setApiKey((String) request.get("apiKey"));
+                aiConfig.setModel((String) request.get("model"));
+                aiConfig.setBaseUrl((String) request.get("baseUrl"));
+                
+                logger.info("✅ AI消痕流式 - 收到AI配置: provider={}, model={}", 
+                    aiConfig.getProvider(), aiConfig.getModel());
+            } else if (request.get("aiConfig") instanceof Map) {
+                // 兼容旧的嵌套格式
+                @SuppressWarnings("unchecked")
+                Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
                 aiConfig.setProvider(aiConfigMap.get("provider"));
                 aiConfig.setApiKey(aiConfigMap.get("apiKey"));
                 aiConfig.setModel(aiConfigMap.get("model"));
@@ -54,8 +63,9 @@ public class AIController {
             }
             
             if (!aiConfig.isValid()) {
+                logger.error("❌ AI消痕流式 - AI配置无效: request={}", request);
                 emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
-                    .name("error").data("AI配置无效"));
+                    .name("error").data("AI配置无效，请先在设置页面配置AI服务"));
                 emitter.completeWithError(new Exception("AI配置无效"));
                 return emitter;
             }
@@ -99,16 +109,25 @@ public class AIController {
     public Result<Map<String, Object>> removeAITrace(@RequestBody Map<String, Object> request) {
         try {
             String content = (String) request.get("content");
-            @SuppressWarnings("unchecked")
-            Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
             
             if (content == null || content.trim().isEmpty()) {
                 return Result.error("内容不能为空");
             }
             
-            // 构建AI配置
+            // 解析AI配置（前端withAIConfig是扁平化的，直接从根级别读取）
             AIConfigRequest aiConfig = new AIConfigRequest();
-            if (aiConfigMap != null) {
+            if (request.containsKey("provider")) {
+                aiConfig.setProvider((String) request.get("provider"));
+                aiConfig.setApiKey((String) request.get("apiKey"));
+                aiConfig.setModel((String) request.get("model"));
+                aiConfig.setBaseUrl((String) request.get("baseUrl"));
+                
+                logger.info("✅ AI消痕 - 收到AI配置: provider={}, model={}", 
+                    aiConfig.getProvider(), aiConfig.getModel());
+            } else if (request.get("aiConfig") instanceof Map) {
+                // 兼容旧的嵌套格式
+                @SuppressWarnings("unchecked")
+                Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
                 aiConfig.setProvider(aiConfigMap.get("provider"));
                 aiConfig.setApiKey(aiConfigMap.get("apiKey"));
                 aiConfig.setModel(aiConfigMap.get("model"));
@@ -116,7 +135,8 @@ public class AIController {
             }
             
             if (!aiConfig.isValid()) {
-                return Result.error("AI配置无效");
+                logger.error("❌ AI消痕 - AI配置无效: request={}", request);
+                return Result.error("AI配置无效，请先在设置页面配置AI服务");
             }
             
             logger.info("🧹 开始AI消痕处理，内容长度: {}, 使用模型: {}", content.length(), aiConfig.getModel());

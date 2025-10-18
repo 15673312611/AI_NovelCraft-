@@ -18,20 +18,18 @@ export const getAIConfigOrThrow = (): AIConfig => {
 };
 
 /**
- * 为请求体添加AI配置
+ * 为请求体添加AI配置（扁平结构）
  * @param body 原始请求体
- * @returns 添加了aiConfig字段的请求体
+ * @returns 添加了AI配置字段的请求体
  */
 export const withAIConfig = (body: any = {}): any => {
   const aiConfig = getAIConfigOrThrow();
   return {
     ...body,
-    aiConfig: {
-      provider: aiConfig.provider,
-      apiKey: aiConfig.apiKey,
-      model: aiConfig.model,
-      baseUrl: aiConfig.baseUrl
-    }
+    provider: aiConfig.provider,
+    apiKey: aiConfig.apiKey,
+    model: aiConfig.model,
+    baseUrl: aiConfig.baseUrl
   };
 };
 

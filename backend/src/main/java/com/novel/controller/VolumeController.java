@@ -115,8 +115,17 @@ public class VolumeController {
                     userAdvice = (String) adviceObj;
                 }
                 
-                // 解析AI配置
-                if (request.get("aiConfig") instanceof Map) {
+                // 解析AI配置（前端withAIConfig是扁平化的，直接从根级别读取）
+                if (request.containsKey("provider")) {
+                    aiConfig.setProvider((String) request.get("provider"));
+                    aiConfig.setApiKey((String) request.get("apiKey"));
+                    aiConfig.setModel((String) request.get("model"));
+                    aiConfig.setBaseUrl((String) request.get("baseUrl"));
+                    
+                    logger.info("✅ 卷大纲异步生成 - 收到AI配置: provider={}, model={}", 
+                        aiConfig.getProvider(), aiConfig.getModel());
+                } else if (request.get("aiConfig") instanceof Map) {
+                    // 兼容旧的嵌套格式
                     @SuppressWarnings("unchecked")
                     Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
                     aiConfig.setProvider(aiConfigMap.get("provider"));
@@ -127,6 +136,7 @@ public class VolumeController {
             }
             
             if (!aiConfig.isValid()) {
+                logger.error("❌ 卷大纲异步生成 - AI配置无效: volumeId={}, request={}", volumeId, request);
                 return ResponseEntity.badRequest().body(
                     ApiResponse.error("AI配置无效，请先在设置页面配置AI服务")
                 );
@@ -179,8 +189,17 @@ public class VolumeController {
                         userAdvice = (String) request.get("userAdvice");
                     }
                     
-                    // 解析AI配置
-                    if (request.get("aiConfig") instanceof Map) {
+                    // 解析AI配置（前端withAIConfig是扁平化的，直接从根级别读取）
+                    if (request.containsKey("provider")) {
+                        aiConfig.setProvider((String) request.get("provider"));
+                        aiConfig.setApiKey((String) request.get("apiKey"));
+                        aiConfig.setModel((String) request.get("model"));
+                        aiConfig.setBaseUrl((String) request.get("baseUrl"));
+                        
+                        logger.info("✅ 卷大纲流式生成 - 收到AI配置: provider={}, model={}", 
+                            aiConfig.getProvider(), aiConfig.getModel());
+                    } else if (request.get("aiConfig") instanceof Map) {
+                        // 兼容旧的嵌套格式
                         @SuppressWarnings("unchecked")
                         Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
                         aiConfig.setProvider(aiConfigMap.get("provider"));
@@ -192,6 +211,7 @@ public class VolumeController {
                 
                 // 验证AI配置
                 if (!aiConfig.isValid()) {
+                    logger.error("❌ 卷大纲流式生成 - AI配置无效: volumeId={}, request={}", volumeId, request);
                     emitter.send(SseEmitter.event().name("error").data("AI配置无效，请先在设置页面配置AI服务"));
                     emitter.completeWithError(new RuntimeException("AI配置无效"));
                     return;
@@ -485,8 +505,17 @@ public class VolumeController {
                     userAdvice = (String) adviceObj;
                 }
                 
-                // 解析AI配置
-                if (request.get("aiConfig") instanceof Map) {
+                // 解析AI配置（前端withAIConfig是扁平化的，直接从根级别读取）
+                if (request.containsKey("provider")) {
+                    aiConfig.setProvider((String) request.get("provider"));
+                    aiConfig.setApiKey((String) request.get("apiKey"));
+                    aiConfig.setModel((String) request.get("model"));
+                    aiConfig.setBaseUrl((String) request.get("baseUrl"));
+                    
+                    logger.info("✅ 卷大纲生成[兼容] - 收到AI配置: provider={}, model={}", 
+                        aiConfig.getProvider(), aiConfig.getModel());
+                } else if (request.get("aiConfig") instanceof Map) {
+                    // 兼容旧的嵌套格式
                     @SuppressWarnings("unchecked")
                     Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
                     aiConfig.setProvider(aiConfigMap.get("provider"));
@@ -497,6 +526,7 @@ public class VolumeController {
             }
             
             if (!aiConfig.isValid()) {
+                logger.error("❌ 卷大纲生成[兼容] - AI配置无效: volumeId={}, request={}", volumeId, request);
                 return ResponseEntity.badRequest().body(
                     ApiResponse.error("AI配置无效，请先在设置页面配置AI服务")
                 );
