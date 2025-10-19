@@ -64,6 +64,12 @@ public class LongNovelMemoryManager {
     
     @Autowired
     private NovelWorldDictionaryRepository worldDictionaryRepository;
+    
+    @Autowired
+    private com.novel.repository.ChapterSummaryRepository chapterSummaryRepository;
+    
+    @Autowired
+    private ChapterSummaryService chapterSummaryService;
 
     /**
      * 从章节内容自动更新记忆管理系统（使用后端配置 - 已弃用）
@@ -1013,6 +1019,15 @@ public class LongNovelMemoryManager {
         logger.info("💾 开始保存第{}章提取信息到记忆库", chapterNumber);
         
         try {
+            // 0. 保存章节概括到 chapter_summaries 表
+            if (extractedInfo.containsKey("chapterSummary")) {
+                String chapterSummary = (String) extractedInfo.get("chapterSummary");
+                if (chapterSummary != null && !chapterSummary.trim().isEmpty()) {
+                    chapterSummaryService.saveChapterSummary(novelId, chapterNumber, chapterSummary);
+                    logger.info("✅ 章节概括已保存到 chapter_summaries 表: 第{}章", chapterNumber);
+                }
+            }
+            
             // 1. 保存角色信息
             if (extractedInfo.containsKey("characterUpdates")) {
                 List<Map<String, Object>> characterUpdates = (List<Map<String, Object>>) extractedInfo.get("characterUpdates");

@@ -910,7 +910,12 @@ const VolumeWritingStudio: React.FC = () => {
       okText: '开始生成',
       cancelText: '取消',
       onOk: () => {
+        console.log('✅ 用户确认开始批量生成');
         startBatchWriting();
+      },
+      onCancel: () => {
+        console.log('❌ 用户取消批量生成');
+        // 明确处理取消操作，不执行任何写作流程
       }
     });
   };

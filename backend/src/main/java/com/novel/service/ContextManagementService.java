@@ -40,6 +40,18 @@ public class ContextManagementService {
     @Autowired
     private NovelVolumeService novelVolumeService;
 
+    @Autowired
+    private com.novel.repository.ChapterSummaryRepository chapterSummaryRepository;
+
+    @Autowired
+    private com.novel.repository.NovelCharacterProfileRepository characterProfileRepository;
+
+    @Autowired
+    private com.novel.repository.NovelForeshadowingRepository foreshadowingRepository;
+
+    @Autowired
+    private com.novel.repository.NovelWorldDictionaryRepository worldDictionaryRepository;
+
 
     /**
      * 构建完整的AI上下文消息列表（支持自定义模板）
@@ -81,8 +93,8 @@ public class ContextManagementService {
             messages.add(createMessage("system", volumeContext));
         }
 
-        // 5. 角色信息上下文（动态选角+配额+触发约束）
-        String characterContext = buildCharacterContextEnhanced(memoryBank, chapterPlan, chapterNumber);
+        // 5. 角色信息上下文（动态选角+配额+触发约束） - 从数据库查询
+        String characterContext = buildCharacterContextEnhanced(novel.getId(), chapterPlan, chapterNumber);
         if (!characterContext.isEmpty()) {
             messages.add(createMessage("system", characterContext));
         }
@@ -99,20 +111,14 @@ public class ContextManagementService {
 //             messages.add(createMessage("system", plotlineContext));
 //         }
 
-        // 8. 世界观设定
-        String worldBuildingContext = buildWorldBuildingContext(memoryBank);
+        // 8. 世界观设定和实体词典 - 从数据库查询
+        String worldBuildingContext = buildWorldBuildingContext(novel.getId());
         if (!worldBuildingContext.isEmpty()) {
             messages.add(createMessage("system", worldBuildingContext));
         }
 
-        // 8.1 实体词典（势力/地点/物件）- 从记忆库按相关性选择
-        String entityGlossaryContext = buildEntityGlossaryContext(memoryBank, chapterPlan, chapterNumber);
-        if (!entityGlossaryContext.isEmpty()) {
-            messages.add(createMessage("system", entityGlossaryContext));
-        }
-
-        // 9. 前情回顾（智能章节概括） - 从记忆库读取
-        String chaptersSummaryContext = buildChaptersSummaryContext(memoryBank, chapterNumber);
+        // 9. 前情回顾（智能章节概括） - 从数据库读取前20章概括
+        String chaptersSummaryContext = buildChaptersSummaryContext(novel.getId(), chapterNumber);
         // 9.1 上一章完整内容，避免割裂
         String prevChapterContext = buildPreviousChapterFullContentContext(novel.getId(), chapterNumber);
         if (!prevChapterContext.isEmpty()) {
@@ -129,8 +135,8 @@ public class ContextManagementService {
 //            messages.add(createMessage("system", inspirationContext));
 //        }
 
-        // 11. 伏笔和线索管理
-        String foreshadowingContext = buildForeshadowingContext(memoryBank);
+        // 11. 伏笔和线索管理 - 从数据库查询
+        String foreshadowingContext = buildForeshadowingContext(novel.getId());
         if (!foreshadowingContext.isEmpty()) {
             messages.add(createMessage("system", foreshadowingContext));
         }
@@ -763,6 +769,7 @@ public class ContextManagementService {
                     
                     context.append("- 章节范围: 第").append(volume.getChapterStart())
                            .append("章 - 第").append(volume.getChapterEnd()).append("章\n");
+                    context.append("- **你现在要创作的是：第").append(chapterNumber).append("章**\n");
                 }
             } catch (Exception e) {
                 logger.warn("查询当前卷信息失败: {}", e.getMessage());
@@ -819,57 +826,73 @@ public class ContextManagementService {
     }
 
     /**
-     * 构建角色上下文（增强版：动态选角+配额+冷却+触发约束）
+     * 构建角色上下文（从数据库查询）
      */
-    @SuppressWarnings("unchecked")
-    private String buildCharacterContextEnhanced(Map<String, Object> memoryBank, Map<String, Object> chapterPlan, int chapterNumber) {
+    private String buildCharacterContextEnhanced(Long novelId, Map<String, Object> chapterPlan, int chapterNumber) {
         StringBuilder context = new StringBuilder();
         
         try {
-            Map<String, Object> characterProfiles = (Map<String, Object>) memoryBank.get("characterProfiles");
-            if (characterProfiles == null || characterProfiles.isEmpty()) {
+            // 从数据库查询所有角色档案
+            List<com.novel.domain.entity.NovelCharacterProfile> characters = 
+                characterProfileRepository.findByNovelId(novelId);
+            
+            if (characters == null || characters.isEmpty()) {
+                logger.debug("数据库中暂无角色档案: novelId={}", novelId);
                 return "";
             }
             
-            // 兜底1：确保有主角标记（若漏标，则按最高重要度/出现次数补主角标签）
-            ensureProtagonistTagged(characterProfiles);
-
-            context.append(" **角色管理信息（本章选角）**\n\n");
-            
-            // 提取本章关键词（用于相关性计算）
-            String chapterKeywords = extractChapterKeywords(chapterPlan, memoryBank);
-            
-            // 动态选角：计算每个角色的相关性分数（剔除未满足触发条件的非核心角色）
-            List<Map<String, Object>> selectedCharacters = selectRelevantCharacters(
-                characterProfiles, chapterKeywords, chapterNumber, memoryBank);
-            
-            if (selectedCharacters.isEmpty()) {
-                context.append("暂无相关角色档案\n");
-                return context.toString();
+            // 只保留活跃角色（近期出现的）
+            int recentThreshold = Math.max(1, chapterNumber - 10); // 最近10章内出现过的
+            List<com.novel.domain.entity.NovelCharacterProfile> activeCharacters = new ArrayList<>();
+            for (com.novel.domain.entity.NovelCharacterProfile character : characters) {
+                if (character.getLastAppearance() != null && character.getLastAppearance() >= recentThreshold) {
+                    activeCharacters.add(character);
+                } else if (character.getImportanceScore() != null && character.getImportanceScore() >= 80) {
+                    // 重要角色（主角等）总是包含
+                    activeCharacters.add(character);
+                }
             }
             
-            // 输出选中角色的极简卡片
-            context.append("**入选角色阵容（合计").append(selectedCharacters.size()).append("人）：**\n\n");
+            if (activeCharacters.isEmpty()) {
+                logger.debug("无活跃角色: novelId={}, chapterNumber={}", novelId, chapterNumber);
+                return "";
+            }
             
-            for (Map<String, Object> character : selectedCharacters) {
-                String name = (String) character.get("name");
-                String roleTag = (String) character.getOrDefault("roleTag", "SUPPORT");
-                String hookLine = (String) character.getOrDefault("hookLine", "");
-                String linksToProtagonist = (String) character.getOrDefault("linksToProtagonist", "");
-                String triggerConditions = (String) character.getOrDefault("triggerConditions", "无特定触发");
-                Double relevanceScore = (Double) character.get("_relevanceScore");
+            context.append("👥 **角色管理信息**\n\n");
+            context.append("**活跃角色（合计").append(activeCharacters.size()).append("人）：**\n\n");
+            
+            // 按重要性和出现频率排序
+            activeCharacters.sort((a, b) -> {
+                int scoreCompare = Integer.compare(
+                    b.getImportanceScore() != null ? b.getImportanceScore() : 50,
+                    a.getImportanceScore() != null ? a.getImportanceScore() : 50
+                );
+                if (scoreCompare != 0) return scoreCompare;
+                return Integer.compare(
+                    b.getAppearanceCount() != null ? b.getAppearanceCount() : 0,
+                    a.getAppearanceCount() != null ? a.getAppearanceCount() : 0
+                );
+            });
+            
+            // 输出角色信息
+            for (com.novel.domain.entity.NovelCharacterProfile character : activeCharacters) {
+                context.append("• **").append(character.getName()).append("**");
+                if (character.getStatus() != null) {
+                    context.append(" (状态: ").append(character.getStatus()).append(")");
+                }
+                context.append("\n");
                 
-                context.append("• **").append(name).append("** (").append(roleTag).append(")\n");
-                if (!hookLine.isEmpty()) {
-                    context.append("  简介：").append(hookLine).append("\n");
+                if (character.getPersonalityTraits() != null && !character.getPersonalityTraits().isEmpty()) {
+                    context.append("  性格特征: ").append(character.getPersonalityTraits()).append("\n");
                 }
-                if (!linksToProtagonist.isEmpty() && !"关系待明确".equals(linksToProtagonist)) {
-                    context.append("  与主角：").append(linksToProtagonist).append("\n");
+                
+                if (character.getRelationships() != null && !character.getRelationships().isEmpty()) {
+                    context.append("  人际关系: ").append(character.getRelationships()).append("\n");
                 }
-                if (!"无特定触发".equals(triggerConditions) && !"无需触发".equals(triggerConditions)) {
-                    context.append("  触发条件：").append(triggerConditions).append("\n");
-                }
-                context.append("  相关性：").append(String.format("%.1f", relevanceScore)).append("%\n");
+                
+                context.append("  首次出现: 第").append(character.getFirstAppearance()).append("章");
+                context.append(" | 最近出现: 第").append(character.getLastAppearance()).append("章");
+                context.append(" | 出现次数: ").append(character.getAppearanceCount()).append("次\n");
                 context.append("\n");
             }
             
@@ -1187,58 +1210,121 @@ public class ContextManagementService {
     // }
 
     /**
-     * 构建世界观设定上下文
+     * 构建世界观设定上下文（从数据库查询世界词典）
      */
-    @SuppressWarnings("unchecked")
-    private String buildWorldBuildingContext(Map<String, Object> memoryBank) {
+    private String buildWorldBuildingContext(Long novelId) {
         StringBuilder context = new StringBuilder();
-
-        Object worldSettings = memoryBank.get("worldSettings");
-        if (worldSettings instanceof Map) {
-            Map<String, Object> settings = (Map<String, Object>) worldSettings;
-
-            context.append("🌍 **世界观设定**\n");
-
-            Object geography = settings.get("geography");
-            if (geography != null) {
-                context.append("- 地理环境: ").append(geography).append("\n");
+        
+        try {
+            // 从数据库查询世界词典
+            List<com.novel.domain.entity.NovelWorldDictionary> worldTerms = 
+                worldDictionaryRepository.findByNovelId(novelId);
+            
+            if (worldTerms == null || worldTerms.isEmpty()) {
+                logger.debug("数据库中暂无世界观词典: novelId={}", novelId);
+                return "";
             }
-
-            Object socialSystem = settings.get("socialSystem");
-            if (socialSystem != null) {
-                context.append("- 社会制度: ").append(socialSystem).append("\n");
+            
+            context.append("🌍 **世界观设定与实体词典**\n\n");
+            
+            // 按类型分组
+            Map<String, List<com.novel.domain.entity.NovelWorldDictionary>> groupedByType = new HashMap<>();
+            for (com.novel.domain.entity.NovelWorldDictionary term : worldTerms) {
+                String type = term.getType() != null ? term.getType() : "OTHER";
+                groupedByType.computeIfAbsent(type, k -> new ArrayList<>()).add(term);
             }
-
-            Object powerSystem = settings.get("powerSystem");
-            if (powerSystem != null) {
-                context.append("- 力量体系: ").append(powerSystem).append("\n");
-            }
-
-            Object timeBackground = settings.get("timeBackground");
-            if (timeBackground != null) {
-                context.append("- 时代背景: ").append(timeBackground).append("\n");
-            }
-
-            Object keyLocations = settings.get("keyLocations");
-            if (keyLocations instanceof List) {
-                List<Map<String, Object>> locations = (List<Map<String, Object>>) keyLocations;
-                if (!locations.isEmpty()) {
-                    context.append("- 重要地点:\n");
-                    for (Map<String, Object> location : locations) {
-                        context.append("  * ").append(location.get("name")).append(": ").append(location.get("description")).append("\n");
+            
+            // 输出力量体系
+            if (groupedByType.containsKey("POWER_SYSTEM")) {
+                context.append("**⚡ 力量体系**\n");
+                for (com.novel.domain.entity.NovelWorldDictionary term : groupedByType.get("POWER_SYSTEM")) {
+                    context.append("• **").append(term.getTerm()).append("**");
+                    if (term.getDescription() != null && !term.getDescription().isEmpty()) {
+                        context.append(": ").append(term.getDescription());
                     }
+                    if (term.getIsImportant()) {
+                        context.append(" [重要]");
+                    }
+                    context.append("\n");
                 }
+                context.append("\n");
             }
-
-            Object specialRules = settings.get("specialRules");
-            if (specialRules instanceof List) {
-                List<String> rules = (List<String>) specialRules;
-                if (!rules.isEmpty()) {
-                    context.append("- 特殊规则: ").append(String.join("、", rules)).append("\n");
+            
+            // 输出地理环境
+            if (groupedByType.containsKey("GEOGRAPHY")) {
+                context.append("**🗺️ 地理环境**\n");
+                for (com.novel.domain.entity.NovelWorldDictionary term : groupedByType.get("GEOGRAPHY")) {
+                    context.append("• **").append(term.getTerm()).append("**");
+                    if (term.getDescription() != null && !term.getDescription().isEmpty()) {
+                        context.append(": ").append(term.getDescription());
+                    }
+                    if (term.getIsImportant()) {
+                        context.append(" [重要]");
+                    }
+                    context.append("\n");
                 }
+                context.append("\n");
             }
+            
+            // 输出组织势力
+            if (groupedByType.containsKey("ORGANIZATION")) {
+                context.append("**🏛️ 组织势力**\n");
+                for (com.novel.domain.entity.NovelWorldDictionary term : groupedByType.get("ORGANIZATION")) {
+                    context.append("• **").append(term.getTerm()).append("**");
+                    if (term.getDescription() != null && !term.getDescription().isEmpty()) {
+                        context.append(": ").append(term.getDescription());
+                    }
+                    if (term.getIsImportant()) {
+                        context.append(" [重要]");
+                    }
+                    context.append("\n");
+                }
+                context.append("\n");
+            }
+            
+            // 输出重要物品
+            if (groupedByType.containsKey("ITEM")) {
+                context.append("**⚔️ 重要物品**\n");
+                for (com.novel.domain.entity.NovelWorldDictionary term : groupedByType.get("ITEM")) {
+                    context.append("• **").append(term.getTerm()).append("**");
+                    if (term.getDescription() != null && !term.getDescription().isEmpty()) {
+                        context.append(": ").append(term.getDescription());
+                    }
+                    if (term.getIsImportant()) {
+                        context.append(" [重要]");
+                    }
+                    context.append("\n");
+                }
+                context.append("\n");
+            }
+            
+            // 输出特殊概念
+            if (groupedByType.containsKey("CONCEPT")) {
+                context.append("**💡 特殊概念**\n");
+                for (com.novel.domain.entity.NovelWorldDictionary term : groupedByType.get("CONCEPT")) {
+                    context.append("• **").append(term.getTerm()).append("**");
+                    if (term.getDescription() != null && !term.getDescription().isEmpty()) {
+                        context.append(": ").append(term.getDescription());
+                    }
+                    if (term.getIsImportant()) {
+                        context.append(" [重要]");
+                    }
+                    context.append("\n");
+                }
+                context.append("\n");
+            }
+            
+            context.append("**使用规则：**\n");
+            context.append("- 保持世界观设定的一致性，不要与已有设定冲突\n");
+            context.append("- 重要设定需要遵守，不可随意修改\n");
+            context.append("- 可以适当扩展世界观，但要合理自然\n\n");
+            
+            logger.info("成功加载{}个世界观词条: novelId={}", worldTerms.size(), novelId);
+            
+        } catch (Exception e) {
+            logger.warn("从数据库构建世界观上下文失败: {}", e.getMessage(), e);
         }
-
+        
         return context.toString();
     }
 
@@ -1508,36 +1594,46 @@ public class ContextManagementService {
     /**
      * 从记忆库读取章节概括（由概括生成）
      */
-    @SuppressWarnings("unchecked")
-    private String buildChaptersSummaryContext(Map<String, Object> memoryBank, int chapterNumber) {
+    private String buildChaptersSummaryContext(Long novelId, int chapterNumber) {
         StringBuilder context = new StringBuilder();
 
         try {
-            // 从记忆库中读取章节概括列表
-            List<Map<String, Object>> chapterSummaries = 
-                (List<Map<String, Object>>) memoryBank.get("chapterSummaries");
+            // 计算要获取的章节范围（前20章，但不包括当前章）
+            int startChapter = Math.max(1, chapterNumber - 20);
+            int endChapter = chapterNumber - 1;
+            
+            if (endChapter < startChapter) {
+                logger.debug("第一章无前置章节概括");
+                return "";
+            }
+            
+            // 从数据库查询前20章概括
+            List<com.novel.domain.entity.ChapterSummary> chapterSummaries = 
+                chapterSummaryRepository.findByNovelIdAndChapterNumberBetween(novelId, startChapter, endChapter);
             
             if (chapterSummaries != null && !chapterSummaries.isEmpty()) {
                 context.append("📚 **前期内容概括**\n");
                 
-                // 取最近20章的概括
-                int startIdx = Math.max(0, chapterSummaries.size() - 20);
-                for (int i = startIdx; i < chapterSummaries.size(); i++) {
-                    Map<String, Object> summary = chapterSummaries.get(i);
-                    Integer chapNum = (Integer) summary.get("chapterNumber");
-                    String summaryText = (String) summary.get("summary");
+                // 按章节号排序并输出
+                chapterSummaries.sort(Comparator.comparing(com.novel.domain.entity.ChapterSummary::getChapterNumber));
+                
+                for (com.novel.domain.entity.ChapterSummary summary : chapterSummaries) {
+                    Integer chapNum = summary.getChapterNumber();
+                    String summaryText = summary.getSummary();
                     
-                    if (chapNum != null && summaryText != null) {
+                    if (chapNum != null && summaryText != null && !summaryText.trim().isEmpty()) {
                         context.append("第").append(chapNum).append("章: ");
                         context.append(summaryText).append("\n");
                     }
                 }
                 context.append("\n");
+                
+                logger.info("成功从数据库加载{}章概括（章节{}到{}）", chapterSummaries.size(), startChapter, endChapter);
             } else {
-                logger.debug("记忆库中暂无章节概括（第一章正常）");
+                logger.debug("数据库中暂无章节概括（小说ID={}, 范围={}-{}）", novelId, startChapter, endChapter);
             }
         } catch (Exception e) {
-            logger.warn("从记忆库构建章节概括上下文失败: {}", e.getMessage());
+            logger.warn("从数据库构建章节概括上下文失败: {}", e.getMessage(), e);
         }
 
         return context.toString();
@@ -1640,63 +1736,63 @@ public class ContextManagementService {
     /**
      * 构建伏笔线索上下文
      */
-    @SuppressWarnings("unchecked")
-    private String buildForeshadowingContext(Map<String, Object> memoryBank) {
+    /**
+     * 构建伏笔线索上下文（从数据库查询）
+     */
+    private String buildForeshadowingContext(Long novelId) {
         StringBuilder context = new StringBuilder();
-
-        Object foreshadowingData = memoryBank.get("foreshadowing");
-        if (foreshadowingData instanceof Map) {
-            Map<String, Object> foreshadowing = (Map<String, Object>) foreshadowingData;
-
-            context.append("🎭 **伏笔与线索管理**\n");
-
-            // 活跃伏笔
-            Object activeHints = foreshadowing.get("activeHints");
-            if (activeHints instanceof List) {
-                List<Map<String, Object>> hints = (List<Map<String, Object>>) activeHints;
-                if (!hints.isEmpty()) {
-                    context.append("- 活跃伏笔:\n");
-                    for (Map<String, Object> hint : hints) {
-                        context.append("  * ").append(hint.get("description"));
-                        Object targetChapter = hint.get("targetRevealChapter");
-                        if (targetChapter != null) {
-                            context.append(" (计划第").append(targetChapter).append("章揭晓)");
-                        }
-                        context.append("\n");
-                    }
-                }
+        
+        try {
+            // 从数据库查询活跃状态的伏笔
+            List<com.novel.domain.entity.NovelForeshadowing> foreshadowings = 
+                foreshadowingRepository.findByNovelIdAndStatus(novelId, "ACTIVE");
+            
+            if (foreshadowings == null || foreshadowings.isEmpty()) {
+                logger.debug("数据库中暂无活跃伏笔: novelId={}", novelId);
+                return "";
             }
-
-            // 待埋设的伏笔
-            Object upcomingHints = foreshadowing.get("upcomingHints");
-            if (upcomingHints instanceof List) {
-                List<Map<String, Object>> hints = (List<Map<String, Object>>) upcomingHints;
-                if (!hints.isEmpty()) {
-                    context.append("- 待埋设伏笔:\n");
-                    for (Map<String, Object> hint : hints) {
-                        context.append("  * ").append(hint.get("description")).append("\n");
-                    }
+            
+            context.append("🎭 **伏笔与线索管理**\n\n");
+            
+            // 按优先级和埋设章节排序（已在Repository查询中完成）
+            context.append("**活跃伏笔（合计").append(foreshadowings.size()).append("个）：**\n\n");
+            
+            for (com.novel.domain.entity.NovelForeshadowing foreshadowing : foreshadowings) {
+                context.append("• **").append(foreshadowing.getContent()).append("**\n");
+                context.append("  埋设章节: 第").append(foreshadowing.getPlantedChapter()).append("章");
+                
+                if (foreshadowing.getResolvedChapter() != null) {
+                    context.append(" | 回收章节: 第").append(foreshadowing.getResolvedChapter()).append("章");
                 }
-            }
-
-            // 谜团线索
-            Object mysteries = foreshadowing.get("mysteries");
-            if (mysteries instanceof List) {
-                List<Map<String, Object>> mysteryList = (List<Map<String, Object>>) mysteries;
-                if (!mysteryList.isEmpty()) {
-                    context.append("- 谜团线索:\n");
-                    for (Map<String, Object> mystery : mysteryList) {
-                        context.append("  * ").append(mystery.get("question"));
-                        Object clues = mystery.get("clues");
-                        if (clues instanceof List && !((List<?>) clues).isEmpty()) {
-                            context.append(" (已有线索: ").append(String.join(", ", (List<String>) clues)).append(")");
-                        }
-                        context.append("\n");
-                    }
+                
+                if (foreshadowing.getType() != null) {
+                    context.append(" | 类型: ").append(foreshadowing.getType());
                 }
+                
+                if (foreshadowing.getPriority() != null) {
+                    context.append(" | 优先级: ").append(foreshadowing.getPriority());
+                }
+                
+                context.append("\n");
+                
+                if (foreshadowing.getContextInfo() != null && !foreshadowing.getContextInfo().isEmpty()) {
+                    context.append("  上下文: ").append(foreshadowing.getContextInfo()).append("\n");
+                }
+                
+                context.append("\n");
             }
+            
+            context.append("**伏笔使用规则：**\n");
+            context.append("- 重要伏笔需适时回收，不要遗忘\n");
+            context.append("- 每章可适当埋设新伏笔，但要注意不要过多\n");
+            context.append("- 回收伏笔时要自然融入剧情，避免生硬\n\n");
+            
+            logger.info("成功加载{}个活跃伏笔: novelId={}", foreshadowings.size(), novelId);
+            
+        } catch (Exception e) {
+            logger.warn("从数据库构建伏笔上下文失败: {}", e.getMessage(), e);
         }
-
+        
         return context.toString();
     }
 
@@ -1765,6 +1861,10 @@ public class ContextManagementService {
      */
     private String buildChapterTaskContext(Map<String, Object> chapterPlan, int chapterNumber) {
         StringBuilder context = new StringBuilder();
+        
+        // 明确告知当前章节号
+        context.append("🎯 **当前创作任务：第").append(chapterNumber).append("章**\n\n");
+        
         context.append("【写作要求】\n");
 
         Object estimatedWords = chapterPlan.get("estimatedWords");
