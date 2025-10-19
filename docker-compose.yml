@@ -10,7 +10,7 @@ services:
       # 请修改为你的外部MySQL服务器地址
       SPRING_DATASOURCE_URL: jdbc:mysql://45.192.98.207:3306/ai_novel?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&useUnicode=true&characterEncoding=utf8
       SPRING_DATASOURCE_USERNAME: ai_novel
-      SPRING_DATASOURCE_PASSWORD: GWRd3MCyBCWNCrWD
+      SPRING_DATASOURCE_PASSWORD: password
     networks:
       - novel-network
     restart: unless-stopped
