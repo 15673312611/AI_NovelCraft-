@@ -25,6 +25,8 @@ const VolumeWritingStudio: React.FC = () => {
   const templateIdFromUrl = searchParams.get('templateId');
   
   const [currentVolume, setCurrentVolume] = useState<NovelVolume | null>(null);
+  const [pageLoading, setPageLoading] = useState(true); // 整个页面加载状态
+  const [pageLoadError, setPageLoadError] = useState<string | null>(null); // 页面加载错误
   const [loading, setLoading] = useState(false);
   const [currentContent, setCurrentContent] = useState('');
   const [aiGuidance, setAiGuidance] = useState<any>(null);
@@ -36,7 +38,10 @@ const VolumeWritingStudio: React.FC = () => {
   const [chapterTitle, setChapterTitle] = useState<string>('');
   const [userAdjustment, setUserAdjustment] = useState<string>('');
   const [chapterId, setChapterId] = useState<string | null>(null);
+  const chapterIdRef = useRef<string | null>(null); // 用于在闭包中访问最新的chapterId
+  const chapterNumberRef = useRef<number | null>(null); // 用于在闭包中访问最新的chapterNumber
   const [isStreaming, setIsStreaming] = useState(false);
+  const streamingCompleteRef = useRef<boolean>(false); // 标记流式写作是否真正完成（收到complete事件）
   const textareaRef = useRef<any>(null);
     const [aiDrawerVisible, setAiDrawerVisible] = useState(false); // AI写作弹窗
     const [chapterPlotInput, setChapterPlotInput] = useState<string>(''); // 本章剧情输入
@@ -80,37 +85,26 @@ const VolumeWritingStudio: React.FC = () => {
   const [favoriteTemplates, setFavoriteTemplates] = useState<any[]>([]); // 收藏模板
   const [customTemplates, setCustomTemplates] = useState<any[]>([]); // 自定义模板
 
+  // 批量写作相关状态
+  const [batchWriting, setBatchWriting] = useState(false); // 批量写作状态
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 }); // 批量写作进度
+  const [batchCancelled, setBatchCancelled] = useState(false); // 批量写作是否被取消
+  const [batchModalVisible, setBatchModalVisible] = useState(false); // 批量写作进度弹窗
+
   const { novelId, volumeId} = useParams<{ novelId: string; volumeId: string }>();
   const navigate = useNavigate();
 
   useEffect(() => {
-    // 从路由状态中获取初始数据
+    // 页面初始化
+    initializePage();
+    
+    // 从路由状态中获取会话数据
     const state = location.state as any;
-    if (state?.initialVolumeId && state?.sessionData) {
-      loadVolumeById(state.initialVolumeId);
+    if (state?.sessionData) {
       setAiGuidance(state.sessionData.aiGuidance);
     }
-    // 若无路由状态，则使用URL中的 volumeId 直接加载
-    if ((!state || !state.initialVolumeId) && volumeId) {
-      loadVolumeById(volumeId);
-    }
-  }, [location.state, volumeId]);
+  }, []);
 
-  // 再加一层兜底：当路由参数已就绪但页面还没拿到卷时，自动拉取
-  useEffect(() => {
-    if (volumeId && !currentVolume && !loading) {
-      loadVolumeById(volumeId);
-    }
-  }, [volumeId, currentVolume, loading]);
-
-  // 加载所有卷列表和小说信息
-  useEffect(() => {
-    if (novelId) {
-      loadAllVolumes();
-      loadNovelInfo();
-      loadPromptTemplates(); // 加载提示词模板
-    }
-  }, [novelId]);
 
   // 加载提示词模板列表
   const loadPromptTemplates = async () => {
@@ -144,6 +138,18 @@ const VolumeWritingStudio: React.FC = () => {
       loadChapterList();
     }
   }, [currentVolume]);
+
+  // 同步 chapterId 到 ref，确保闭包中能访问到最新值
+  useEffect(() => {
+    chapterIdRef.current = chapterId;
+    console.log('🔍 chapterId 已更新到 ref:', chapterId);
+  }, [chapterId]);
+
+  // 同步 chapterNumber 到 ref，确保闭包中能访问到最新值
+  useEffect(() => {
+    chapterNumberRef.current = chapterNumber;
+    console.log('🔍 chapterNumber 已更新到 ref:', chapterNumber);
+  }, [chapterNumber]);
 
   // 自动保存功能：停止编写1秒后自动保存
   useEffect(() => {
@@ -268,11 +274,11 @@ const VolumeWritingStudio: React.FC = () => {
   }, [currentContent, isStreaming]);
 
   const loadVolumeById = async (volumeId: string) => {
-    setLoading(true);
     try {
       const volumeDetail = await novelVolumeService.getVolumeDetail(volumeId);
       const vol = volumeDetail.volume || volumeDetail;
       setCurrentVolume(vol);
+      
       // 初始化章节号：优先读取本地存储的当前章节，其次回退到卷起始章节
       try {
         const saved = localStorage.getItem(`novel_workflow_${novelId}`);
@@ -300,16 +306,65 @@ const VolumeWritingStudio: React.FC = () => {
               setChapterNumber((found as any).chapterStart);
             }
           } else {
-            message.error('未在卷列表中找到对应卷');
+            throw new Error('未在卷列表中找到对应卷');
           }
         } else {
-          message.error('加载卷信息失败');
+          throw new Error('缺少小说ID参数');
         }
-      } catch (e) {
-        message.error('加载卷信息失败');
+      } catch (e: any) {
+        throw new Error(e.message || '加载卷信息失败');
       }
-    } finally {
-      setLoading(false);
+    }
+  };
+
+  // 页面初始化：加载所有必要数据
+  const initializePage = async () => {
+    setPageLoading(true);
+    setPageLoadError(null);
+    
+    try {
+      // 1. 检查必要参数
+      if (!novelId) {
+        throw new Error('缺少小说ID参数');
+      }
+      if (!volumeId) {
+        throw new Error('缺少卷ID参数');
+      }
+      
+      // 2. 并行加载所有数据
+      await Promise.all([
+        loadVolumeById(volumeId),
+        loadAllVolumes(),
+        loadNovelInfo(),
+        loadPromptTemplates()
+      ]);
+      
+      // 3. 加载章节列表（依赖于卷数据）
+      const chapters = await loadChapterList();
+      
+      // 4. 自动跳转到最新章节
+      if (chapters && chapters.length > 0) {
+        // 找到最新的章节（章节号最大的）
+        const latestChapter = chapters.reduce((latest: any, current: any) => {
+          return (current.chapterNumber || 0) > (latest.chapterNumber || 0) ? current : latest;
+        });
+        
+        console.log('🔄 自动加载最新章节:', latestChapter.chapterNumber);
+        await handleLoadChapter(latestChapter);
+      } else {
+        // 如果没有章节，设置为卷的起始章节号
+        if (currentVolume?.chapterStart) {
+          setChapterNumber(currentVolume.chapterStart);
+        }
+      }
+      
+      // 5. 页面加载完成
+      setPageLoading(false);
+      
+    } catch (error: any) {
+      console.error('页面初始化失败:', error);
+      setPageLoadError(error.message || '页面加载失败');
+      setPageLoading(false);
     }
   };
 
@@ -341,7 +396,7 @@ const VolumeWritingStudio: React.FC = () => {
 
   // 加载章节列表
   const loadChapterList = async () => {
-    if (!currentVolume || !novelId) return;
+    if (!currentVolume || !novelId) return [];
     
     setChapterListLoading(true);
     try {
@@ -361,13 +416,11 @@ const VolumeWritingStudio: React.FC = () => {
       });
       
       setChapterList(sortedChapters);
+      return sortedChapters;
       
-      // 如果没有章节，自动设置为第一章
-      if (sortedChapters.length === 0 && !chapterNumber) {
-        setChapterNumber(currentVolume.chapterStart);
-      }
     } catch (error) {
       console.error('加载章节列表失败:', error);
+      return [];
     } finally {
       setChapterListLoading(false);
     }
@@ -737,11 +790,55 @@ const VolumeWritingStudio: React.FC = () => {
       setLastSavedContent('');
       setLastSaveTime('');
       
-      // 延迟设置章节号，确保其他状态已清空
-      setTimeout(() => {
-        setChapterNumber(nextChapterNumber);
-        message.success(`✅ 可以开始写第${nextChapterNumber}章了！`);
-      }, 100);
+      // 立即创建新章节的数据库记录（避免页面消失）
+      try {
+        const newChapterPayload = {
+          title: `第${nextChapterNumber}章`,
+          content: '', // 空内容
+          chapterNumber: nextChapterNumber,
+          novelId: novelId ? parseInt(novelId) : undefined
+        };
+        
+        console.log('🔄 正在创建新章节到数据库:', newChapterPayload);
+        
+        const response = await api.post('/chapters', newChapterPayload);
+        const newChapter = response?.data || response;
+        
+        console.log('📝 创建章节API响应:', newChapter);
+        
+        if (newChapter?.id) {
+          console.log('✅ 新章节已创建到数据库:', {
+            id: newChapter.id,
+            title: newChapter.title,
+            chapterNumber: newChapter.chapterNumber
+          });
+          
+          // 设置新章节的状态
+          setChapterNumber(nextChapterNumber);
+          setChapterId(String(newChapter.id));
+          
+          // 重新加载章节列表，确保新章节显示在列表中
+          console.log('🔄 重新加载章节列表...');
+          await loadChapterList();
+          
+          message.success(`✅ 第${nextChapterNumber}章已创建，可以开始写作了！`);
+        } else {
+          console.error('❌ 创建章节失败：API响应格式异常', response);
+          throw new Error('创建章节失败：未返回章节ID');
+        }
+      } catch (createError: any) {
+        console.error('❌ 创建新章节失败:', {
+          error: createError,
+          message: createError?.message,
+          response: createError?.response?.data
+        });
+        
+        // 如果创建失败，回退到原来的逻辑
+        setTimeout(() => {
+          setChapterNumber(nextChapterNumber);
+          message.warning(`⚠️ 章节创建可能失败，但可以开始写第${nextChapterNumber}章（写作后会自动保存）`);
+        }, 100);
+      }
     } catch (error: any) {
       message.destroy('summarizing');
       console.error('新建章节失败:', error);
@@ -783,6 +880,313 @@ const VolumeWritingStudio: React.FC = () => {
         duration: 5
       });
     }
+  };
+
+  // 批量写作处理函数
+  const handleBatchWriting = async () => {
+    if (!chapterNumber) {
+      message.warning('请先填写章节编号');
+      return;
+    }
+
+    // 检查当前状态
+    console.log('批量写作开始前状态检查:', {
+      chapterNumber,
+      chapterId,
+      hasContent: !!currentContent,
+      contentLength: currentContent?.length || 0
+    });
+
+    // 显示确认对话框
+    Modal.confirm({
+      title: '批量生成章节',
+      content: (
+        <div>
+          <p>将从第{chapterNumber}章开始，连续生成10章内容。</p>
+          <p style={{ color: '#faad14' }}>⚠️ 此过程可能需要较长时间，请确保网络连接稳定。</p>
+          <p>您可以随时点击"取消"按钮中止生成。</p>
+        </div>
+      ),
+      okText: '开始生成',
+      cancelText: '取消',
+      onOk: () => {
+        startBatchWriting();
+      }
+    });
+  };
+
+  // 开始批量写作
+  const startBatchWriting = async () => {
+    setBatchWriting(true);
+    setBatchCancelled(false);
+    setBatchProgress({ current: 0, total: 10 });
+    setBatchModalVisible(true);
+
+    let successCount = 0;
+    let failedChapters: number[] = [];
+    
+    // 保存起始章节号（重要：不要用chapterNumber，它会被handleCreateNewChapter改变）
+    const startChapterNumber = chapterNumber || 0;
+
+    try {
+      for (let i = 0; i < 10; i++) {
+        // 检查是否被取消
+        if (batchCancelled) {
+          message.info(`批量生成已取消，已成功生成${successCount}章`);
+          break;
+        }
+
+        // 使用起始章节号 + i 计算当前章节号
+        const currentChapterNum = startChapterNumber + i;
+        setBatchProgress({ current: i + 1, total: 10 });
+
+        try {
+          console.log(`\n=== 开始生成第${currentChapterNum}章 ===`);
+          console.log('当前状态:', { chapterId, hasContent: !!currentContent, contentLength: currentContent?.length || 0 });
+
+          // 步骤1: 点击AI写作按钮
+          console.log(`步骤1: 开始AI写作第${currentChapterNum}章`);
+          await simulateAIWriting(currentChapterNum);
+
+          // 步骤2: 等待写作完成
+          console.log(`步骤2: 等待第${currentChapterNum}章写作完成...`);
+          await waitForWritingComplete();
+
+          // 步骤3: 写作完成
+          console.log(`第${currentChapterNum}章写作完成，内容长度: ${currentContent?.length || 0}`);
+          successCount++;
+
+          // 步骤4: 如果不是最后一章，点击"新建章节"按钮
+          if (i < 9 && !batchCancelled) {
+            console.log(`步骤3: 点击"新建章节"按钮，准备第${currentChapterNum + 1}章...`);
+            
+            // 重要：在点击新建章节按钮之前，从ref读取当前章节号（最可靠）
+            const currentChapterBeforeCreate = chapterNumberRef.current;
+            console.log(`当前章节号(ref): ${currentChapterBeforeCreate}, 期望新章节号: ${(currentChapterBeforeCreate || 0) + 1}`);
+            
+            // 找到"新建章节"按钮并点击
+            await simulateClickNewChapterButton();
+            
+            // 等待概括和页面切换完成（传入期望的新章节号）
+            const expectedNewChapterNumber = (currentChapterBeforeCreate || 0) + 1;
+            console.log(`步骤4: 等待第${currentChapterNum}章概括完成并切换到第${expectedNewChapterNumber}章...`);
+            await waitForNewChapterReady(expectedNewChapterNumber);
+            
+            console.log(`第${currentChapterNum}章概括完成，已切换到第${expectedNewChapterNumber}章页面`);
+            
+            // 重置流式完成标志，准备下一章写作
+            streamingCompleteRef.current = false;
+            console.log('✅ 已重置流式完成标志，准备开始下一章');
+          }
+
+        } catch (chapterError: any) {
+          console.error(`第${currentChapterNum}章生成失败:`, chapterError);
+          failedChapters.push(currentChapterNum);
+          
+          // 询问用户是否继续
+          const shouldContinue = await new Promise<boolean>((resolve) => {
+            Modal.confirm({
+              title: '章节生成失败',
+              content: (
+                <div>
+                  <p>第{currentChapterNum}章生成失败：{chapterError.message}</p>
+                  <p>是否继续生成剩余章节？</p>
+                </div>
+              ),
+              okText: '继续生成',
+              cancelText: '停止生成',
+              onOk: () => resolve(true),
+              onCancel: () => resolve(false)
+            });
+          });
+
+          if (!shouldContinue) {
+            setBatchCancelled(true);
+            break;
+          }
+        }
+      }
+
+      // 显示最终结果
+      if (!batchCancelled) {
+        if (failedChapters.length === 0) {
+          message.success('🎉 批量生成完成！已成功生成10章内容');
+        } else {
+          message.warning(
+            `批量生成完成，成功生成${successCount}章，失败${failedChapters.length}章（第${failedChapters.join('、')}章）`
+          );
+        }
+      }
+    } catch (error: any) {
+      console.error('批量写作失败:', error);
+      message.error(error.message || '批量写作过程中出现严重错误');
+    } finally {
+      setBatchWriting(false);
+      setBatchModalVisible(false);
+      setBatchProgress({ current: 0, total: 0 });
+    }
+  };
+
+  // 模拟AI写作
+  const simulateAIWriting = async (chapterNum: number) => {
+    return new Promise<void>((resolve, reject) => {
+      try {
+        // 触发AI写作按钮
+        const aiBtn = document.querySelector('[data-ai-write-trigger]') as HTMLButtonElement;
+        if (aiBtn) {
+          console.log('点击AI写作按钮');
+          aiBtn.click();
+          
+          // 等待一下确保AI写作已经开始（loading变为true）
+          setTimeout(() => {
+            console.log('AI写作已触发');
+            resolve();
+          }, 1000);
+        } else {
+          reject(new Error('找不到AI写作触发器'));
+        }
+      } catch (error) {
+        reject(error);
+      }
+    });
+  };
+
+  // 等待写作完成（通过检查流式接口的complete事件）
+  const waitForWritingComplete = async () => {
+    return new Promise<void>((resolve, reject) => {
+      const checkComplete = () => {
+        // 直接检查 streamingCompleteRef，不依赖 hasStarted
+        if (streamingCompleteRef.current) {
+          // 收到complete事件，再等待2秒确保自动保存完成
+          console.log('✅ 检测到流式完成标志，写作已完成，等待自动保存...');
+          setTimeout(() => {
+            console.log('✅ 自动保存应该已完成');
+            resolve();
+          }, 2000);
+          return; // 重要：立即返回，不再继续检查
+        }
+        
+        // 如果被取消，直接返回
+        if (batchCancelled) {
+          console.log('批量写作被取消');
+          resolve();
+          return;
+        }
+        
+        // 继续等待（不设置超时，AI生成本来就慢）
+        setTimeout(checkComplete, 500);
+      };
+      
+      // 延迟开始检查，给AI写作一点时间启动
+      setTimeout(checkComplete, 500);
+    });
+  };
+
+  // 模拟点击"新建章节"按钮（等待按钮可用）
+  const simulateClickNewChapterButton = async () => {
+    return new Promise<void>((resolve, reject) => {
+      const startTime = Date.now();
+      const timeout = 2 * 60 * 1000; // 2分钟超时（等待自动保存完成）
+      
+      const tryClick = () => {
+        const elapsed = Date.now() - startTime;
+        
+        try {
+          // 找到"新建章节"按钮
+          const buttons = Array.from(document.querySelectorAll('button'));
+          const newChapterBtn = buttons.find(btn => btn.textContent?.includes('新建章节')) as HTMLButtonElement;
+          
+          if (!newChapterBtn) {
+            reject(new Error('找不到"新建章节"按钮'));
+            return;
+          }
+          
+          // 检查按钮是否可用（disabled={loading || !chapterId || !currentContent}）
+          if (!newChapterBtn.disabled) {
+            console.log('找到"新建章节"按钮，按钮可用，准备点击');
+            newChapterBtn.click();
+            
+            // 等待一下确保点击已处理
+            setTimeout(() => {
+              console.log('"新建章节"按钮已点击');
+              resolve();
+            }, 500);
+          } else {
+            // 按钮还被禁用，继续等待
+            console.log('新建章节按钮被禁用，等待按钮可用...', { 
+              loading, 
+              chapterId: chapterIdRef.current, 
+              hasContent: !!currentContent,
+              elapsed 
+            });
+            
+            if (elapsed > timeout) {
+              reject(new Error('等待"新建章节"按钮可用超时（可能自动保存失败）'));
+            } else {
+              setTimeout(tryClick, 500);
+            }
+          }
+        } catch (error: any) {
+          reject(error);
+        }
+      };
+      
+      // 延迟开始，给页面一点时间渲染
+      setTimeout(tryClick, 500);
+    });
+  };
+
+  // 等待新章节页面准备好（概括完成，页面切换完成）
+  const waitForNewChapterReady = async (expectedChapterNumber: number) => {
+    return new Promise<void>((resolve) => {
+      console.log(`waitForNewChapterReady: 等待章节号变为 ${expectedChapterNumber}`);
+
+      const checkReady = () => {
+        const currentChapterNum = chapterNumberRef.current;
+        console.log(`检查新章节状态: loading=${loading}, 当前章节号(ref)=${currentChapterNum}, 期望章节号=${expectedChapterNumber}`);
+        
+        // 检查条件：loading结束 且 章节号已变为期望值
+        if (!loading && currentChapterNum === expectedChapterNumber) {
+          console.log(`✅ 新章节页面已准备好，章节号已更新为: ${currentChapterNum}`);
+          resolve();
+          return;
+        }
+        
+        if (batchCancelled) {
+          console.log('批量写作被取消');
+          resolve();
+          return;
+        }
+        
+        // 继续等待（不设置超时，概括也需要时间）
+        setTimeout(checkReady, 500);
+      };
+      
+      // 延迟开始检查，确保概括过程已经开始
+      setTimeout(checkReady, 1000);
+    });
+  };
+
+  // 取消批量写作
+  const cancelBatchWriting = () => {
+    setBatchCancelled(true);
+    setBatchWriting(false);
+    setBatchModalVisible(false);
+    message.info('正在取消批量生成...');
+  };
+
+
+  // 判断当前章节是否是最新章节（只有最新章节才能新建下一章）
+  const isCurrentChapterLatest = () => {
+    if (!chapterNumber || chapterList.length === 0) {
+      return false;
+    }
+    
+    // 找到章节列表中最大的章节号
+    const maxChapterNumber = Math.max(...chapterList.map(ch => ch.chapterNumber || 0));
+    
+    // 当前章节号必须是最大的
+    return chapterNumber === maxChapterNumber;
   };
 
   // 加载章节内容
@@ -998,20 +1402,40 @@ const VolumeWritingStudio: React.FC = () => {
         </Space>
       </div>
 
-      {!currentVolume && (
+      {/* 页面加载中 */}
+      {pageLoading && (
+        <div style={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          minHeight: '60vh',
+          padding: '40px 20px' 
+        }}>
+          <Spin size="large" />
+          <div style={{ marginTop: 16, color: '#666', fontSize: '16px' }}>正在加载写作工作室...</div>
+          <div style={{ marginTop: 8, color: '#999', fontSize: '14px' }}>请稍候，正在准备您的创作环境</div>
+        </div>
+      )}
+
+      {/* 页面加载失败 */}
+      {!pageLoading && pageLoadError && (
         <Card style={{ marginTop: 12 }}>
           <Alert
-            type="warning"
+            type="error"
             showIcon
-            message="未加载到卷数据"
+            message="页面加载失败"
             description={
               <div>
-                无法获取卷详情，请重试。如果问题持续，请返回卷列表重新进入。
-                {volumeId && (
-                  <div style={{ marginTop: 12 }}>
-                    <Button onClick={() => loadVolumeById(volumeId)} type="primary">重试加载</Button>
-                  </div>
-                )}
+                <p>{pageLoadError}</p>
+                <div style={{ marginTop: 12 }}>
+                  <Button onClick={() => initializePage()} type="primary" style={{ marginRight: 8 }}>
+                    重新加载
+                  </Button>
+                  <Button onClick={() => navigate(-1)}>
+                    返回上一页
+                  </Button>
+                </div>
               </div>
             }
           />
@@ -1019,7 +1443,7 @@ const VolumeWritingStudio: React.FC = () => {
       )}
 
       {/* 主体内容区 - 左右布局 */}
-      {currentVolume && (
+      {!pageLoading && !pageLoadError && currentVolume && (
         <div style={{ 
           flex: 1, 
           display: 'flex', 
@@ -1072,7 +1496,7 @@ const VolumeWritingStudio: React.FC = () => {
                   type="primary" 
                   icon={<PlusOutlined />} 
                   size="small"
-                  disabled={loading || !chapterId || !currentContent}
+                  disabled={loading || !chapterId || !currentContent || !isCurrentChapterLatest()}
                   onClick={handleCreateNewChapter}
                   style={{ 
                     borderRadius: '6px',
@@ -1336,6 +1760,50 @@ const VolumeWritingStudio: React.FC = () => {
                     zIndex: 1
                   }}>
                     ✨ AI写作
+                  </span>
+                </Button>
+
+                {/* 一次生成10章按钮 */}
+                <Button 
+                  type="default" 
+                  icon={<RobotOutlined style={{ fontSize: '16px' }} />} 
+                  size="large"
+                  disabled={loading || isStreaming || batchWriting}
+                  loading={batchWriting}
+                  onClick={handleBatchWriting}
+                  style={{ 
+                    borderRadius: '8px',
+                    height: '42px',
+                    padding: '0 20px',
+                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    border: 'none',
+                    color: 'white',
+                    fontWeight: 700,
+                    fontSize: '14px',
+                    boxShadow: '0 4px 16px rgba(16, 185, 129, 0.4)',
+                    flexShrink: 0,
+                    marginLeft: '12px',
+                    transition: 'all 0.3s ease',
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.5)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 4px 16px rgba(16, 185, 129, 0.4)';
+                  }}
+                >
+                  <span style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '6px',
+                    position: 'relative',
+                    zIndex: 1
+                  }}>
+                    🚀 一次生成10章
                   </span>
                 </Button>
                 
@@ -1701,6 +2169,7 @@ const VolumeWritingStudio: React.FC = () => {
                     try {
                       setLoading(true);
                       setIsStreaming(true);
+                      streamingCompleteRef.current = false; // 重置完成标志
                       setCurrentContent(''); // 清空当前内容，准备接收流式输出
                       setLastSavedContent(''); // 清空已保存内容，确保AI写作完成后触发自动保存
                       
@@ -1771,9 +2240,10 @@ const VolumeWritingStudio: React.FC = () => {
                           const { done, value } = await reader.read();
                           
                           if (done) {
-                            console.log('流读取完成');
+                            console.log('✅ 流读取完成（SSE连接关闭）');
                             setLoading(false);
                             setIsStreaming(false);
+                            streamingCompleteRef.current = true; // 设置完成标志
                             message.success('AI写作完成，已更新记忆库与一致性');
                             break;
                           }
@@ -1996,6 +2466,7 @@ const VolumeWritingStudio: React.FC = () => {
                                 message.destroy('coherence');
                                 message.destroy('progress');
                                 message.success('章节写作完成！');
+                                streamingCompleteRef.current = true; // 设置完成标志
                               } else if (eventType === 'error') {
                                 throw new Error('写作过程中出现错误');
                               }
@@ -2927,6 +3398,53 @@ const VolumeWritingStudio: React.FC = () => {
             }
           ]}
         />
+      </Modal>
+
+      {/* 批量写作进度弹窗 */}
+      <Modal
+        title="批量生成进度"
+        open={batchModalVisible}
+        footer={[
+          <Button key="cancel" danger onClick={cancelBatchWriting}>
+            取消生成
+          </Button>
+        ]}
+        closable={false}
+        maskClosable={false}
+        width={500}
+      >
+        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+          <div style={{ marginBottom: '20px' }}>
+            <RobotOutlined style={{ fontSize: '48px', color: '#10b981' }} />
+          </div>
+          <div style={{ marginBottom: '16px', fontSize: '16px', fontWeight: 600 }}>
+            正在生成第 {batchProgress.current} / {batchProgress.total} 章
+          </div>
+          <div style={{ marginBottom: '20px' }}>
+            <div style={{
+              width: '100%',
+              height: '8px',
+              backgroundColor: '#f0f0f0',
+              borderRadius: '4px',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                width: `${(batchProgress.current / batchProgress.total) * 100}%`,
+                height: '100%',
+                backgroundColor: '#10b981',
+                transition: 'width 0.3s ease'
+              }} />
+            </div>
+          </div>
+          <div style={{ fontSize: '14px', color: '#666' }}>
+            {batchProgress.current === 0 ? '准备开始...' : 
+             batchProgress.current === batchProgress.total ? '即将完成...' :
+             `正在生成第${batchProgress.current}章内容...`}
+          </div>
+          <div style={{ marginTop: '16px', fontSize: '12px', color: '#999' }}>
+            💡 此过程可能需要几分钟时间，请耐心等待
+          </div>
+        </div>
       </Modal>
     </div>
   );

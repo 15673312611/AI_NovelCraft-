@@ -968,6 +968,302 @@ public class LongNovelMemoryManager {
     // ================================
 
     /**
+     * 提取章节信息（同步方法，不需要记忆库）
+     * 只针对当前章节内容进行信息提取
+     */
+    public Map<String, Object> extractChapterInfo(
+            Long novelId, 
+            Integer chapterNumber, 
+            String chapterContent,
+            com.novel.dto.AIConfigRequest aiConfig) {
+        
+        logger.info("🤖 开始提取第{}章信息, 使用AI配置={}", chapterNumber, aiConfig != null);
+        
+        try {
+            // 构建AI提示词，提取当前章节的信息（不需要记忆库）
+            String prompt = buildChapterAnalysisPrompt(chapterNumber, chapterContent, null);
+            
+            // 调用AI服务提取内容
+            String aiResponse;
+            if (aiConfig != null && aiConfig.isValid()) {
+                // 使用前端传递的AI配置
+                aiResponse = callAIWithConfig(prompt, aiConfig);
+            } else {
+                // 使用后端默认配置
+                aiResponse = aiWritingService.generateContent(prompt, "chapter_memory_extraction");
+            }
+            
+            // 解析AI返回的JSON格式信息
+            Map<String, Object> extractedInfo = parseAIResponse(aiResponse);
+            
+            logger.info("✅ 第{}章信息提取完成", chapterNumber);
+            return extractedInfo;
+            
+        } catch (Exception e) {
+            logger.error("❌ 提取第{}章信息失败: {}", chapterNumber, e.getMessage(), e);
+            return new HashMap<>();
+        }
+    }
+
+    /**
+     * 保存提取的信息到记忆库（数据库）
+     */
+    @SuppressWarnings("unchecked")
+    public void saveExtractedInfoToMemory(Long novelId, Integer chapterNumber, Map<String, Object> extractedInfo) {
+        logger.info("💾 开始保存第{}章提取信息到记忆库", chapterNumber);
+        
+        try {
+            // 1. 保存角色信息
+            if (extractedInfo.containsKey("characterUpdates")) {
+                List<Map<String, Object>> characterUpdates = (List<Map<String, Object>>) extractedInfo.get("characterUpdates");
+                saveCharacterProfiles(novelId, chapterNumber, characterUpdates);
+            }
+            
+            // 2. 保存事件信息
+            if (extractedInfo.containsKey("eventUpdates")) {
+                List<Map<String, Object>> eventUpdates = (List<Map<String, Object>>) extractedInfo.get("eventUpdates");
+                saveChronicleEvents(novelId, chapterNumber, eventUpdates);
+            }
+            
+            // 3. 保存伏笔信息
+            if (extractedInfo.containsKey("foreshadowingUpdates")) {
+                List<Map<String, Object>> foreshadowingUpdates = (List<Map<String, Object>>) extractedInfo.get("foreshadowingUpdates");
+                saveForeshadowing(novelId, chapterNumber, foreshadowingUpdates);
+            }
+            
+            // 4. 保存世界观信息
+            if (extractedInfo.containsKey("worldviewUpdates")) {
+                List<Map<String, Object>> worldviewUpdates = (List<Map<String, Object>>) extractedInfo.get("worldviewUpdates");
+                saveWorldDictionary(novelId, chapterNumber, worldviewUpdates);
+            }
+            
+            // 5. 保存世界实体信息（势力、地点、物品）
+            if (extractedInfo.containsKey("worldEntities")) {
+                List<Map<String, Object>> worldEntities = (List<Map<String, Object>>) extractedInfo.get("worldEntities");
+                saveWorldEntities(novelId, chapterNumber, worldEntities);
+            }
+            
+            logger.info("✅ 第{}章信息已保存到记忆库", chapterNumber);
+            
+        } catch (Exception e) {
+            logger.error("❌ 保存第{}章信息到记忆库失败: {}", chapterNumber, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 保存角色档案到数据库
+     */
+    private void saveCharacterProfiles(Long novelId, Integer chapterNumber, List<Map<String, Object>> characterUpdates) {
+        if (characterUpdates == null || characterUpdates.isEmpty()) {
+            return;
+        }
+        
+        for (Map<String, Object> charData : characterUpdates) {
+            try {
+                String name = (String) charData.get("name");
+                if (name == null || name.trim().isEmpty()) {
+                    continue;
+                }
+                
+                // 查找是否已存在该角色
+                NovelCharacterProfile profile = characterProfileRepository.findByNovelIdAndName(novelId, name);
+                
+                if (profile == null) {
+                    // 新角色 - 创建
+                    profile = new NovelCharacterProfile();
+                    profile.setNovelId(novelId);
+                    profile.setName(name);
+                    profile.setFirstAppearance(chapterNumber);
+                    profile.setLastAppearance(chapterNumber);
+                    profile.setAppearanceCount(1);
+                    profile.setStatus("ACTIVE");
+                } else {
+                    // 已存在角色 - 更新
+                    profile.setLastAppearance(chapterNumber);
+                    profile.setAppearanceCount(profile.getAppearanceCount() + 1);
+                }
+                
+                // 更新角色详细信息
+                if (charData.containsKey("coreTrait")) {
+                    profile.setPersonalityTraits(objectMapper.writeValueAsString(charData.get("coreTrait")));
+                }
+                
+                if (profile.getId() == null) {
+                    characterProfileRepository.insert(profile);
+                } else {
+                    characterProfileRepository.updateById(profile);
+                }
+                logger.debug("保存角色: {}", name);
+                
+            } catch (Exception e) {
+                logger.warn("保存角色信息失败: {}", e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 保存事件到大事年表
+     */
+    private void saveChronicleEvents(Long novelId, Integer chapterNumber, List<Map<String, Object>> eventUpdates) {
+        if (eventUpdates == null || eventUpdates.isEmpty()) {
+            return;
+        }
+        
+        try {
+            NovelChronicle chronicle = new NovelChronicle();
+            chronicle.setNovelId(novelId);
+            chronicle.setChapterNumber(chapterNumber);
+            chronicle.setEvents(objectMapper.writeValueAsString(eventUpdates));
+            chronicle.setImportanceLevel(5); // 默认重要程度
+            
+            chronicleRepository.insert(chronicle);
+            logger.debug("保存{}个事件", eventUpdates.size());
+            
+        } catch (Exception e) {
+            logger.warn("保存事件失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 保存伏笔信息
+     */
+    private void saveForeshadowing(Long novelId, Integer chapterNumber, List<Map<String, Object>> foreshadowingUpdates) {
+        if (foreshadowingUpdates == null || foreshadowingUpdates.isEmpty()) {
+            return;
+        }
+        
+        for (Map<String, Object> foreshadow : foreshadowingUpdates) {
+            try {
+                String content = (String) foreshadow.get("content");
+                if (content == null || content.trim().isEmpty()) {
+                    continue;
+                }
+                
+                NovelForeshadowing entity = new NovelForeshadowing();
+                entity.setNovelId(novelId);
+                entity.setContent(content);
+                entity.setPlantedChapter(chapterNumber);
+                entity.setStatus("ACTIVE");
+                entity.setPriority(5); // 默认优先级
+                
+                foreshadowingRepository.insert(entity);
+                logger.debug("保存伏笔: {}", content.substring(0, Math.min(20, content.length())));
+                
+            } catch (Exception e) {
+                logger.warn("保存伏笔失败: {}", e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 保存世界观词典
+     */
+    private void saveWorldDictionary(Long novelId, Integer chapterNumber, List<Map<String, Object>> worldviewUpdates) {
+        if (worldviewUpdates == null || worldviewUpdates.isEmpty()) {
+            return;
+        }
+        
+        for (Map<String, Object> worldData : worldviewUpdates) {
+            try {
+                String term = (String) worldData.get("term");
+                if (term == null || term.trim().isEmpty()) {
+                    continue;
+                }
+                
+                // 查找是否已存在
+                NovelWorldDictionary dict = worldDictionaryRepository.findByNovelIdAndTerm(novelId, term);
+                
+                if (dict == null) {
+                    // 新词条
+                    dict = new NovelWorldDictionary();
+                    dict.setNovelId(novelId);
+                    dict.setTerm(term);
+                    dict.setFirstMention(chapterNumber);
+                    dict.setUsageCount(1);
+                    dict.setType("CONCEPT"); // 默认类型
+                    
+                    if (worldData.containsKey("description")) {
+                        dict.setDescription((String) worldData.get("description"));
+                    }
+                }  else {
+                    // 已存在，更新使用次数
+                    dict.setUsageCount(dict.getUsageCount() + 1);
+                }
+                
+                if (dict.getId() == null) {
+                    worldDictionaryRepository.insert(dict);
+                } else {
+                    worldDictionaryRepository.updateById(dict);
+                }
+                logger.debug("保存世界观词条: {}", term);
+                
+            } catch (Exception e) {
+                logger.warn("保存世界观词条失败: {}", e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 保存世界实体（势力、地点、物品）
+     */
+    private void saveWorldEntities(Long novelId, Integer chapterNumber, List<Map<String, Object>> worldEntities) {
+        if (worldEntities == null || worldEntities.isEmpty()) {
+            return;
+        }
+        
+        for (Map<String, Object> entity : worldEntities) {
+            try {
+                String name = (String) entity.get("name");
+                String type = (String) entity.get("type");
+                
+                if (name == null || name.trim().isEmpty()) {
+                    continue;
+                }
+                
+                // 查找是否已存在
+                NovelWorldDictionary dict = worldDictionaryRepository.findByNovelIdAndTerm(novelId, name);
+                
+                if (dict == null) {
+                    dict = new NovelWorldDictionary();
+                    dict.setNovelId(novelId);
+                    dict.setTerm(name);
+                    dict.setFirstMention(chapterNumber);
+                    dict.setUsageCount(1);
+                    
+                    // 设置类型
+                    if ("ORGANIZATION".equals(type)) {
+                        dict.setType("ORGANIZATION");
+                    } else if ("LOCATION".equals(type)) {
+                        dict.setType("GEOGRAPHY");
+                    } else if ("ARTIFACT".equals(type)) {
+                        dict.setType("ITEM");
+                    } else {
+                        dict.setType("CONCEPT");
+                    }
+                    
+                    if (entity.containsKey("hookLine")) {
+                        dict.setDescription((String) entity.get("hookLine"));
+                    }
+                    
+                    dict.setIsImportant(true); // 标记为重要设定
+                } else {
+                    dict.setUsageCount(dict.getUsageCount() + 1);
+                }
+                
+                if (dict.getId() == null) {
+                    worldDictionaryRepository.insert(dict);
+                } else {
+                    worldDictionaryRepository.updateById(dict);
+                }
+                logger.debug("保存世界实体: {} ({})", name, type);
+                
+            } catch (Exception e) {
+                logger.warn("保存世界实体失败: {}", e.getMessage());
+            }
+        }
+    }
+
+    /**
      * 异步调用AI提取章节信息（支持AI配置参数）
      * 一次性提取角色、事件、伏笔、世界观等所有信息
      */

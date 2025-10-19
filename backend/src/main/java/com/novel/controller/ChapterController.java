@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * 章节控制器
@@ -279,45 +278,54 @@ public class ChapterController {
             logger.info("开始概要章节: chapterId={}, novelId={}, chapterNumber={}, 使用AI配置={}", 
                        id, chapter.getNovelId(), chapter.getChapterNumber(), aiConfig != null);
             
-            // 同步执行概要任务
-            // 获取当前记忆库
-            Map<String, Object> memoryBank = longNovelMemoryManager.loadMemoryBankFromDatabase(chapter.getNovelId());
-            if (memoryBank == null) {
-                memoryBank = new HashMap<>();
-            }
-            
-            // 更新记忆库（使用前端配置或后端默认配置）
-            Map<String, Object> updatedMemoryBank;
+            // 同步执行概要任务 - 直接提取当前章节信息，不需要加载记忆库
+            Map<String, Object> extractedInfo;
             if (aiConfig != null && aiConfig.isValid()) {
-                updatedMemoryBank = longNovelMemoryManager.updateMemoryFromChapter(
+                extractedInfo = longNovelMemoryManager.extractChapterInfo(
                     chapter.getNovelId(), 
                     chapter.getChapterNumber(), 
-                    chapter.getContent(), 
-                    memoryBank,
+                    chapter.getContent(),
                     aiConfig
                 );
             } else {
                 logger.info("使用后端默认配置概要章节");
-                @SuppressWarnings("deprecation")
-                Map<String, Object> result = longNovelMemoryManager.updateMemoryFromChapter(
+                extractedInfo = longNovelMemoryManager.extractChapterInfo(
                     chapter.getNovelId(), 
                     chapter.getChapterNumber(), 
-                    chapter.getContent(), 
-                    memoryBank
+                    chapter.getContent(),
+                    null
                 );
-                updatedMemoryBank = result;
             }
             
-            logger.info("章节概要完成: chapterId={}, 角色{}个, 事件{}个", 
+            // 1. 提取章节概要并保存到chapter表
+            String chapterSummary = null;
+            if (extractedInfo.containsKey("chapterSummary")) {
+                chapterSummary = (String) extractedInfo.get("chapterSummary");
+                if (chapterSummary != null && !chapterSummary.trim().isEmpty()) {
+                    chapter.setSummary(chapterSummary);
+                    chapterService.updateChapter(id, chapter);
+                    logger.info("✅ 章节概要已保存: chapterId={}, summary长度={}", id, chapterSummary.length());
+                }
+            }
+            
+            // 2. 保存提取的信息到记忆库
+            longNovelMemoryManager.saveExtractedInfoToMemory(
+                chapter.getNovelId(),
+                chapter.getChapterNumber(),
+                extractedInfo
+            );
+            
+            logger.info("✅ 章节概要完成: chapterId={}, 提取到{}个角色, {}个事件", 
                        id,
-                       getMapSize(updatedMemoryBank, "characterProfiles"),
-                       getListSize(updatedMemoryBank, "chronicle"));
+                       getListSize(extractedInfo, "characterUpdates"),
+                       getListSize(extractedInfo, "eventUpdates"));
             
             Map<String, Object> response = new HashMap<>();
             response.put("message", "章节概要完成");
             response.put("chapterId", id);
-            response.put("characterCount", getMapSize(updatedMemoryBank, "characterProfiles"));
-            response.put("eventCount", getListSize(updatedMemoryBank, "chronicle"));
+            response.put("characterCount", getListSize(extractedInfo, "characterUpdates"));
+            response.put("eventCount", getListSize(extractedInfo, "eventUpdates"));
+            response.put("summary", chapterSummary); // 返回概要内容
             return ResponseEntity.ok(response);
             
         } catch (Exception e) {
@@ -327,14 +335,6 @@ public class ChapterController {
             errorResponse.put("message", e.getMessage());
             return ResponseEntity.status(500).body(errorResponse);
         }
-    }
-    
-    private int getMapSize(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        if (value instanceof Map) {
-            return ((Map<?, ?>) value).size();
-        }
-        return 0;
     }
     
     private int getListSize(Map<String, Object> map, String key) {

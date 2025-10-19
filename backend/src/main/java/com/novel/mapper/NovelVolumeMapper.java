@@ -28,6 +28,17 @@ public interface NovelVolumeMapper extends BaseMapper<NovelVolume> {
     NovelVolume selectByVolumeNumber(@Param("novelId") Long novelId, @Param("volumeNumber") Integer volumeNumber);
 
     /**
+     * 根据章节号查询所属的卷
+     * 通过章节范围 (chapter_start <= chapterNumber <= chapter_end) 来查找
+     */
+    @Select("SELECT * FROM novel_volumes " +
+            "WHERE novel_id = #{novelId} " +
+            "AND chapter_start <= #{chapterNumber} " +
+            "AND chapter_end >= #{chapterNumber} " +
+            "LIMIT 1")
+    NovelVolume selectByChapterNumber(@Param("novelId") Long novelId, @Param("chapterNumber") Integer chapterNumber);
+
+    /**
      * 更新卷的实际字数
      */
     @Update("UPDATE novel_volumes SET actual_word_count = #{actualWordCount}, updated_at = NOW() WHERE id = #{volumeId}")

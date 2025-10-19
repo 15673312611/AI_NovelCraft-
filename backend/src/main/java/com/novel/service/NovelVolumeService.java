@@ -73,4 +73,16 @@ public class NovelVolumeService {
 
         return volume;
     }
+
+    /**
+     * 根据章节号查询所属的卷
+     * 通过章节范围来查找当前章节属于哪个卷
+     * 
+     * @param novelId 小说ID
+     * @param chapterNumber 章节号
+     * @return 所属的卷，如果找不到返回null
+     */
+    public NovelVolume findVolumeByChapterNumber(Long novelId, Integer chapterNumber) {
+        return volumeMapper.selectByChapterNumber(novelId, chapterNumber);
+    }
 }

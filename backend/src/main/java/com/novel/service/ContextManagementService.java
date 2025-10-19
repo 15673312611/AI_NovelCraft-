@@ -23,8 +23,7 @@ public class ContextManagementService {
     @Autowired
     private CharacterManagementService characterManagementService;
 
-    @Autowired
-    private ChapterSummaryService chapterSummaryService;
+
 
     @Autowired
     private ChapterRepository chapterRepository;
@@ -38,17 +37,9 @@ public class ContextManagementService {
     @Autowired
     private PromptTemplateService promptTemplateService;
 
-    /**
-     * 构建完整的AI上下文消息列表
-     * 充分利用128k上下文容量，确保AI获得足够的创作信息
-     */
-    public List<Map<String, String>> buildFullContextMessages(
-            Novel novel,
-            Map<String, Object> chapterPlan,
-            Map<String, Object> memoryBank,
-            String userAdjustment) {
-        return buildFullContextMessages(novel, chapterPlan, memoryBank, userAdjustment, null);
-    }
+    @Autowired
+    private NovelVolumeService novelVolumeService;
+
 
     /**
      * 构建完整的AI上下文消息列表（支持自定义模板）
@@ -308,7 +299,7 @@ public class ContextManagementService {
                 "2. 每次创作前先思考：这段内容能吸引读者吗？有情绪吗？有冲突吗？有钩子吗？\n" +
                 "3. 写完后自检：删除所有废话，强化所有钩子\n" +
                 "4. 永远记住：商业价值=读者愿意花钱追更的程度\n\n" +
-                
+
                 "现在，请用这套爆款写作法则，创作出让读者欲罢不能的精彩内容！";
     }
 
@@ -737,49 +728,77 @@ public class ContextManagementService {
     private String buildCurrentVolumeContext(Map<String, Object> memoryBank, int chapterNumber) {
         StringBuilder context = new StringBuilder();
 
-        Object currentVolumeData = memoryBank.get("currentVolumeOutline");
-        if (currentVolumeData instanceof Map) {
-            Map<String, Object> volumeData = (Map<String, Object>) currentVolumeData;
+        // 首先尝试从memoryBank获取novelId
+        Long novelId = null;
+        Object novelIdObj = memoryBank.get("novelId");
+        if (novelIdObj instanceof Number) {
+            novelId = ((Number) novelIdObj).longValue();
+        }
 
-            context.append("📖 **当前卷信息**\n");
-
-            Object volumeTitle = volumeData.get("title");
-            if (volumeTitle != null) {
-                context.append("- 卷标题: ").append(volumeTitle).append("\n");
-            }
-
-            Object volumeTheme = volumeData.get("theme");
-            if (volumeTheme != null) {
-                context.append("- 核心主题: ").append(volumeTheme).append("\n");
-            }
-
-            Object mainConflict = volumeData.get("mainConflict");
-            if (mainConflict != null) {
-                context.append("- 主要冲突: ").append(mainConflict).append("\n");
-            }
-
-            Object chapterRange = volumeData.get("chapterRange");
-            if (chapterRange != null) {
-                context.append("- 章节范围: ").append(chapterRange).append("\n");
-            }
-
-            Object keyEvents = volumeData.get("keyEvents");
-            if (keyEvents instanceof List) {
-                List<Map<String, Object>> events = (List<Map<String, Object>>) keyEvents;
-                context.append("- 关键事件:\n");
-                for (Map<String, Object> event : events) {
-                    context.append("  * ").append(event.get("description"));
-                    Object eventChapter = event.get("targetChapter");
-                    if (eventChapter != null) {
-                        context.append(" (第").append(eventChapter).append("章)");
+        if (novelId != null) {
+            try {
+                // 从数据库查询当前章节所属的卷
+                com.novel.domain.entity.NovelVolume volume = novelVolumeService.findVolumeByChapterNumber(novelId, chapterNumber);
+                
+                if (volume != null) {
+                    context.append("📖 **当前卷信息**\n");
+                    context.append("- 卷标题: ").append(volume.getTitle()).append("\n");
+                    context.append("- 核心主题: ").append(volume.getTheme()).append("\n");
+                    
+                    if (volume.getDescription() != null && !volume.getDescription().isEmpty()) {
+                        context.append("- 卷描述: ").append(volume.getDescription()).append("\n");
                     }
-                    context.append("\n");
+                    
+                    if (volume.getContentOutline() != null && !volume.getContentOutline().isEmpty()) {
+                        context.append("- 卷详情大纲:\n").append(volume.getContentOutline()).append("\n");
+                    }
+                    
+                    if (volume.getKeyEvents() != null && !volume.getKeyEvents().isEmpty()) {
+                        context.append("- 关键事件: ").append(volume.getKeyEvents()).append("\n");
+                    }
+                    
+                    if (volume.getCharacterDevelopment() != null && !volume.getCharacterDevelopment().isEmpty()) {
+                        context.append("- 角色发展: ").append(volume.getCharacterDevelopment()).append("\n");
+                    }
+                    
+                    context.append("- 章节范围: 第").append(volume.getChapterStart())
+                           .append("章 - 第").append(volume.getChapterEnd()).append("章\n");
+                }
+            } catch (Exception e) {
+                logger.warn("查询当前卷信息失败: {}", e.getMessage());
+                // 失败时尝试从memoryBank获取（作为降级方案）
+                Object currentVolumeData = memoryBank.get("currentVolumeOutline");
+                if (currentVolumeData instanceof Map) {
+                    Map<String, Object> volumeData = (Map<String, Object>) currentVolumeData;
+                    context.append("📖 **当前卷信息**\n");
+                    
+                    Object volumeTitle = volumeData.get("title");
+                    if (volumeTitle != null) {
+                        context.append("- 卷标题: ").append(volumeTitle).append("\n");
+                    }
+                    
+                    Object volumeTheme = volumeData.get("theme");
+                    if (volumeTheme != null) {
+                        context.append("- 核心主题: ").append(volumeTheme).append("\n");
+                    }
                 }
             }
-
-            Object climax = volumeData.get("climax");
-            if (climax != null) {
-                context.append("- 高潮设置: ").append(climax).append("\n");
+        } else {
+            // 如果没有novelId，尝试从memoryBank获取（兼容旧逻辑）
+            Object currentVolumeData = memoryBank.get("currentVolumeOutline");
+            if (currentVolumeData instanceof Map) {
+                Map<String, Object> volumeData = (Map<String, Object>) currentVolumeData;
+                context.append("📖 **当前卷信息**\n");
+                
+                Object volumeTitle = volumeData.get("title");
+                if (volumeTitle != null) {
+                    context.append("- 卷标题: ").append(volumeTitle).append("\n");
+                }
+                
+                Object volumeTheme = volumeData.get("theme");
+                if (volumeTheme != null) {
+                    context.append("- 核心主题: ").append(volumeTheme).append("\n");
+                }
             }
         }
 
@@ -1746,22 +1765,21 @@ public class ContextManagementService {
      */
     private String buildChapterTaskContext(Map<String, Object> chapterPlan, int chapterNumber) {
         StringBuilder context = new StringBuilder();
-        context.append("严格遵守本章创作要求:\n");
-
+        context.append("【写作要求】\n");
 
         Object estimatedWords = chapterPlan.get("estimatedWords");
         if (estimatedWords != null) {
-            context.append("目标字数(最多上下浮动300字): ").append(estimatedWords).append("字\n");
+            int targetWords = Integer.parseInt(estimatedWords.toString());
+            context.append("**字数要求：** 严格控制在").append(targetWords)
+                    .append("字");
         }
 
-
-
-        // 添加输出格式要求
-        context.append("\n**严格遵守输出格式要求：**\n");
-        context.append("1. 必须先生成章节标题，格式为：$[标题内容]$ 两个$ 中间是标题的格式,并且标题名称不用显示'第x章' 就章节名称就行 \n");
-        context.append("2. 标题要求：吸引眼球、悬念感强、2-10字、符合网文风格\n");
-        context.append("3. 标题后换行，然后开始正文内容\n");
-        context.append("4. 正文不要任何说明或者解释文字，直接输出小说正文 除了小说正文 任何内容都不需要\n");
+        context.append("**【格式规范-必须逐条执行】:**\n");
+        context.append("1. **标题格式：** 必须首先生成：$[章节标题]$ （注意：两个$符号中间是标题，不要包含'第X章'字样 必须要$符号 方便前端提取）\n");
+        context.append("2. **标题要求：** 2-10字内，网文风格，悬念感强，吸引眼球\n");
+        context.append("3. **换行要求：** 标题后必须换行两次\n");
+        context.append("4. **正文要求：** 直接开始小说叙事，禁止任何说明、解释、备注等非正文内容\n");
+        context.append("5. **输出纯净：** 除了$[标题]$和正文，不要输出任何其他文字\n\n");
 
         return context.toString();
     }

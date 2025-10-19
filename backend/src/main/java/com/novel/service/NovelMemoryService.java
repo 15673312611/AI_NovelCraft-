@@ -85,7 +85,7 @@ public class NovelMemoryService {
                     String content = ch.getContent();
                     if (content != null) {
                         // 只提供前 800 字的片段，避免提示过长
-                        m.put("contentSnippet", content.substring(0, Math.min(800, content.length())));
+                        m.put("contentSnippet", content.substring(0, Math.min(4000, content.length())));
                     }
                     recentChapters.add(m);
                 }
