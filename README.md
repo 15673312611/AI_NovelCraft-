@@ -56,7 +56,9 @@
   - **Kimi (月之暗面)**：超长上下文（最高262K）
   - 前端配置，灵活切换
   - 支持自定义API地址
-
+  - 
+ ### 作者微信:soe303
+ 
  ### 项目演示
  <img width="2560" height="1398" alt="image" src="https://github.com/user-attachments/assets/3aa8f44a-094c-42f2-99e7-573952ce6b2a" />
  <img width="2560" height="1398" alt="image" src="https://github.com/user-attachments/assets/8e052d39-11f8-4776-b69a-b27b2a72f3ff" />
