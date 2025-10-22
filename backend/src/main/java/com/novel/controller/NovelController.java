@@ -7,11 +7,15 @@ import com.novel.service.NovelService;
 import com.novel.service.ChapterService;
 import com.novel.service.ProtagonistStatusService;
 import com.novel.repository.CharacterRepository;
+import com.novel.common.security.SecurityUtils;
+import com.novel.common.security.AuthUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
@@ -164,89 +168,7 @@ public class NovelController {
         }
     }
 
-    /**
-     * 创建小说
-     */
-    @PostMapping
-    public ResponseEntity<?> createNovel(@RequestBody Map<String, Object> request) {
-        try {
-            // 验证请求参数
-            if (request == null) {
-                Map<String, Object> errorResponse = new HashMap<>();
-                errorResponse.put("error", "参数错误");
-                errorResponse.put("message", "请求体不能为空");
-                return ResponseEntity.badRequest().body(errorResponse);
-            }
-            
-            // 提取小说信息 - 支持两种格式
-            @SuppressWarnings("unchecked")
-            Map<String, Object> novelData;
-            
-            // 检查是否是包装格式 {"novel": {...}}
-            if (request.containsKey("novel")) {
-                novelData = (Map<String, Object>) request.get("novel");
-            } else {
-                // 直接格式 {"title": "...", "description": "..."}
-                novelData = request;
-            }
-            
-            if (novelData == null) {
-                Map<String, Object> errorResponse = new HashMap<>();
-                errorResponse.put("error", "参数错误");
-                errorResponse.put("message", "小说信息不能为空");
-                return ResponseEntity.badRequest().body(errorResponse);
-            }
-            
-            // 验证必要字段
-            String title = (String) novelData.get("title");
-            
-            if (title == null || title.trim().isEmpty()) {
-                Map<String, Object> errorResponse = new HashMap<>();
-                errorResponse.put("error", "参数错误");
-                errorResponse.put("message", "小说标题不能为空");
-                return ResponseEntity.badRequest().body(errorResponse);
-            }
-            
-            Novel novel = buildNovelFromMap(novelData);
-            
-            System.out.println("接收到创建小说请求: " + novel.getTitle());
-            Novel createdNovel = novelService.createNovel(novel);
-            System.out.println("小说创建成功，ID: " + createdNovel.getId());
-            
-            // 创建初始角色（如果提供）
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> charactersData = (List<Map<String, Object>>) request.get("characters");
-            List<Character> createdCharacters = new ArrayList<>();
-            
-            if (charactersData != null && !charactersData.isEmpty()) {
-                for (Map<String, Object> characterData : charactersData) {
-                    Character character = buildCharacterFromMap(characterData, createdNovel.getId());
-                    characterRepository.insert(character);
-                    createdCharacters.add(character);
-                    System.out.println("创建初始角色: " + character.getName());
-                }
-            }
-            
-            // 返回创建结果
-            Map<String, Object> response = new HashMap<>();
-            response.put("novel", createdNovel);
-            response.put("characters", createdCharacters);
-            response.put("success", true);
-            
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            // 记录错误日志
-            System.err.println("创建小说失败: " + e.getMessage());
-            e.printStackTrace();
 
-            // 返回详细错误信息
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("error", "创建小说失败");
-            errorResponse.put("message", e.getMessage());
-            errorResponse.put("cause", e.getCause() != null ? e.getCause().getMessage() : "未知原因");
-            return ResponseEntity.status(500).body(errorResponse);
-        }
-    }
 
     /**
      * 兼容性方法：直接接收小说对象
@@ -255,8 +177,11 @@ public class NovelController {
     public ResponseEntity<?> createSimpleNovel(@RequestBody Novel novel) {
         try {
             System.out.println("接收到简单创建小说请求: " + novel.getTitle());
-            Novel createdNovel = novelService.createNovel(novel);
-            System.out.println("小说创建成功，ID: " + createdNovel.getId());
+            
+            // 从认证信息中获取当前用户ID（过滤器已校验登录）
+            Long userId = AuthUtils.getCurrentUserId();
+            Novel createdNovel = novelService.createNovel(novel, userId);
+            System.out.println("小说创建成功，ID: " + createdNovel.getId() + ", 作者ID: " + userId);
             return ResponseEntity.ok(createdNovel);
         } catch (Exception e) {
             System.err.println("创建小说失败: " + e.getMessage());
@@ -658,9 +583,8 @@ public class NovelController {
     @GetMapping("/writable")
     public ResponseEntity<Object> getWritableNovels() {
         try {
-            // TODO: 从认证信息中获取真实的userId
-            Long userId = 1L; // 临时写死
-            
+            // 从认证信息中获取当前用户ID（过滤器已校验登录）
+            Long userId = AuthUtils.getCurrentUserId();
             List<Novel> novels = novelService.getWritableNovels(userId);
             
             logger.info("获取可写作书籍列表成功，数量: {}", novels.size());

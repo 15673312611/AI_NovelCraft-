@@ -31,6 +31,9 @@ const App: React.FC = () => {
   // 检查是否是写作页面(不显示导航栏和侧边栏)
   const isWritingPage = location.pathname.includes('/writing')
   
+  // 检查是否是认证页面(登录/注册,不显示导航栏和侧边栏)
+  const isAuthPage = location.pathname === '/login' || location.pathname === '/register'
+  
   return (
     <AntdApp>
       {isWritingPage ? (
@@ -39,6 +42,14 @@ const App: React.FC = () => {
           <Routes>
             <Route path="/novels/:novelId/writing" element={<NovelCraftStudio />} />
             <Route path="/novels/:novelId/volumes/:volumeId/writing" element={<VolumeWritingStudio />} />
+          </Routes>
+        </Layout>
+      ) : isAuthPage ? (
+        // 认证页面:全屏模式,无导航栏和侧边栏
+        <Layout className="app-layout" style={{ height: '100vh' }}>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
           </Routes>
         </Layout>
       ) : (
@@ -51,8 +62,6 @@ const App: React.FC = () => {
               <Content className="app-content">
                 <Routes>
                   <Route path="/" element={<HomePage />} />
-                  <Route path="/login" element={<LoginPage />} />
-                  <Route path="/register" element={<RegisterPage />} />
                   <Route path="/novels" element={<NovelListPage />} />
                   <Route path="/novels/new" element={<NovelCreateWizard />} />
                   <Route path="/novels/:id/edit" element={<NovelEditPage />} />

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { Layout, Menu, Avatar, Dropdown, Space } from 'antd'
+import { Layout, Avatar, Dropdown, Space } from 'antd'
 import { 
   UserOutlined, 
   LogoutOutlined, 
@@ -83,73 +83,59 @@ const AppHeader: React.FC = () => {
     },
   ]
 
-  const guestMenuItems = [
-    {
-      key: 'login',
-      label: '登录',
-      onClick: () => navigate('/login'),
-    },
-    {
-      key: 'register',
-      label: '注册',
-      onClick: () => navigate('/register'),
-    },
-  ]
-
   return (
     <Header className="app-header">
-      <div className="header-left">
-        <div className="logo" onClick={() => navigate('/')}>
+      <div className="header-inner">
+        <div className="logo" onClick={() => navigate('/') }>
           小说创作系统
         </div>
-      </div>
-      
-      <div className="header-right">
-        {isAuthenticated ? (
-          <Space size="middle">            
-            {/* 用户信息下拉菜单 */}
-            <Dropdown 
-              menu={{ items: userMenuItems }} 
-              placement="bottomRight"
-              trigger={['click']}
-              overlayClassName="user-dropdown"
-            >
-              <div className="user-info">
-                <div className="user-avatar-container">
-                  <Avatar 
-                    className="user-avatar" 
-                    icon={<UserOutlined />}
-                    style={{
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                      border: '2px solid rgba(255, 255, 255, 0.8)'
-                    }}
-                  />
-                  <div className="user-status-dot"></div>
+
+        <div className="header-right">
+          {isAuthenticated ? (
+            <Space size="middle">
+              <Dropdown 
+                menu={{ items: userMenuItems }} 
+                placement="bottomRight"
+                trigger={['click']}
+                overlayClassName="user-dropdown"
+              >
+                <div className="user-info">
+                  <div className="user-avatar-container">
+                    <Avatar 
+                      className="user-avatar" 
+                      icon={<UserOutlined />}
+                      style={{
+                        background: 'linear-gradient(135deg, #4A90E2 0%, #5BA3F5 100%)',
+                        border: '2px solid rgba(255, 255, 255, 0.85)'
+                      }}
+                    />
+                    <div className="user-status-dot"></div>
+                  </div>
+                  <div className="user-details">
+                    <span className="username">{user?.username}</span>
+                    <span className="user-level">创作者</span>
+                  </div>
                 </div>
-                <div className="user-details">
-                  <span className="username">{user?.username}</span>
-                  <span className="user-level">创作者</span>
-                </div>
-              </div>
-            </Dropdown>
-          </Space>
-        ) : (
-          <div className="guest-actions">
-            <button 
-              className="header-btn secondary" 
-              onClick={() => navigate('/login')}
-            >
-              登录
-            </button>
-            <button 
-              className="header-btn primary" 
-              onClick={() => navigate('/register')}
-            >
-              <StarOutlined />
-              开始创作
-            </button>
-          </div>
-        )}
+              </Dropdown>
+            </Space>
+          ) : (
+            <div className="guest-actions">
+              <button 
+                className="header-btn secondary" 
+                onClick={() => navigate('/login')}
+              >
+                登录
+              </button>
+              <button 
+                className="header-btn primary" 
+                onClick={() => navigate('/register')}
+              >
+                <StarOutlined />
+                开始创作
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </Header>
   )

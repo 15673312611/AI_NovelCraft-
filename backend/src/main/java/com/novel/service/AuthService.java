@@ -64,8 +64,8 @@ public class AuthService {
             throw new BadCredentialsException("用户账号已被禁用");
         }
 
-        // 生成JWT Token
-        String token = jwtTokenUtil.generateToken(user.getUsername());
+        // 生成JWT Token（包含用户ID和用户名）
+        String token = jwtTokenUtil.generateToken(user.getId(), user.getUsername());
 
         // 更新最后登录时间
         user.setLastLoginTime(LocalDateTime.now());
@@ -106,8 +106,8 @@ public class AuthService {
         // 保存用户
         userRepository.insert(user);
 
-        // 生成JWT Token
-        String token = jwtTokenUtil.generateToken(user.getUsername());
+        // 生成JWT Token（包含用户ID和用户名）
+        String token = jwtTokenUtil.generateToken(user.getId(), user.getUsername());
 
         // 清除密码字段
         user.setPassword(null);
@@ -180,7 +180,7 @@ public class AuthService {
      */
     public AuthResponse refreshToken(String username) {
         User user = getUserByUsername(username);
-        String newToken = jwtTokenUtil.generateToken(username);
+        String newToken = jwtTokenUtil.generateToken(user.getId(), username);
         return new AuthResponse(user, newToken);
     }
 

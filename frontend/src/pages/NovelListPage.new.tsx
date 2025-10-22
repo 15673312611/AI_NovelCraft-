@@ -1,15 +1,22 @@
-import React, { useEffect, useState } from 'react'
-import { Row, Col, Card, Button, Input, Select, Space, Empty, Spin, Modal, message, Tag, Statistic, Form } from 'antd'
-import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, BookOutlined, FileTextOutlined } from '@ant-design/icons'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { Row, Col, Card, Button, Input, Space, Empty, Spin, Modal, message, Tag, Statistic, Form } from 'antd'
+import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, BookOutlined, FileTextOutlined, DownOutlined, CheckOutlined } from '@ant-design/icons'
 import novelVolumeService, { NovelVolume } from '@/services/novelVolumeService'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { AppDispatch, RootState } from '@/store'
 import { fetchNovels, deleteNovel, updateNovel } from '@/store/slices/novelSlice'
+import EnhancedEmptyState from '@/components/common/EnhancedEmptyState'
+import EnhancedStatsCard from '@/components/common/EnhancedStatsCard'
+import PageBackground from '@/components/common/PageBackground'
 import './NovelListPage.new.css'
 
-const { Search } = Input
-const { Option } = Select
+const sortOptions = [
+  { key: 'updatedAt', label: '最近更新' },
+  { key: 'createdAt', label: '创建时间' },
+  { key: 'title', label: '书名' },
+  { key: 'wordCount', label: '字数' }
+]
 
 const NovelListPage: React.FC = () => {
   const navigate = useNavigate()
@@ -17,12 +24,47 @@ const NovelListPage: React.FC = () => {
   const { novels, loading, hasMore, currentPage } = useSelector((state: RootState) => state.novel)
   
   const [searchQuery, setSearchQuery] = useState('')
-  const [genreFilter, setGenreFilter] = useState<string>('all')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [sortBy, setSortBy] = useState<string>('updatedAt') // 排序方式：updatedAt, createdAt, title, wordCount
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [editModalVisible, setEditModalVisible] = useState(false)
   const [editingNovel, setEditingNovel] = useState<any | null>(null)
   const [editForm] = Form.useForm()
+
+  const [sortMenuOpen, setSortMenuOpen] = useState(false)
+  const sortDropdownRef = useRef<HTMLDivElement | null>(null)
+
+  const handleToggleSortMenu = () => {
+    setSortMenuOpen((prev) => !prev)
+  }
+
+  const handleSelectSort = (key: string) => {
+    setSortBy(key)
+    setSortMenuOpen(false)
+  }
+
+  useEffect(() => {
+    if (!sortMenuOpen) return
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (sortDropdownRef.current && !sortDropdownRef.current.contains(event.target as Node)) {
+        setSortMenuOpen(false)
+      }
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSortMenuOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [sortMenuOpen])
 
   // 初始加载
   useEffect(() => {
@@ -46,6 +88,20 @@ const NovelListPage: React.FC = () => {
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [hasMore, loading, isLoadingMore, currentPage])
+
+  // 快捷键支持
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Ctrl/Cmd + N 创建新小说
+      if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+        e.preventDefault()
+        navigate('/novels/new')
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyPress)
+    return () => window.removeEventListener('keydown', handleKeyPress)
+  }, [navigate])
 
   // 加载更多数据
   const loadMore = async () => {
@@ -71,14 +127,27 @@ const NovelListPage: React.FC = () => {
   const totalChapters = novelsArray.reduce((sum, n) => sum + (n.chapterCount || 0), 0)
   const totalWords = novelsArray.reduce((sum, n) => sum + (n.wordCount || 0), 0)
 
-  const filteredNovels = novelsArray.filter(novel => {
-    const matchesSearch = novel.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         novel.description.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesGenre = genreFilter === 'all' || novel.genre === genreFilter
-    const matchesStatus = statusFilter === 'all' || novel.status === statusFilter
-
-    return matchesSearch && matchesGenre && matchesStatus
-  })
+  // 筛选和排序
+  const filteredAndSortedNovels = novelsArray
+    .filter(novel => {
+      const matchesSearch = novel.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                           novel.description.toLowerCase().includes(searchQuery.toLowerCase())
+      return matchesSearch
+    })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case 'updatedAt':
+          return new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
+        case 'createdAt':
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        case 'title':
+          return a.title.localeCompare(b.title, 'zh-CN')
+        case 'wordCount':
+          return (b.wordCount || 0) - (a.wordCount || 0)
+        default:
+          return 0
+      }
+    })
 
   // 根据小说ID直接进入对应卷的写作页
   const enterWritingDirectly = async (novelId: number) => {
@@ -105,9 +174,6 @@ const NovelListPage: React.FC = () => {
     }
   }
 
-  const genres = Array.from(new Set(novelsArray.map(novel => novel.genre)))
-  const statuses = Array.from(new Set(novelsArray.map(novel => novel.status)))
-
   const handleDeleteNovel = (novelId: number, novelTitle: string) => {
     Modal.confirm({
       title: '确认删除',
@@ -131,6 +197,9 @@ const NovelListPage: React.FC = () => {
 
   return (
     <div className="modern-novel-list">
+      {/* 装饰性背景 */}
+      <PageBackground />
+      
       {/* 顶部统计区 */}
       <div className="page-header">
         <div className="header-content">
@@ -149,41 +218,17 @@ const NovelListPage: React.FC = () => {
           </Button>
         </div>
 
-        {/* 统计卡片 */}
-        <div className="stats-grid">
-          <div className="stat-card">
-            <div className="stat-icon">
-              <BookOutlined />
-            </div>
-            <div className="stat-content">
-              <div className="stat-value">{totalNovels}</div>
-              <div className="stat-label">作品数</div>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon">
-              <FileTextOutlined />
-            </div>
-            <div className="stat-content">
-              <div className="stat-value">{totalChapters}</div>
-              <div className="stat-label">章节数</div>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon">
-              <EditOutlined />
-            </div>
-            <div className="stat-content">
-              <div className="stat-value">{(totalWords / 10000).toFixed(1)}万</div>
-              <div className="stat-label">总字数</div>
-            </div>
-          </div>
-        </div>
+        {/* 统计卡片 - 使用增强版本 */}
+        <EnhancedStatsCard 
+          totalNovels={totalNovels}
+          totalChapters={totalChapters}
+          totalWords={totalWords}
+        />
       </div>
 
-      {/* 搜索和筛选 */}
+      {/* 搜索和排序 */}
       <div className="filters-section">
-        <Search
+        <Input
           placeholder="搜索小说标题或描述..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -192,33 +237,27 @@ const NovelListPage: React.FC = () => {
           size="large"
           className="search-input"
         />
-        
-        <div className="filter-group">
-          <Select
-            value={genreFilter}
-            onChange={setGenreFilter}
-            placeholder="类型"
-            size="large"
-            style={{ width: 140 }}
-          >
-            <Option value="all">所有类型</Option>
-            {genres.map(genre => (
-              <Option key={genre} value={genre}>{genre}</Option>
-            ))}
-          </Select>
 
-          <Select
-            value={statusFilter}
-            onChange={setStatusFilter}
-            placeholder="状态"
-            size="large"
-            style={{ width: 140 }}
-          >
-            <Option value="all">所有状态</Option>
-            {statuses.map(status => (
-              <Option key={status} value={status}>{status}</Option>
-            ))}
-          </Select>
+        <div className="sort-dropdown-wrapper" ref={sortDropdownRef}>
+          <Button className="sort-button" onClick={handleToggleSortMenu}>
+            <span>排序方式</span>
+            <DownOutlined />
+          </Button>
+
+          {sortMenuOpen && (
+            <div className="sort-dropdown">
+              {sortOptions.map(({ key, label }) => (
+                <button
+                  key={key}
+                  className={`sort-dropdown-item ${sortBy === key ? 'selected' : ''}`}
+                  onClick={() => handleSelectSort(key)}
+                >
+                  {sortBy === key ? <CheckOutlined className="sort-dropdown-check" /> : <span className="sort-dropdown-placeholder" />}
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -228,9 +267,9 @@ const NovelListPage: React.FC = () => {
           <Spin size="large" />
           <p>加载中...</p>
         </div>
-      ) : filteredNovels.length > 0 ? (
+      ) : filteredAndSortedNovels.length > 0 ? (
         <Row gutter={[24, 24]} className="novels-grid">
-          {filteredNovels.map(novel => (
+          {filteredAndSortedNovels.map(novel => (
             <Col xs={24} sm={12} lg={8} xl={6} key={novel.id}>
               <div
                 className="novel-card"
@@ -302,22 +341,21 @@ const NovelListPage: React.FC = () => {
           ))}
         </Row>
       ) : (
-        <div className="empty-state">
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={
-              <p className="empty-text">
-                {searchQuery || genreFilter !== 'all' || statusFilter !== 'all' 
-                  ? '没有找到匹配的小说' 
-                  : '还没有创作任何小说'}
-              </p>
-            }
-          />
-        </div>
+        // 空状态 - 区分搜索和无数据
+        searchQuery ? (
+          <div className="empty-state">
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={<p className="empty-text">没有找到匹配的小说</p>}
+            />
+          </div>
+        ) : (
+          <EnhancedEmptyState onCreateNovel={() => navigate('/novels/new')} />
+        )
       )}
 
       {/* 加载更多提示 */}
-      {filteredNovels.length > 0 && (
+      {filteredAndSortedNovels.length > 0 && (
         <div style={{ 
           textAlign: 'center', 
           padding: '32px 0',

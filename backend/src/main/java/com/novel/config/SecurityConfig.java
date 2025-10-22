@@ -35,6 +35,9 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
     @Autowired
     private JwtAuthenticationFilter jwtAuthenticationFilter;
 
+    @Autowired
+    private EnhancedJwtAuthenticationFilter enhancedJwtAuthenticationFilter;
+
     @Override
     protected void configure(HttpSecurity http) throws Exception {
         http
@@ -56,8 +59,8 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
             .httpBasic().disable()
             .headers().frameOptions().disable(); // 允许iframe嵌入
             
-        // 添加JWT过滤器
-        http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+        // 添加增强版JWT过滤器（优先使用，包含用户ID）
+        http.addFilterBefore(enhancedJwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
     }
 
     @Override

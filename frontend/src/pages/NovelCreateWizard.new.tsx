@@ -82,42 +82,45 @@ const NovelCreateWizard: React.FC = () => {
             form={form}
             layout="vertical"
             onFinish={onFinish}
+            className="wizard-form"
             initialValues={{
               genre: '玄幻',
             }}
           >
-            <Form.Item
-              name="title"
-              label={<span className="form-label">作品名称</span>}
-              rules={[
-                { required: true, message: '请输入作品名称' },
-                { max: 100, message: '名称长度不能超过100个字符' },
-              ]}
-            >
-              <Input 
-                placeholder="例如：修仙之路" 
-                size="large"
-                className="form-input"
-              />
-            </Form.Item>
-
-            <Form.Item
-              name="genre"
-              label={<span className="form-label">小说类型</span>}
-              rules={[{ required: true, message: '请选择小说类型' }]}
-            >
-              <Select 
-                placeholder="请选择小说类型" 
-                size="large"
-                className="form-select"
+            <div className="form-row">
+              <Form.Item
+                name="title"
+                label={<span className="form-label">作品名称</span>}
+                rules={[
+                  { required: true, message: '请输入作品名称' },
+                  { max: 100, message: '名称长度不能超过100个字符' },
+                ]}
               >
-                {GENRE_OPTIONS.map(option => (
-                  <Select.Option key={option.value} value={option.value}>
-                    {option.label}
-                  </Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
+                <Input 
+                  placeholder="例如：修仙之路" 
+                  size="large"
+                  className="form-input"
+                />
+              </Form.Item>
+
+              <Form.Item
+                name="genre"
+                label={<span className="form-label">小说类型</span>}
+                rules={[{ required: true, message: '请选择小说类型' }]}
+              >
+                <Select 
+                  placeholder="请选择小说类型" 
+                  size="large"
+                  className="form-select"
+                >
+                  {GENRE_OPTIONS.map(option => (
+                    <Select.Option key={option.value} value={option.value}>
+                      {option.label}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </div>
 
             <Form.Item
               name="description"

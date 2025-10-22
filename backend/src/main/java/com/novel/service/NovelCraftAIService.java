@@ -67,6 +67,8 @@ public class NovelCraftAIService {
     @Autowired
     private ContextManagementService contextManagementService;
 
+    @Autowired
+    private MultiStageChapterGenerationService multiStageChapterGenerationService;
     
     @Autowired
     private LongFormCoherenceService longFormCoherenceService;
@@ -2666,10 +2668,43 @@ public class NovelCraftAIService {
     }
 
     /**
-     * 流式章节写作
-     * 使用完整128k上下文的流式写作
+     * 多阶段流式章节写作（新版，推荐）
+     * 
+     * 流程：
+     * 步骤1：剧情构思 - 消化所有重型上下文，生成本章剧情构思
+     * 步骤2：视角判断 - 判断是否需要切换视角
+     * 步骤3：正式写作 - 根据构思+轻量级上下文生成章节
      */
-    public void executeStreamingChapterWriting(
+    public void executeMultiStageStreamingChapterWriting(
+            Novel novel, 
+            Map<String, Object> chapterPlan, 
+            Map<String, Object> memoryBank, 
+            String userAdjustment, 
+            SseEmitter emitter,
+            AIConfigRequest aiConfig,
+            Long promptTemplateId) throws IOException {
+        
+        // 调用多阶段生成服务
+        multiStageChapterGenerationService.executeMultiStageChapterGeneration(
+            novel, chapterPlan, memoryBank, userAdjustment, 
+            emitter, aiConfig, promptTemplateId
+        );
+    }
+    
+    // ============================================================
+    // 以下是旧版章节写作方法（已废弃，使用 executeMultiStageStreamingChapterWriting 代替）
+    // ============================================================
+    
+    /**
+     * 流式章节写作（旧版，已废弃）
+     * 
+     * ⚠️ 已废弃：该方法使用一次性生成，上下文过重，生成质量不佳
+     * ✅ 请使用：executeMultiStageStreamingChapterWriting（三步流程：构思→判断→写作）
+     * 
+     * @deprecated 使用 executeMultiStageStreamingChapterWriting 代替
+     */
+    @Deprecated
+    private void executeStreamingChapterWriting_OLD(
             Novel novel, 
             Map<String, Object> chapterPlan, 
             Map<String, Object> memoryBank, 
@@ -2694,7 +2729,7 @@ public class NovelCraftAIService {
             emitter.send(SseEmitter.event().name("writing").data("开始增强AI写作..."));
             
             // 调用流式AI接口并获取生成的内容
-            String generatedContent = callStreamingAIWithContext(contextMessages, emitter, aiConfig);
+            String generatedContent = callStreamingAIWithContext_OLD(contextMessages, emitter, aiConfig);
             
             // ✅ 写作完成，不再自动更新记忆库（改为前端新建章节时手动触发）
             emitter.send(SseEmitter.event().name("complete").data("写作完成"));
@@ -2709,10 +2744,13 @@ public class NovelCraftAIService {
     }
 
     /**
-     * 使用完整上下文的流式AI调用（真正的流式）
+     * 使用完整上下文的流式AI调用（真正的流式）（旧版，已废弃）
+     * 
+     * @deprecated 已废弃，使用新版多阶段生成
      * @return 生成的完整内容
      */
-    private String callStreamingAIWithContext(List<Map<String, String>> contextMessages, SseEmitter emitter, AIConfigRequest aiConfig) throws IOException {
+    @Deprecated
+    private String callStreamingAIWithContext_OLD(List<Map<String, String>> contextMessages, SseEmitter emitter, AIConfigRequest aiConfig) throws IOException {
         if (aiConfig == null || !aiConfig.isValid()) {
             throw new IOException("AI配置无效");
         }

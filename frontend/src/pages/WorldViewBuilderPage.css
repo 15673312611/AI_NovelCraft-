@@ -1,7 +1,6 @@
 .world-view-builder-page {
-  padding: 24px;
+  padding: 3vh 3vw;
   background: #f5f5f5;
-  min-height: 100vh;
 }
 
 .world-view-builder-page .page-header {

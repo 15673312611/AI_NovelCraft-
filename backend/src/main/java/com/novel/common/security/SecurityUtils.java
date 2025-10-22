@@ -22,11 +22,23 @@ public class SecurityUtils {
         }
         
         Object principal = authentication.getPrincipal();
+        
+        // 优先支持增强版用户主体（直接包含用户ID）
+        if (principal instanceof com.novel.config.EnhancedJwtAuthenticationFilter.EnhancedUserPrincipal) {
+            return ((com.novel.config.EnhancedJwtAuthenticationFilter.EnhancedUserPrincipal) principal).getUserId();
+        }
+        
+        // 支持自定义用户主体
+        if (principal instanceof com.novel.service.CustomUserDetailsService.CustomUserPrincipal) {
+            return ((com.novel.service.CustomUserDetailsService.CustomUserPrincipal) principal).getUserId();
+        }
+        
+        // 支持旧版用户主体
         if (principal instanceof UserPrincipal) {
             return ((UserPrincipal) principal).getUserId();
         }
         
-        // 如果是其他类型的Principal，尝试从name获取ID
+        // 如果是其他类型的Principal，尝试从name获取ID（不推荐）
         if (principal instanceof UserDetails) {
             try {
                 return Long.parseLong(((UserDetails) principal).getUsername());

@@ -6,7 +6,6 @@
   width: 100%;
   padding: 0;
   background: #f8fafc;
-  min-height: 100vh;
 }
 
 /* ==========================================
@@ -14,21 +13,26 @@
    ========================================== */
 .hero-section {
   background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-  padding: var(--space-10) var(--space-6);
+  padding: clamp(5vh, 6vh, 8vh) 0;
   position: relative;
 }
 
-.hero-content {
-  max-width: 1400px;
+.hero-container {
+  width: min(1280px, 92vw);
   margin: 0 auto;
+}
+
+.hero-content {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: var(--space-10);
+  justify-content: space-between;
+  gap: clamp(24px, 6vw, 64px);
+  flex-wrap: wrap;
 }
 
 .hero-text {
-  flex: 1;
+  flex: 1 1 420px;
+  min-width: 320px;
 }
 
 .hero-badge {
@@ -46,7 +50,7 @@
 }
 
 .hero-title {
-  font-size: 42px !important;
+  font-size: clamp(32px, 4vw, 42px) !important;
   font-weight: 700 !important;
   color: #0f172a !important;
   margin: 0 0 var(--space-4) 0 !important;
@@ -55,11 +59,11 @@
 }
 
 .hero-subtitle {
-  font-size: 17px !important;
+  font-size: clamp(15px, 2vw, 18px) !important;
   color: #64748b !important;
   margin: 0 !important;
   line-height: 1.6 !important;
-  max-width: 600px;
+  max-width: 580px;
 }
 
 .hero-stats {
@@ -88,7 +92,7 @@
 
 .hero-cta-btn {
   height: 50px !important;
-  padding: 0 var(--space-8) !important;
+  padding: 0 clamp(32px, 5vw, 48px) !important;
   font-size: 16px !important;
   font-weight: 600 !important;
   border-radius: var(--radius-xl) !important;
@@ -96,6 +100,7 @@
   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
   border: none !important;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  flex-shrink: 0;
 }
 
 .hero-cta-btn:hover {
@@ -115,6 +120,45 @@
   max-width: 1400px;
   margin: 0 auto;
   padding: var(--space-8) var(--space-6) var(--space-10);
+}
+
+.dashboard-content {
+  width: min(1280px, 92vw);
+  margin: 0 auto;
+  padding-bottom: clamp(5vh, 6vh, 8vh);
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: clamp(20px, 3vw, 32px);
+}
+
+.main-card {
+  grid-column: span 12;
+}
+
+.sidebar-stack {
+  grid-column: span 12;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(16px, 2vw, 20px);
+}
+
+@media (min-width: 992px) {
+  .main-card {
+    grid-column: span 8;
+  }
+
+  .sidebar-stack {
+    grid-column: span 4;
+  }
+}
+
+@media (min-width: 1400px) {
+  .dashboard-content {
+    width: min(1440px, 88vw);
+  }
 }
 
 /* ==========================================
@@ -388,20 +432,17 @@
 }
 
 @media (max-width: 768px) {
-  .hero-section {
-    padding: var(--space-6) var(--space-4);
+  .hero-content {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
-  .hero-title {
-    font-size: 32px !important;
+  .hero-cta-btn {
+    width: 100%;
   }
 
-  .hero-subtitle {
-    font-size: 15px !important;
-  }
-
-  .dashboard-page .ant-row {
-    padding: 0 var(--space-4) var(--space-8);
+  .dashboard-grid {
+    gap: 16px;
   }
 
   .novel-item {

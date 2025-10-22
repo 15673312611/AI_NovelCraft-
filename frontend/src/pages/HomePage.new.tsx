@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Row, Col, Card, Button, Empty, Progress, Typography } from 'antd'
+import { Card, Button, Empty, Progress, Typography } from 'antd'
 import {
   BookOutlined,
   EditOutlined,
@@ -79,32 +79,31 @@ const HomePage: React.FC = () => {
 
   return (
     <div className="dashboard-page">
-      {/* Hero区域 */}
-      <div className="hero-section">
-        <div className="hero-content">
-          <div className="hero-text">
-            <div className="hero-badge">✨ AI智能辅助</div>
-            <Title level={1} className="hero-title">开始你的创作之旅</Title>
-            <Paragraph className="hero-subtitle">
-              AI智能辅助，从大纲到章节，让每一个故事都精彩绝伦
-            </Paragraph>
+      <section className="hero-section">
+        <div className="hero-container">
+          <div className="hero-content">
+            <div className="hero-text">
+              <div className="hero-badge">✨ AI智能辅助</div>
+              <Title level={1} className="hero-title">开始你的创作之旅</Title>
+              <Paragraph className="hero-subtitle">
+                AI智能辅助，从大纲到章节，让每一个故事都精彩绝伦
+              </Paragraph>
+            </div>
+            <Button 
+              type="primary" 
+              size="large" 
+              icon={<PlusOutlined />}
+              onClick={() => navigate('/novels/new')}
+              className="hero-cta-btn"
+            >
+              新建小说
+            </Button>
           </div>
-          <Button 
-            type="primary" 
-            size="large" 
-            icon={<PlusOutlined />}
-            onClick={() => navigate('/novels/new')}
-            className="hero-cta-btn"
-          >
-            新建小说
-          </Button>
         </div>
-      </div>
+      </section>
 
-      {/* 主要内容区域 */}
-      <Row gutter={[20, 20]}>
-        {/* 最近编辑 */}
-        <Col xs={24} lg={17}>
+      <section className="dashboard-content">
+        <div className="dashboard-grid">
           <Card 
             title="最近编辑"
             extra={
@@ -116,7 +115,7 @@ const HomePage: React.FC = () => {
                 查看全部 <RightOutlined />
               </Button>
             }
-            className="content-card"
+            className="content-card main-card"
           >
             {recentNovels.length > 0 ? (
               <div className="novel-list">
@@ -179,70 +178,68 @@ const HomePage: React.FC = () => {
               </Empty>
             )}
           </Card>
-        </Col>
 
-        {/* 快捷操作 */}
-        <Col xs={24} lg={7}>
-          <Card 
-            title="快捷操作"
-            className="content-card"
-          >
-            <div className="quick-action-list">
-              <div 
-                className="quick-action-item"
-                onClick={() => navigate('/novels/new')}
-              >
-                <div className="action-icon" style={{ background: '#eff6ff', color: '#3b82f6' }}>
-                  <PlusOutlined />
+          <div className="sidebar-stack">
+            <Card 
+              title="快捷操作"
+              className="content-card"
+            >
+              <div className="quick-action-list">
+                <div 
+                  className="quick-action-item"
+                  onClick={() => navigate('/novels/new')}
+                >
+                  <div className="action-icon" style={{ background: '#eff6ff', color: '#3b82f6' }}>
+                    <PlusOutlined />
+                  </div>
+                  <div className="action-info">
+                    <Text strong>新建小说</Text>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      开始创作新故事
+                    </Text>
+                  </div>
+                  <RightOutlined style={{ color: '#cbd5e1' }} />
                 </div>
-                <div className="action-info">
-                  <Text strong>新建小说</Text>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    开始创作新故事
+
+                <div 
+                  className="quick-action-item"
+                  onClick={() => navigate('/novels')}
+                >
+                  <div className="action-icon" style={{ background: '#f0fdf4', color: '#10b981' }}>
+                    <BookOutlined />
+                  </div>
+                  <div className="action-info">
+                    <Text strong>我的作品</Text>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      查看所有小说
+                    </Text>
+                  </div>
+                  <RightOutlined style={{ color: '#cbd5e1' }} />
+                </div>
+
+              </div>
+            </Card>
+
+            <Card 
+              className="tips-card"
+              style={{ marginTop: 16 }}
+              bordered={false}
+            >
+              <div className="tip-content">
+                <div className="tip-icon">💡</div>
+                <div className="tip-text">
+                  <Text strong style={{ display: 'block', marginBottom: 6 }}>
+                    写作小贴士
+                  </Text>
+                  <Text style={{ fontSize: 13, lineHeight: 1.6, color: '#92400e' }}>
+                    坚持每天写作，即使只是几百字，也能保持创作的连贯性和灵感的流动
                   </Text>
                 </div>
-                <RightOutlined style={{ color: '#cbd5e1' }} />
               </div>
-
-              <div 
-                className="quick-action-item"
-                onClick={() => navigate('/novels')}
-              >
-                <div className="action-icon" style={{ background: '#f0fdf4', color: '#10b981' }}>
-                  <BookOutlined />
-                </div>
-                <div className="action-info">
-                  <Text strong>我的作品</Text>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    查看所有小说
-                  </Text>
-                </div>
-                <RightOutlined style={{ color: '#cbd5e1' }} />
-              </div>
-
-            </div>
-          </Card>
-
-          {/* 写作提示 */}
-          <Card 
-            className="tips-card"
-            style={{ marginTop: 16 }}
-            bordered={false}
-          >
-            <div className="tip-content">
-              <div className="tip-icon">💡</div>
-              <div className="tip-text">
-                <Text strong style={{ display: 'block', marginBottom: 6 }}>
-                  写作小贴士
-                </Text>
-                <Text style={{ fontSize: 13, lineHeight: 1.6, color: '#92400e' }}>
-                  坚持每天写作，即使只是几百字，也能保持创作的连贯性和灵感的流动
-                </Text>
-              </div>
-            </div>
-          </Card>
-        </Col>
-      </Row>
+            </Card>
+          </div>
+        </div>
+      </section>
     </div>
   )
 }

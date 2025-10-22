@@ -476,11 +476,12 @@ public class NovelCraftController {
             // 发送开始事件
             emitter.send(SseEmitter.event().name("start").data("开始写作章节 " + chapterNumber));
 
-            // 异步执行流式写作
+            // 异步执行流式写作（使用新版多阶段生成）
             final Long finalTemplateId = promptTemplateId;
             CompletableFuture.runAsync(() -> {
                 try {
-                    novelCraftAIService.executeStreamingChapterWriting(
+                    // ✅ 使用新版多阶段生成（构思→判断→写作）
+                    novelCraftAIService.executeMultiStageStreamingChapterWriting(
                         novel, chapterPlan, memoryBank, userAdjustment, emitter, aiConfig, finalTemplateId
                     );
                 } catch (Exception e) {

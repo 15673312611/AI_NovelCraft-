@@ -1,10 +1,9 @@
 /* 卷管理页面样式 */
 .volume-management-page {
-  min-height: 100vh;
   background: radial-gradient(1200px 600px at 10% -10%, rgba(102,126,234,.15), transparent 40%),
               radial-gradient(1000px 600px at 100% 0%, rgba(118,75,162,.12), transparent 40%),
               linear-gradient(180deg, #f6f7fb 0%, #eef1f8 100%);
-  padding: 24px;
+  padding: 3vh 3vw;
 }
 
 /* 动画效果 */

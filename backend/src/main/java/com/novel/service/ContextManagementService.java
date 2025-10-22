@@ -175,7 +175,7 @@ public class ContextManagementService {
     /**
      * 获取系统身份提示词（支持自定义模板）
      */
-    private String getSystemIdentityPrompt(Long promptTemplateId) {
+    public String getSystemIdentityPrompt(Long promptTemplateId) {
         // 如果指定了模板ID，使用自定义模板
         if (promptTemplateId != null) {
             String customContent = promptTemplateService.getTemplateContent(promptTemplateId);
@@ -668,7 +668,7 @@ public class ContextManagementService {
     /**
      * 构建小说基本信息
      */
-    private String buildNovelBasicInfoPrompt(Novel novel) {
+    public String buildNovelBasicInfoPrompt(Novel novel) {
         StringBuilder context = new StringBuilder();
         context.append("**作品基本信息**\n");
         context.append("- 标题: 《").append(novel.getTitle()).append("》\n");
@@ -687,7 +687,7 @@ public class ContextManagementService {
      * 构建大纲上下文
      */
     @SuppressWarnings("unchecked")
-    private String buildOutlineContext(Novel novel, Map<String, Object> memoryBank) {
+    public String buildOutlineContext(Novel novel, Map<String, Object> memoryBank) {
         StringBuilder context = new StringBuilder();
 
         // 小说总大纲
@@ -731,7 +731,7 @@ public class ContextManagementService {
      * 构建当前卷大纲上下文
      */
     @SuppressWarnings("unchecked")
-    private String buildCurrentVolumeContext(Map<String, Object> memoryBank, int chapterNumber) {
+    public String buildCurrentVolumeContext(Map<String, Object> memoryBank, int chapterNumber) {
         StringBuilder context = new StringBuilder();
 
         // 首先尝试从memoryBank获取novelId
@@ -828,7 +828,7 @@ public class ContextManagementService {
     /**
      * 构建角色上下文（从数据库查询）
      */
-    private String buildCharacterContextEnhanced(Long novelId, Map<String, Object> chapterPlan, int chapterNumber) {
+    public String buildCharacterContextEnhanced(Long novelId, Map<String, Object> chapterPlan, int chapterNumber) {
         StringBuilder context = new StringBuilder();
         
         try {
@@ -1191,7 +1191,7 @@ public class ContextManagementService {
     /**
      * 构建主角详细现状上下文
      */
-    private String buildProtagonistStatusContext(Long novelId, Map<String, Object> memoryBank, int chapterNumber) {
+    public String buildProtagonistStatusContext(Long novelId, Map<String, Object> memoryBank, int chapterNumber) {
         try {
             String protagonistStatus = protagonistStatusService.buildProtagonistStatus(novelId, memoryBank, chapterNumber);
             return protagonistStatus;
@@ -1212,7 +1212,7 @@ public class ContextManagementService {
     /**
      * 构建世界观设定上下文（从数据库查询世界词典）
      */
-    private String buildWorldBuildingContext(Long novelId) {
+    public String buildWorldBuildingContext(Long novelId) {
         StringBuilder context = new StringBuilder();
         
         try {
@@ -1594,7 +1594,7 @@ public class ContextManagementService {
     /**
      * 从记忆库读取章节概括（由概括生成）
      */
-    private String buildChaptersSummaryContext(Long novelId, int chapterNumber) {
+    public String buildChaptersSummaryContext(Long novelId, int chapterNumber) {
         StringBuilder context = new StringBuilder();
 
         try {
@@ -1739,7 +1739,7 @@ public class ContextManagementService {
     /**
      * 构建伏笔线索上下文（从数据库查询）
      */
-    private String buildForeshadowingContext(Long novelId) {
+    public String buildForeshadowingContext(Long novelId) {
         StringBuilder context = new StringBuilder();
         
         try {

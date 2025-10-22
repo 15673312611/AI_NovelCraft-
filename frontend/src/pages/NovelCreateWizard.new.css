@@ -3,7 +3,6 @@
    ========================================== */
 
 .novel-create-wizard {
-  min-height: 100vh;
   background: #f8fafc;
 }
 
@@ -12,12 +11,12 @@
    ========================================== */
 .wizard-hero {
   background: #ffffff;
-  padding: var(--space-8) var(--space-6) var(--space-6);
+  padding: var(--space-7) var(--space-6) var(--space-5);
   border-bottom: 1px solid #e2e8f0;
 }
 
 .hero-content {
-  max-width: 800px;
+  max-width: 1000px;
   margin: 0 auto;
   text-align: center;
 }
@@ -49,9 +48,9 @@
    容器
    ========================================== */
 .wizard-container {
-  max-width: 800px;
+  max-width: 1000px;
   margin: 0 auto;
-  padding: var(--space-6) var(--space-6) var(--space-10);
+  padding: var(--space-5) var(--space-6) var(--space-10);
   position: relative;
 }
 
@@ -77,11 +76,27 @@
   border: 1px solid #e2e8f0 !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
   background: #ffffff !important;
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-4);
 }
 
 .wizard-card .ant-card-body {
-  padding: var(--space-8);
+  padding: var(--space-7);
+}
+
+.wizard-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: var(--space-5);
+}
+
+.form-row .ant-form-item {
+  margin-bottom: 0;
 }
 
 /* 表单样式 */
@@ -125,7 +140,7 @@
 }
 
 .form-actions {
-  margin-top: var(--space-8);
+  margin-top: var(--space-6);
   margin-bottom: 0;
 }
 
@@ -157,17 +172,17 @@
 }
 
 .tips-card .ant-card-body {
-  padding: var(--space-5);
+  padding: var(--space-4);
 }
 
 .tips-content {
   display: flex;
-  gap: var(--space-4);
+  gap: var(--space-3);
   align-items: flex-start;
 }
 
 .tips-icon {
-  font-size: 28px;
+  font-size: 24px;
   line-height: 1;
   flex-shrink: 0;
 }
@@ -176,20 +191,20 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .tips-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: #78350f;
   display: block;
 }
 
 .tips-desc {
-  font-size: 14px;
+  font-size: 13px;
   color: #92400e;
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 /* ==========================================
@@ -220,6 +235,15 @@
 
   .wizard-card .ant-card-body {
     padding: var(--space-5);
+  }
+
+  .wizard-form {
+    gap: var(--space-5);
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
   }
 }
 

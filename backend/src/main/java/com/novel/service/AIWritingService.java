@@ -567,4 +567,191 @@ public class AIWritingService {
                 return 4000;
         }
     }
+    
+    /**
+     * 非流式调用AI服务（支持messages列表）
+     * @param messages 消息列表
+     * @param type 生成类型
+     * @param aiConfig AI配置
+     * @return 生成的完整内容
+     */
+    public String generateContentWithMessages(List<Map<String, String>> messages, String type, com.novel.dto.AIConfigRequest aiConfig) {
+        logger.info("开始生成内容（messages模式），类型: {}, messages数量: {}", type, messages.size());
+        
+        // 验证AI配置
+        if (aiConfig == null || !aiConfig.isValid()) {
+            throw new RuntimeException("AI配置无效，请先在设置页面配置AI服务");
+        }
+        
+        String baseUrl = aiConfig.getEffectiveBaseUrl();
+        String apiKey = aiConfig.getApiKey();
+        String model = aiConfig.getModel();
+        
+        // 根据提供商设置合适的 max_tokens
+        int maxTokens = getMaxTokensForProvider(aiConfig.getProvider(), model);
+        
+        // 构建请求体（非流式）
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("model", model);
+        requestBody.put("max_tokens", maxTokens);
+        requestBody.put("stream", false); // 非流式
+        
+        // 根据生成类型优化参数
+        Map<String, Object> optimizedParams = getOptimizedParameters(type);
+        requestBody.putAll(optimizedParams);
+        
+        requestBody.put("messages", messages);
+        
+        // 发送HTTP请求
+        try {
+            String url = aiConfig.getApiUrl();
+            logger.info("🌐 调用AI接口（非流式，messages模式）: {}", url);
+            
+            RestTemplate restTemplate = new RestTemplate();
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(apiKey);
+            
+            HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(requestBody, headers);
+            ResponseEntity<Map> response = restTemplate.postForEntity(url, requestEntity, Map.class);
+            
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Map<String, Object> responseBody = response.getBody();
+                List<Map<String, Object>> choices = (List<Map<String, Object>>) responseBody.get("choices");
+                if (choices != null && !choices.isEmpty()) {
+                    Map<String, Object> firstChoice = choices.get(0);
+                    Map<String, Object> messageObj = (Map<String, Object>) firstChoice.get("message");
+                    if (messageObj != null) {
+                        String content = (String) messageObj.get("content");
+                        logger.info("✅ AI调用成功，返回内容长度: {} 字符", content != null ? content.length() : 0);
+                        return content;
+                    }
+                }
+            }
+            
+            throw new RuntimeException("AI返回内容为空");
+            
+        } catch (Exception e) {
+            logger.error("AI服务调用失败（messages模式），类型: {}", type, e);
+            throw new RuntimeException("AI服务调用失败: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 流式调用AI服务（支持messages列表）
+     * @param messages 消息列表
+     * @param type 生成类型
+     * @param aiConfig AI配置
+     * @param chunkConsumer 处理每个chunk的回调
+     */
+    public void streamGenerateContentWithMessages(
+            List<Map<String, String>> messages, 
+            String type, 
+            com.novel.dto.AIConfigRequest aiConfig, 
+            java.util.function.Consumer<String> chunkConsumer) {
+        
+        logger.info("开始流式生成（messages模式），类型: {}, messages数量: {}", type, messages.size());
+        
+        // 验证AI配置
+        if (aiConfig == null || !aiConfig.isValid()) {
+            throw new RuntimeException("AI配置无效，请先在设置页面配置AI服务");
+        }
+        
+        String baseUrl = aiConfig.getEffectiveBaseUrl();
+        String apiKey = aiConfig.getApiKey();
+        String model = aiConfig.getModel();
+
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            throw new RuntimeException("API Key未配置");
+        }
+
+        // 构建请求体（启用流式）
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("model", model);
+        
+        // 根据提供商设置合适的 max_tokens
+        int maxTokens = getMaxTokensForProvider(aiConfig.getProvider(), model);
+        requestBody.put("max_tokens", maxTokens);   
+        requestBody.put("stream", true); // 启用流式响应
+        
+        // 根据生成类型优化参数
+        Map<String, Object> optimizedParams = getOptimizedParameters(type);
+        requestBody.putAll(optimizedParams);
+
+        requestBody.put("messages", messages);
+
+        // 发送HTTP请求（流式读取）
+        try {
+            String url = aiConfig.getApiUrl();
+            logger.info("🌐 调用AI流式接口（messages模式）: {}", url);
+            
+            // 使用RestTemplate进行流式读取
+            SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+            requestFactory.setConnectTimeout(15000);
+            requestFactory.setReadTimeout(120000);
+            RestTemplate restTemplate = new RestTemplate(requestFactory);
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(apiKey);
+            // 流式接口必须设置Accept为text/event-stream
+            headers.set("Accept", "text/event-stream");
+
+            // 使用ResponseExtractor进行流式读取
+            restTemplate.execute(url, HttpMethod.POST, 
+                req -> {
+                    req.getHeaders().putAll(headers);
+                    req.getBody().write(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsBytes(requestBody));
+                },
+                response -> {
+                    try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(response.getBody(), java.nio.charset.StandardCharsets.UTF_8))) {
+                        
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            line = line.trim();
+                            if (line.startsWith("data: ")) {
+                                String data = line.substring(6);
+                                if ("[DONE]".equals(data)) {
+                                    break; // 流式响应结束
+                                }
+                                
+                                try {
+                                    // 解析JSON数据
+                                    com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+                                    java.util.Map dataMap = om.readValue(data, java.util.Map.class);
+                                    
+                                    Object choicesObj = dataMap.get("choices");
+                                    if (choicesObj instanceof java.util.List) {
+                                        java.util.List choices = (java.util.List) choicesObj;
+                                        if (!choices.isEmpty() && choices.get(0) instanceof java.util.Map) {
+                                            java.util.Map firstChoice = (java.util.Map) choices.get(0);
+                                            Object deltaObj = firstChoice.get("delta");
+                                            if (deltaObj instanceof java.util.Map) {
+                                                Object content = ((java.util.Map) deltaObj).get("content");
+                                                if (content instanceof String && !((String) content).trim().isEmpty()) {
+                                                    String chunk = (String) content;
+                                                    // 调用回调处理chunk
+                                                    chunkConsumer.accept(chunk);
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch (Exception e) {
+                                    logger.warn("解析流式数据失败: {}", e.getMessage());
+                                }
+                            }
+                        }
+                    }
+                    return null;
+                }
+            );
+            
+            logger.info("✅ 流式生成完成（messages模式）");
+            
+        } catch (Exception e) {
+            logger.error("流式AI调用失败（messages模式）: {}", e.getMessage(), e);
+            throw new RuntimeException("流式AI调用失败: " + e.getMessage());
+        }
+    }
 } 

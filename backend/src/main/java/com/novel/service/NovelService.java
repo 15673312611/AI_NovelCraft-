@@ -29,9 +29,9 @@ public class NovelService {
     private UserRepository userRepository;
 
     /**
-     * 创建小说
+     * 创建小说（需要传入用户ID）
      */
-    public Novel createNovel(Novel novel) {
+    public Novel createNovel(Novel novel, Long userId) {
         // 设置默认值
         if (novel.getStatus() == null) {
             novel.setStatus(Novel.NovelStatus.DRAFT);
@@ -46,30 +46,13 @@ public class NovelService {
             novel.setStartedAt(LocalDateTime.now());
         }
 
-        // 临时设置一个默认作者，实际应该从认证中获取
-        if (novel.getAuthorId() == null) {
-            novel.setAuthorId(1L);
-        }
+        // 设置作者ID为当前登录用户
+        novel.setAuthorId(userId);
 
-        // 检查用户是否存在，如果不存在则创建默认用户
-        User author = userRepository.selectById(novel.getAuthorId());
+        // 验证用户是否存在
+        User author = userRepository.selectById(userId);
         if (author == null) {
-            // 创建默认用户
-            User defaultUser = new User();
-            defaultUser.setId(1L);
-            defaultUser.setUsername("admin");
-            defaultUser.setEmail("admin@example.com");
-            defaultUser.setPassword("$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8imdqMNq4NjewGG6/0/Nt.jvJNjKu"); // password123
-            defaultUser.setNickname("系统管理员");
-            defaultUser.setStatus(User.UserStatus.ACTIVE);
-            defaultUser.setEmailVerified(true);
-
-            try {
-                userRepository.insert(defaultUser);
-            } catch (Exception e) {
-                // 如果插入失败（可能是ID冲突），忽略错误
-                System.out.println("默认用户可能已存在: " + e.getMessage());
-            }
+            throw new RuntimeException("用户不存在，无法创建小说。用户ID: " + userId);
         }
 
         try {
@@ -83,6 +66,8 @@ public class NovelService {
             throw e;
         }
     }
+
+
 
     /**
      * 获取小说

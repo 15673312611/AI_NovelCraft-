@@ -92,5 +92,12 @@ public class CustomUserDetailsService implements UserDetailsService {
         public User getUser() {
             return user;
         }
+
+        /**
+         * 获取用户ID
+         */
+        public Long getUserId() {
+            return user.getId();
+        }
     }
 }

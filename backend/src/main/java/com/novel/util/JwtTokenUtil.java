@@ -31,7 +31,7 @@ public class JwtTokenUtil {
     private Long expiration;
 
     /**
-     * 生成Token
+     * 生成Token（只包含用户名，兼容旧版本）
      */
     public String generateToken(String username) {
         Date now = new Date();
@@ -46,10 +46,48 @@ public class JwtTokenUtil {
     }
 
     /**
+     * 生成Token（包含用户ID和用户名，推荐使用）
+     */
+    public String generateToken(Long userId, String username) {
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + expiration);
+        
+        return Jwts.builder()
+                .setSubject(username)
+                .claim("userId", userId)
+                .claim("username", username)
+                .setIssuedAt(now)
+                .setExpiration(expiryDate)
+                .signWith(getSigningKey())
+                .compact();
+    }
+
+    /**
      * 从Token中获取用户名
      */
     public String getUsernameFromToken(String token) {
         return getClaimFromToken(token, Claims::getSubject);
+    }
+
+    /**
+     * 从Token中获取用户ID
+     */
+    public Long getUserIdFromToken(String token) {
+        try {
+            Claims claims = getAllClaimsFromToken(token);
+            Object userIdObj = claims.get("userId");
+            if (userIdObj != null) {
+                if (userIdObj instanceof Integer) {
+                    return ((Integer) userIdObj).longValue();
+                } else if (userIdObj instanceof Long) {
+                    return (Long) userIdObj;
+                }
+            }
+            return null;
+        } catch (Exception e) {
+            logger.error("从Token中获取用户ID失败: " + e.getMessage());
+            return null;
+        }
     }
 
     /**

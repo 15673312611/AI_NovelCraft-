@@ -483,6 +483,12 @@ const VolumeWritingStudio: React.FC = () => {
       return;
     }
 
+    // 检查AI配置
+    if (!checkAIConfig()) {
+      message.error(AI_CONFIG_ERROR_MESSAGE);
+      return;
+    }
+
     // 弹窗输入建议
     const suggestion = await new Promise<string | null>((resolve) => {
       let inputValue = '';
@@ -519,17 +525,19 @@ const VolumeWritingStudio: React.FC = () => {
       message.loading({ content: 'AI正在优化大纲...', key: 'optimizing', duration: 0 });
       
       const token = localStorage.getItem('token');
+      const requestBody = withAIConfig({
+        novelId: parseInt(novelId),
+        currentOutline: originalOutline, // 使用原始内容
+        suggestion
+      });
+      
       const response = await fetch(`/api/outline/optimize-stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
-        body: JSON.stringify({
-          novelId: parseInt(novelId),
-          currentOutline: originalOutline, // 使用原始内容
-          suggestion
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok || !response.body) {
@@ -614,6 +622,12 @@ const VolumeWritingStudio: React.FC = () => {
       return;
     }
 
+    // 检查AI配置
+    if (!checkAIConfig()) {
+      message.error(AI_CONFIG_ERROR_MESSAGE);
+      return;
+    }
+
     // 弹窗输入建议
     const suggestion = await new Promise<string | null>((resolve) => {
       let inputValue = '';
@@ -654,22 +668,24 @@ const VolumeWritingStudio: React.FC = () => {
       message.loading({ content: 'AI正在优化卷大纲...', key: 'optimizing-volume', duration: 0 });
       
       const token = localStorage.getItem('token');
+      const requestBody = withAIConfig({
+        currentOutline: originalOutline,
+        suggestion,
+        volumeInfo: {
+          volumeNumber: currentVolume.volumeNumber,
+          chapterStart: currentVolume.chapterStart,
+          chapterEnd: currentVolume.chapterEnd,
+          description: currentVolume.description
+        }
+      });
+      
       const response = await fetch(`/api/volumes/${currentVolume.id}/optimize-outline-stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
-        body: JSON.stringify({
-          currentOutline: originalOutline,
-          suggestion,
-          volumeInfo: {
-            volumeNumber: currentVolume.volumeNumber,
-            chapterStart: currentVolume.chapterStart,
-            chapterEnd: currentVolume.chapterEnd,
-            description: currentVolume.description
-          }
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok || !response.body) {
@@ -2234,9 +2250,7 @@ const VolumeWritingStudio: React.FC = () => {
                       let buffer = '';
                       let updatedMemoryBankData = null;
                       let accumulatedContent = ''; // 用于累积内容
-                      let titleExtracted = false; // 标记是否已提取标题
-                      let titleBuffer = ''; // 标题缓冲区，用于存储$之间的内容
-                      let inTitleExtraction = false; // 是否正在提取标题（已遇到第一个$）
+                      let currentEventType = ''; // 当前事件类型
 
                       console.log('开始读取流式响应...');
 
@@ -2271,9 +2285,19 @@ const VolumeWritingStudio: React.FC = () => {
                               console.log('🔍 提取的数据:', data);
                               console.log('🔍 数据长度:', data.length);
                               console.log('🔍 数据类型:', typeof data);
+                              console.log('🔍 当前事件类型:', currentEventType);
                               
                               if (data === '[DONE]') {
                                 console.log('🔍 检测到结束标记');
+                                currentEventType = ''; // 重置事件类型
+                                continue;
+                              }
+                              
+                              // 如果是title事件的数据，直接设置标题
+                              if (currentEventType === 'title') {
+                                console.log('✅ 后端提取的章节标题:', data);
+                                setChapterTitle(data);
+                                currentEventType = ''; // 重置事件类型
                                 continue;
                               }
 
@@ -2352,7 +2376,7 @@ const VolumeWritingStudio: React.FC = () => {
                                 }
                               }
 
-                              // 如果需要添加内容，先做清洗并立即更新DOM
+                              // 如果需要添加内容，直接累积显示
                               if (shouldAddContent && contentToAdd) {
                                 console.log('✅ 准备添加内容:', contentToAdd);
 
@@ -2363,85 +2387,28 @@ const VolumeWritingStudio: React.FC = () => {
                                   contentToAdd = '';
                                 }
 
-                                // 处理 $标题$ 格式的章节标题提取
                                 if (contentToAdd) {
-                                  let processedContent = '';
-                                  
-                                  for (let i = 0; i < contentToAdd.length; i++) {
-                                    const char = contentToAdd[i];
-                                    
-                                    if (!titleExtracted) {
-                                      if (char === '$') {
-                                        if (!inTitleExtraction) {
-                                          // 遇到第一个$，开始标题提取
-                                          inTitleExtraction = true;
-                                          titleBuffer = '';
-                                          console.log('🔍 检测到第一个$，开始标题提取');
-                                        } else {
-                                          // 遇到第二个$，完成标题提取
-                                          const extractedTitle = titleBuffer.trim();
-                                          console.log('✅ 提取到章节标题:', extractedTitle);
-                                          setChapterTitle(extractedTitle);
-                                          titleExtracted = true;
-                                          inTitleExtraction = false;
-                                          titleBuffer = '';
-                                          
-                                          // 跳过标题后可能的换行符
-                                          if (i + 1 < contentToAdd.length && contentToAdd[i + 1] === '\n') {
-                                            i++;
-                                          }
-                                        }
-                                      } else if (inTitleExtraction) {
-                                        // 正在提取标题，缓冲字符
-                                        titleBuffer += char;
-                                      } else {
-                                        // 还没遇到第一个$，正常添加内容
-                                        processedContent += char;
-                                      }
-                                    } else {
-                                      // 标题已提取，正常添加内容
-                                      processedContent += char;
-                                    }
-                                  }
-                                  
-                                  contentToAdd = processedContent;
-                                }
-
-                                if (contentToAdd) {
-                                  // 直接累积内容
+                                  // 直接累积内容，保持原始格式（Markdown）
                                   accumulatedContent += contentToAdd;
-
-                                  // 🎨 实时格式化：遇到句号就换行并缩进
-                                  let formattedContent = accumulatedContent;
                                   
-                                  // 移除所有已有的缩进
-                                  formattedContent = formattedContent.replace(/^[　\s]+/gm, '');
+                                  // 处理Markdown格式：移除标题标记，保留空行段落分隔
+                                  let displayContent = accumulatedContent;
                                   
-                                  // 按句号分割
-                                  const parts = formattedContent.split('。');
+                                  // 移除Markdown标题标记（# 标题），但保留标题文本
+                                  displayContent = displayContent.replace(/^#\s+(.+)$/gm, '');
                                   
-                                  if (parts.length > 1) {
-                                    // 有完整的句子
-                                    const completedSentences = parts.slice(0, -1); // 完整的句子
-                                    const lastPart = parts[parts.length - 1]; // 最后未完成的部分
-                                    
-                                    // 格式化完整的句子：每句加句号、换行、缩进
-                                    formattedContent = completedSentences
-                                      .filter(s => s.trim())
-                                      .map(s => '　　' + s.trim() + '。')
-                                      .join('\n');
-                                    
-                                    // 添加未完成的部分
-                                    if (lastPart.trim()) {
-                                      formattedContent += '\n　　' + lastPart.trim();
-                                    }
-                                  } else {
-                                    // 还没有完整句子，只添加首行缩进
-                                    formattedContent = '　　' + formattedContent.trim();
-                                  }
+                                  // 移除旧格式标题标记 $[标题]$ 或 $标题$
+                                  displayContent = displayContent.replace(/\$\[(.+?)\]\$/g, '');
+                                  displayContent = displayContent.replace(/\$(.+?)\$/g, '');
+                                  
+                                  // 清理多余的空行（3个以上空行合并为2个）
+                                  displayContent = displayContent.replace(/\n{3,}/g, '\n\n');
+                                  
+                                  // 清理开头的空行
+                                  displayContent = displayContent.replace(/^\n+/, '');
 
                                   // 立即更新state，触发React重新渲染
-                                  setCurrentContent(formattedContent);
+                                  setCurrentContent(displayContent);
                                 }
                               } else {
                                 console.log('🔍 跳过内容，data:', data);
@@ -2450,6 +2417,7 @@ const VolumeWritingStudio: React.FC = () => {
                               // 处理 'event:' 或 'event: ' 两种格式
                               const eventType = line.startsWith('event: ') ? line.slice(7) : line.slice(6);
                               console.log('事件类型:', eventType);
+                              currentEventType = eventType; // 记录当前事件类型
                               
                               if (eventType === 'preparing') {
                                 message.loading({ content: '正在准备写作环境...', key: 'preparing' });
@@ -2463,6 +2431,10 @@ const VolumeWritingStudio: React.FC = () => {
                               } else if (eventType === 'chunk') {
                                 // chunk事件的数据在下一行的data:中，这里只是标记
                                 console.log('检测到chunk事件，等待数据...');
+                              } else if (eventType === 'title') {
+                                // title事件：后端提取的章节标题
+                                // 标题在下一行的data:中，标记等待提取
+                                console.log('检测到title事件，等待标题数据...');
                               } else if (eventType === 'complete') {
                                 message.destroy('writing');
                                 message.destroy('summary');
