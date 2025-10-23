@@ -2674,6 +2674,8 @@ public class NovelCraftAIService {
      * 步骤1：剧情构思 - 消化所有重型上下文，生成本章剧情构思
      * 步骤2：视角判断 - 判断是否需要切换视角
      * 步骤3：正式写作 - 根据构思+轻量级上下文生成章节
+     * 
+     * @param enableTemplateLoop 是否启用模板循环引擎（前端传参）
      */
     public void executeMultiStageStreamingChapterWriting(
             Novel novel, 
@@ -2682,12 +2684,13 @@ public class NovelCraftAIService {
             String userAdjustment, 
             SseEmitter emitter,
             AIConfigRequest aiConfig,
-            Long promptTemplateId) throws IOException {
+            Long promptTemplateId,
+            Boolean enableTemplateLoop) throws IOException {
         
         // 调用多阶段生成服务
         multiStageChapterGenerationService.executeMultiStageChapterGeneration(
             novel, chapterPlan, memoryBank, userAdjustment, 
-            emitter, aiConfig, promptTemplateId
+            emitter, aiConfig, promptTemplateId, enableTemplateLoop
         );
     }
     

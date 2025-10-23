@@ -2391,20 +2391,23 @@ const VolumeWritingStudio: React.FC = () => {
                                   // 直接累积内容，保持原始格式（Markdown）
                                   accumulatedContent += contentToAdd;
                                   
-                                  // 处理Markdown格式：移除标题标记，保留空行段落分隔
+                                  // 处理格式化显示
                                   let displayContent = accumulatedContent;
                                   
-                                  // 移除Markdown标题标记（# 标题），但保留标题文本
+                                  // 1. 移除Markdown标题标记（# 标题），但保留标题文本
                                   displayContent = displayContent.replace(/^#\s+(.+)$/gm, '');
                                   
-                                  // 移除旧格式标题标记 $[标题]$ 或 $标题$
+                                  // 2. 移除旧格式标题标记 $[标题]$ 或 $标题$
                                   displayContent = displayContent.replace(/\$\[(.+?)\]\$/g, '');
                                   displayContent = displayContent.replace(/\$(.+?)\$/g, '');
                                   
-                                  // 清理多余的空行（3个以上空行合并为2个）
+                                  // 3. 在句号、感叹号、问号后添加换行（如果后面不是换行的话）
+                                  displayContent = displayContent.replace(/([。！？])([^\n])/g, '$1\n$2');
+                                  
+                                  // 4. 清理多余的空行（3个以上空行合并为2个）
                                   displayContent = displayContent.replace(/\n{3,}/g, '\n\n');
                                   
-                                  // 清理开头的空行
+                                  // 5. 清理开头的空行
                                   displayContent = displayContent.replace(/^\n+/, '');
 
                                   // 立即更新state，触发React重新渲染
@@ -2477,15 +2480,7 @@ const VolumeWritingStudio: React.FC = () => {
                           } catch {}
                         }
 
-                        // 自动生成章节标题（若用户未填写）
-                        if (!chapterTitle && accumulatedContent) {
-                          let autoTitle = '';
-                          try {
-                            const firstLine = accumulatedContent.split(/\n|。|！|？/)[0]?.trim() || '';
-                            autoTitle = firstLine.slice(0, 18) || '新章节';
-                          } catch {}
-                          setChapterTitle(autoTitle);
-                        }
+                        // 标题已由后端异步生成并通过title事件发送，无需前端自动生成
 
 
                       } catch (streamError: any) {

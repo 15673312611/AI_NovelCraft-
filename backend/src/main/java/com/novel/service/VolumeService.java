@@ -140,7 +140,7 @@ public class VolumeService {
      */
     @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public void streamGenerateVolumeOutline(Long volumeId, String userAdvice, com.novel.dto.AIConfigRequest aiConfig, java.util.function.Consumer<String> chunkConsumer) {
-        logger.info("📋 [流式] 开始为卷 {} 生成详细大纲", volumeId);
+        logger.info("📋 [流式] 开始为卷 {} 生成卷蓝图", volumeId);
         
         // 验证AI配置
         if (aiConfig == null || !aiConfig.isValid()) {
@@ -164,56 +164,53 @@ public class VolumeService {
         ).orElse(null);
         
         if (superOutline == null || superOutline.getPlotStructure() == null || superOutline.getPlotStructure().isEmpty()) {
-            throw new RuntimeException("小说尚未生成或确认超级大纲，无法生成卷大纲");
+            throw new RuntimeException("小说尚未生成或确认超级大纲，无法生成卷蓝图");
         }
         
         try {
             // 构建提示词
             StringBuilder prompt = new StringBuilder();
-            prompt.append("# 任务\n");
-            prompt.append("为小说《").append(novel.getTitle()).append("》的第 ").append(volume.getVolumeNumber()).append(" 卷生成详细大纲。\n\n");
-            
-            prompt.append("## 小说基本信息\n");
-            prompt.append("- 类型: ").append(novel.getGenre()).append("\n");
+            prompt.append("你的身份\n")
+                  .append("- 资深网文总编/剧情架构师，负责生成‘卷蓝图’：给方向与约束，不锁剧情与执行路径。\n\n")
+                  .append("任务目标\n")
+                  .append("- 基于超级大纲与本卷信息，输出一份宏观‘卷蓝图’，指导创作但不逐章规划。\n")
+                  .append("- 仅描述目标、阻力、代价、阶段性里程碑与开放事件池；禁止写对话、过程细节、具体章节编号。\n\n")
+                  .append("小说信息\n")
+                  .append("- 标题：").append(novel.getTitle()).append("\n")
+                  .append("- 类型：").append(novel.getGenre()).append("\n");
             if (novel.getDescription() != null && !novel.getDescription().isEmpty()) {
-                prompt.append("- 整体构思: ").append(novel.getDescription()).append("\n");
+                prompt.append("- 构思：").append(novel.getDescription()).append("\n");
             }
-            prompt.append("\n");
-            
-            prompt.append("## 超级大纲\n");
-            prompt.append(superOutline.getPlotStructure()).append("\n\n");
-            
-            prompt.append("## 本卷基本信息\n");
-            prompt.append("- 卷名: ").append(volume.getTitle()).append("\n");
-            prompt.append("- 主题: ").append(volume.getTheme()).append("\n");
-            prompt.append("- 简介: ").append(volume.getDescription()).append("\n");
+            prompt.append("- 超级大纲（摘要可用全文）：\n").append(superOutline.getPlotStructure()).append("\n\n")
+                  .append("本卷信息\n")
+                  .append("- 卷名：").append(volume.getTitle()).append("\n")
+                  .append("- 主题：").append(volume.getTheme()).append("\n")
+                  .append("- 简述：").append(volume.getDescription()).append("\n");
             if (volume.getChapterStart() != null && volume.getChapterEnd() != null) {
-                prompt.append("- 章节范围: 第 ").append(volume.getChapterStart()).append(" - ").append(volume.getChapterEnd()).append(" 章\n");
-                int chapterCount = volume.getChapterEnd() - volume.getChapterStart() + 1;
-                prompt.append("- 章节数: ").append(chapterCount).append(" 章\n");
+                prompt.append("- 章节范围：第 ").append(volume.getChapterStart()).append("- ").append(volume.getChapterEnd()).append(" 章\n");
             }
             if (volume.getEstimatedWordCount() != null && volume.getEstimatedWordCount() > 0) {
-                prompt.append("- 目标字数: ").append(volume.getEstimatedWordCount()).append(" 字\n");
+                prompt.append("- 目标字数：").append(volume.getEstimatedWordCount()).append("\n");
             }
-            
             if (userAdvice != null && !userAdvice.trim().isEmpty()) {
-                prompt.append("\n## 用户建议\n");
-                prompt.append(userAdvice).append("\n");
+                prompt.append("- 用户建议：").append(userAdvice.trim()).append("\n");
             }
-            
-            prompt.append("\n## 要求\n");
-            prompt.append("请为这一卷生成**引人入胜的详细大纲**，要求如下：\n\n");
-            prompt.append("1. **情节设计** - 设计精彩的剧情，包括关键转折、高潮冲突、悬念铺垫，让读者欲罢不能\n");
-            prompt.append("2. **人物塑造** - 刻画鲜活的人物形象，展现他们的成长蜕变、情感纠葛、性格碰撞\n");
-            prompt.append("3. **情节推进** - 构建紧凑有力的叙事节奏，伏笔与回收并重，张弛有度\n");
-            prompt.append("4. **创意亮点** - 加入令人眼前一亮的创意元素，可以是设定、台词、场景或情节反转\n\n");
-            prompt.append("**注意事项**：\n");
-            prompt.append("- 不要列出具体的章节编号（如\"第1章\"、\"第2章\"等），只描述剧情流程和发展脉络\n");
-            prompt.append("- 使用生动的语言，让大纲本身就充满吸引力和画面感\n");
-            prompt.append("- 可以使用小标题来组织内容，如\"开局破冰\"、\"矛盾升级\"、\"高潮对决\"、\"余韵回响\"等\n");
-            prompt.append("- 直接输出大纲内容，不要添加\"根据您的要求\"、\"以下是大纲\"等元话语\n\n");
-            
-            logger.info("📝 [流式] 调用AI生成卷大纲，提示词长度: {}", prompt.length());
+            prompt.append("\n输出结构（分段文字，不用列表编号，不锁事件顺序）\n")
+                  .append("1) 卷主题与核心议题\n")
+                  .append("2) 主角状态转变（起点→终点：能力/地位/关系/认知）\n")
+                  .append("3) 主要对手与压力（目标、手段、逼近路径、代价边界）\n")
+                  .append("4) 冲突升级阶梯（难度/风险阈值与触发条件）\n")
+                  .append("5) 资源/权限与代价规则（可用/可失/可反噬）\n")
+                  .append("6) 三线并行节奏（主角线/友军线/反派线的本卷目标与出镜比例）\n")
+                  .append("7) 伏笔‘种/提/收’计划（本卷必须项，保留必要留白）\n")
+                  .append("8) 开放事件池（≥6条：触发条件+影响方向，仅写目标与影响）\n")
+                  .append("9) 里程碑（3-4个：达成标准与可观测信号）\n")
+                  .append("10) 卷末验收标准（期待提升/悬念移交/风险结转）\n\n")
+                  .append("风格与约束\n")
+                  .append("- 专业编辑口吻；只写‘目标—阻力—选择—代价—新局’因果链；不写执行细节与台词。\n")
+                  .append("- 严禁输出JSON或代码块；整份蓝图信息密度充足。\n");
+
+            logger.info("📝 [流式] 调用AI生成卷蓝图，提示词长度: {}", prompt.length());
             
             // 使用真正的流式AI调用
             StringBuilder accumulated = new StringBuilder();
@@ -238,11 +235,11 @@ public class VolumeService {
                 }
             });
             
-            logger.info("✅ [流式] 卷 {} 详细大纲生成并保存成功，总长度: {}", volumeId, accumulated.length());
+            logger.info("✅ [流式] 卷 {} 蓝图生成并保存成功，总长度: {}", volumeId, accumulated.length());
             
         } catch (Exception e) {
-            logger.error("❌ [流式] 生成卷 {} 详细大纲失败", volumeId, e);
-            throw new RuntimeException("流式生成卷大纲失败: " + e.getMessage(), e);
+            logger.error("❌ [流式] 生成卷 {} 蓝图失败", volumeId, e);
+            throw new RuntimeException("流式生成卷蓝图失败: " + e.getMessage(), e);
         }
     }
 
@@ -380,32 +377,31 @@ public class VolumeService {
         logger.info("📝 基于传统大纲生成卷规划");
         
         String volumePlanPrompt = String.format(
-            "你现在是一位专业的网络小说结构规划师，擅长将超长篇、无分卷的详细剧情大纲，按照网文连载节奏与叙事逻辑，拆解为结构清晰、节奏合理、爆点密集的'卷'式结构。\n\n" +
-            "请根据我接下来提供的完整剧情发展线路大纲（不含卷划分），执行以下操作：\n\n" +
+            "你是一位资深网文结构规划师，负责将‘全书大纲（未分卷）’拆解为卷级框架。目标是得到‘卷骨架’，供后续卷蓝图与滚动节拍使用，严禁输出逐章剧情。\n\n" +
             "【小说信息】\n" +
             "- 标题：%s\n" +
             "- 类型：%s\n" +
-            "- **目标卷数（必须严格遵守）：%d**\n\n" +
+            "- 目标卷数（必须严格遵守）：%d\n\n" +
             
-            "**【重要】你必须生成恰好 %d 个卷，不能多也不能少！**\n\n" +
-            
-            "拆卷原则：\n" +
-            "不修改原剧情：\n严格基于我提供的大纲内容进行拆分，不得添加、删除或改动原有情节。\n所有事件、人物、伏笔、高潮必须原样保留，仅做'分段归卷'。\n" +
-            "按叙事阶段划分卷：\n根据主角的成长阶段、地图升级、核心目标转变、势力格局变化等维度，均匀划分为 %d 个大卷。每卷需有明确的主题定位（如'觉醒启程''势力崛起''真相初现''命运对决'等），体现阶段特征。\n" +
-            "每卷结构完整：\n每卷必须包含：\n开篇引爆：承接上一卷结尾，快速引入新冲突或目标\n中期推进：主线发展 + 至少2个中型高潮（如突破、打脸、奇遇）\n卷末高潮：一场高规格战斗、重大反转或命运转折，作为本卷收尾\n悬念钩子：为下一卷埋下期待感（如新敌人现身、真相线索浮现）\n" +
-            "节奏与长度合理：\n每卷建议控制在 50-100章（可根据剧情密度微调）。每卷至少包含 1个大型高潮事件 和 2个以上中型爽点（如越阶战斗、身份揭露、红颜登场、势力建立等）。\n" +
-            "适配多种风格：\n无论原大纲是'热血升级''权谋博弈''苟道发育''无敌碾压''群像叙事'还是'黑暗现实'，均需合理拆卷，不强行套用'废柴逆袭'等模板。\n若原大纲节奏平缓（如种田、经营类），则侧重'阶段性成果'作为高潮；若节奏激烈，则以'战斗/反转'为核心节点。\n\n" +
+            "【拆卷原则】\n" +
+            "- 不锁剧情：不固定事件顺序与执行路径，不写对话与过程，不出现‘第X章’\n" +
+            "- 原则对齐：承接全书大纲的冲突升级、舞台升级、长线伏笔；不得引入破坏规则的新设定\n" +
+            "- 阶段划分：以主角状态变更/地图升级/目标转折/格局变化拆为 %d 卷，每卷主题鲜明\n" +
+            "- 结构完整：每卷具备‘开场承接→中段推进（≥2个中强度节点）→卷末高潮→下一卷钩子’\n" +
+            "- 节奏均衡：详细细化留给后续‘卷蓝图’与‘滚动节拍’\n\n" +
             
             "【输出要求（必须严格遵守）】\n" +
-            "1. **必须生成恰好 %d 个卷的规划！**\n" +
-            "2. 只输出一个 JSON 数组，数组长度必须为 %d，不要任何其他说明/表格/注释/Markdown。\n" +
-            "3. 数组中的每个元素仅包含以下4个字段：title（卷标题）、theme（核心主题）、description（卷描述，150-200字）、contentOutline（详细大纲）。\n" +
-            "4. 字段名必须为英文，且不得包含多余字段。\n\n" +
-            "【完整剧情发展线路大纲】\n%s\n",
+            "1. 必须生成恰好 %d 个卷的规划\n" +
+            "2. 只输出一个 JSON 数组，数组长度必须为 %d，不要任何其他说明/表格/注释/Markdown\n" +
+            "3. 数组中每个元素仅包含4个字段：\n" +
+            "   - title（卷标题，简洁有意象）\n" +
+            "   - theme（核心主题/议题，短语）\n" +
+            "   - description（卷描述，150-200字，说明本卷核心目标、压力来源、阶段特征）\n" +
+            "   - contentOutline（卷骨架摘要，120-200字；仅含：本卷核心目标、2-3个阶段性里程碑（名称级）、卷末钩子；严禁逐章与过程细节）\n" +
+            "4. 字段名必须为英文，且不得包含多余字段\n\n" +
+            "【全书大纲（未分卷文本）】\n%s\n",
             novel.getTitle(),
             novel.getGenre(),
-            volumeCount,
-            volumeCount,
             volumeCount,
             volumeCount,
             volumeCount,
@@ -445,32 +441,31 @@ public class VolumeService {
         logger.info("📝 基于传统大纲生成卷规划（使用AI配置）");
         
         String volumePlanPrompt = String.format(
-            "你现在是一位专业的网络小说结构规划师，擅长将超长篇、无分卷的详细剧情大纲，按照网文连载节奏与叙事逻辑，拆解为结构清晰、节奏合理、爆点密集的'卷'式结构。\n\n" +
-            "请根据我接下来提供的完整剧情发展线路大纲（不含卷划分），执行以下操作：\n\n" +
+            "你是一位资深网文结构规划师，负责将‘全书大纲（未分卷）’拆解为卷级框架。目标是得到‘卷骨架’，供后续卷蓝图与滚动节拍使用，严禁输出逐章剧情。\n\n" +
             "【小说信息】\n" +
             "- 标题：%s\n" +
             "- 类型：%s\n" +
-            "- **目标卷数（必须严格遵守）：%d**\n\n" +
+            "- 目标卷数（必须严格遵守）：%d\n\n" +
             
-            "**【重要】你必须生成恰好 %d 个卷，不能多也不能少！**\n\n" +
-            
-            "拆卷原则：\n" +
-            "不修改原剧情：\n严格基于我提供的大纲内容进行拆分，不得添加、删除或改动原有情节。\n所有事件、人物、伏笔、高潮必须原样保留，仅做'分段归卷'。\n" +
-            "按叙事阶段划分卷：\n根据主角的成长阶段、地图升级、核心目标转变、势力格局变化等维度，均匀划分为 %d 个大卷。每卷需有明确的主题定位（如'觉醒启程''势力崛起''真相初现''命运对决'等），体现阶段特征。\n" +
-            "每卷结构完整：\n每卷必须包含：\n开篇引爆：承接上一卷结尾，快速引入新冲突或目标\n中期推进：主线发展 + 至少2个中型高潮（如突破、打脸、奇遇）\n卷末高潮：一场高规格战斗、重大反转或命运转折，作为本卷收尾\n悬念钩子：为下一卷埋下期待感（如新敌人现身、真相线索浮现）\n" +
-            "节奏与长度合理：\n每卷建议控制在 50-100章（可根据剧情密度微调）。每卷至少包含 1个大型高潮事件 和 2个以上中型爽点（如越阶战斗、身份揭露、红颜登场、势力建立等）。\n" +
-            "适配多种风格：\n无论原大纲是'热血升级''权谋博弈''苟道发育''无敌碾压''群像叙事'还是'黑暗现实'，均需合理拆卷，不强行套用'废柴逆袭'等模板。\n若原大纲节奏平缓（如种田、经营类），则侧重'阶段性成果'作为高潮；若节奏激烈，则以'战斗/反转'为核心节点。\n\n" +
+            "【拆卷原则】\n" +
+            "- 不锁剧情：不固定事件顺序与执行路径，不写对话与过程，不出现‘第X章’\n" +
+            "- 原则对齐：承接全书大纲的冲突升级、舞台升级、长线伏笔；不得引入破坏规则的新设定\n" +
+            "- 阶段划分：以主角状态变更/地图升级/目标转折/格局变化拆为 %d 卷，每卷主题鲜明\n" +
+            "- 结构完整：每卷具备‘开场承接→中段推进（≥2个中强度节点）→卷末高潮→下一卷钩子’\n" +
+            "- 节奏均衡：详细细化留给后续‘卷蓝图’与‘滚动节拍’\n\n" +
             
             "【输出要求（必须严格遵守）】\n" +
-            "1. **必须生成恰好 %d 个卷的规划！**\n" +
-            "2. 只输出一个 JSON 数组，数组长度必须为 %d，不要任何其他说明/表格/注释/Markdown。\n" +
-            "3. 数组中的每个元素仅包含以下4个字段：title（卷标题）、theme（核心主题）、description（卷描述，150-200字）、contentOutline（详细大纲）。\n" +
-            "4. 字段名必须为英文，且不得包含多余字段。\n\n" +
-            "【完整剧情发展线路大纲】\n%s\n",
+            "1. 必须生成恰好 %d 个卷的规划\n" +
+            "2. 只输出一个 JSON 数组，数组长度必须为 %d，不要任何其他说明/表格/注释/Markdown\n" +
+            "3. 数组中每个元素仅包含4个字段：\n" +
+            "   - title（卷标题，简洁有意象）\n" +
+            "   - theme（核心主题/议题，短语）\n" +
+            "   - description（卷描述，150-200字，说明本卷核心目标、压力来源、阶段特征）\n" +
+            "   - contentOutline（卷骨架摘要，120-200字；仅含：本卷核心目标、2-3个阶段性里程碑（名称级）、卷末钩子；严禁逐章与过程细节）\n" +
+            "4. 字段名必须为英文，且不得包含多余字段\n\n" +
+            "【全书大纲（未分卷文本）】\n%s\n",
             novel.getTitle(),
             novel.getGenre(),
-            volumeCount,
-            volumeCount,
             volumeCount,
             volumeCount,
             volumeCount,

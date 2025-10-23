@@ -21,6 +21,7 @@ import { WorldViewBuilderPage } from '@/pages/WorldViewBuilderPage'
 import AIControlPanelPage from '@/pages/AIControlPanelPage'
 import PromptLibraryPage from '@/pages/PromptLibraryPage'
 import WelcomeGuide from '@/pages/WelcomeGuide'
+import AIChatPage from '@/pages/AIChatPage'
 import './App.new.css'
 
 const { Content } = Layout
@@ -74,6 +75,7 @@ const App: React.FC = () => {
                   <Route path="/settings" element={<SettingsPage />} />
                   <Route path="/ai-control-panel" element={<AIControlPanelPage />} />
                   <Route path="/prompt-library" element={<PromptLibraryPage />} />
+                  <Route path="/ai-chat" element={<AIChatPage />} />
                 </Routes>
               </Content>
             </Layout>

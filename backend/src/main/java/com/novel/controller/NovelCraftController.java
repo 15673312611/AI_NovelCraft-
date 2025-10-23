@@ -245,126 +245,7 @@ public class NovelCraftController {
     // 3️⃣ AI写作Agent API
     // ================================
 
-    /**
-     * 执行章节写作
-     * POST /novel-craft/{novelId}/write-chapter
-     */
-    @PostMapping("/{novelId}/write-chapter")
-    public Result<Map<String, Object>> executeChapterWriting(
-            @PathVariable Long novelId,
-            @RequestBody Map<String, Object> request) {
 
-        try {
-            Novel novel = novelService.getById(novelId);
-            if (novel == null) {
-                return Result.error("小说不存在");
-            }
-
-            // 解析章节号：优先取顶层 chapterNumber，其次取 chapterPlan.chapterNumber，最后默认 1
-            Integer chapterNumber = null;
-            Object chapterNumberObj = request.get("chapterNumber");
-            if (chapterNumberObj instanceof Number) {
-                chapterNumber = ((Number) chapterNumberObj).intValue();
-            }
-            Map<String, Object> requestPlan = (Map<String, Object>) request.get("chapterPlan");
-            if (chapterNumber == null && requestPlan != null) {
-                Object planCn = requestPlan.get("chapterNumber");
-                if (planCn instanceof Number) {
-                    chapterNumber = ((Number) planCn).intValue();
-                }
-            }
-            if (chapterNumber == null) {
-                chapterNumber = 1;
-            }
-
-            // 章节规划：优先使用前端传入的 chapterPlan，否则按章节号从库中生成
-            Map<String, Object> chapterPlan = requestPlan != null ? new HashMap<>(requestPlan) :
-                    novelMemoryService.generateChapterPlan(novelId, chapterNumber);
-            chapterPlan.put("chapterNumber", chapterNumber);
-
-            // 记忆库从数据库构建（确保使用最新状态）
-            Map<String, Object> memoryBank = novelMemoryService.buildMemoryBankFromDatabase(novelId);
-
-            // 附加当前卷的大纲上下文，便于上下文构建
-            try {
-                List<NovelVolume> volumes = novelVolumeService.getVolumesByNovelId(novelId);
-                if (volumes != null && !volumes.isEmpty()) {
-                    for (NovelVolume v : volumes) {
-                        if (v.getChapterStart() != null && v.getChapterEnd() != null
-                                && chapterNumber >= v.getChapterStart() && chapterNumber <= v.getChapterEnd()) {
-
-
-
-                            Map<String, Object> vol = new HashMap<>();
-                            vol.put("id", v.getId());
-                            vol.put("title", v.getTitle());
-                            vol.put("theme", v.getTheme());
-                            vol.put("description", v.getDescription());
-                            vol.put("contentOutline", v.getContentOutline());
-                            vol.put("chapterStart", v.getChapterStart());
-                            vol.put("chapterEnd", v.getChapterEnd());
-                            memoryBank.put("currentVolumeOutline", vol);
-                            break;
-                        }
-                    }
-                }
-            } catch (Exception ignore) {}
-
-            String userAdjustment = (String) request.get("userAdjustment");
-
-            logger.info("✍️ 执行章节写作: 小说ID={}, 章节={}", novelId, chapterNumber);
-
-            Map<String, Object> writingResult = novelCraftAIService.executeChapterWriting(
-                novel, chapterPlan, memoryBank, userAdjustment
-            );
-
-            // 持久化章节与概括，确保第2章起能查到前情
-            try {
-                String content = (String) writingResult.get("content");
-                if (content != null && !content.trim().isEmpty()) {
-                    Chapter chapter = new Chapter();
-                    chapter.setNovelId(novelId);
-                    chapter.setChapterNumber(chapterNumber);
-                    String title = (String) writingResult.getOrDefault("title", chapterPlan.get("title"));
-                    chapter.setTitle(title);
-                    chapter.setContent(content);
-                    Object wcObj = writingResult.get("wordCount");
-                    Integer wc = (wcObj instanceof Number) ? ((Number) wcObj).intValue() : content.length();
-                    chapter.setWordCount(wc);
-                    chapterService.createChapter(chapter);
-
-                    try {
-                        String summary = chapterSummaryService.generateChapterSummary(chapter);
-                        chapterSummaryService.saveChapterSummary(novelId, chapterNumber, summary);
-                    } catch (Exception ignore) {}
-                }
-            } catch (Exception e) {
-                logger.warn("章节与概括持久化失败（不影响返回）: {}", e.getMessage());
-            }
-
-            // 同步更新长篇记忆库（并落库）
-            Map<String, Object> updatedMemoryBank = longNovelMemoryManager.updateMemoryFromChapter(
-                novelId, chapterNumber, (String) writingResult.get("content"), memoryBank
-            );
-
-            // 执行一致性检查
-            Map<String, Object> consistencyReport = novelCraftAIService.performConsistencyCheck(
-                novel, writingResult, updatedMemoryBank
-            );
-
-            Map<String, Object> result = new HashMap<>();
-            result.put("writingResult", writingResult);
-            result.put("updatedMemoryBank", updatedMemoryBank);
-            result.put("consistencyReport", consistencyReport);
-            result.put("nextStep", "review_and_continue");
-
-            return Result.success(result);
-
-        } catch (Exception e) {
-            logger.error("章节写作失败", e);
-            return Result.error("写作失败: " + e.getMessage());
-        }
-    }
 
     /**
      * 流式章节写作
@@ -470,19 +351,33 @@ public class NovelCraftController {
                 return emitter;
             }
 
-            logger.info("✍️ 开始流式章节写作: 小说ID={}, 章节={}, AI服务商={}, 模型={}, 模板ID={}", 
-                novelId, chapterNumber, aiConfig.getProvider(), aiConfig.getModel(), promptTemplateId != null ? promptTemplateId : "默认");
+            // 解析模板循环引擎开关（前端传参）
+            Boolean enableTemplateLoop = false;
+            if (request.containsKey("enableTemplateLoop")) {
+                Object templateLoopValue = request.get("enableTemplateLoop");
+                if (templateLoopValue instanceof Boolean) {
+                    enableTemplateLoop = (Boolean) templateLoopValue;
+                } else if (templateLoopValue != null) {
+                    enableTemplateLoop = Boolean.valueOf(String.valueOf(templateLoopValue));
+                }
+            }
+            
+            logger.info("✍️ 开始流式章节写作: 小说ID={}, 章节={}, AI服务商={}, 模型={}, 模板ID={}, 模板循环引擎={}", 
+                novelId, chapterNumber, aiConfig.getProvider(), aiConfig.getModel(), 
+                promptTemplateId != null ? promptTemplateId : "默认", enableTemplateLoop);
 
             // 发送开始事件
             emitter.send(SseEmitter.event().name("start").data("开始写作章节 " + chapterNumber));
 
             // 异步执行流式写作（使用新版多阶段生成）
             final Long finalTemplateId = promptTemplateId;
+            final Boolean finalEnableTemplateLoop = enableTemplateLoop;
             CompletableFuture.runAsync(() -> {
                 try {
                     // ✅ 使用新版多阶段生成（构思→判断→写作）
                     novelCraftAIService.executeMultiStageStreamingChapterWriting(
-                        novel, chapterPlan, memoryBank, userAdjustment, emitter, aiConfig, finalTemplateId
+                        novel, chapterPlan, memoryBank, userAdjustment, emitter, aiConfig, 
+                        finalTemplateId, finalEnableTemplateLoop
                     );
                 } catch (Exception e) {
                     logger.error("流式章节写作失败", e);
