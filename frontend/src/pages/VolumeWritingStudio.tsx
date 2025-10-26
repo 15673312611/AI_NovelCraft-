@@ -29,11 +29,11 @@ const VolumeWritingStudio: React.FC = () => {
   const [pageLoadError, setPageLoadError] = useState<string | null>(null); // 页面加载错误
   const [loading, setLoading] = useState(false);
   const [currentContent, setCurrentContent] = useState('');
+  const [progressHint, setProgressHint] = useState(''); // 生成进度提示
   const [aiGuidance, setAiGuidance] = useState<any>(null);
   const [guidanceHistory, setGuidanceHistory] = useState<any[]>([]);
   const [wordCount, setWordCount] = useState(0);
-  const [memoryBank, setMemoryBank] = useState<any>(null);
-  const [consistencyScore, setConsistencyScore] = useState<number | null>(null);
+  // 已移除前端记忆库干预，上下文由后端构建
   const [chapterNumber, setChapterNumber] = useState<number | null>(null);
   const [chapterTitle, setChapterTitle] = useState<string>('');
   const [userAdjustment, setUserAdjustment] = useState<string>('');
@@ -93,6 +93,28 @@ const VolumeWritingStudio: React.FC = () => {
 
   const { novelId, volumeId} = useParams<{ novelId: string; volumeId: string }>();
   const navigate = useNavigate();
+
+  // 一键格式化：
+  // 1) 在句末标点（。？！）簇后换行
+  // 2) 若后面紧跟后引号（”或’或常见引号），则在引号后换行
+  // 3) 若出现句末标点 + 末引号 + 开引号（” “），则在两个引号之间插入一个空行（段落）
+  // 4) 规范：在句末标点与末引号之间保留一个空格（如：“……？ ”）
+  const formatChineseSentences = (input: string): string => {
+    if (!input) return '';
+    let text = input.replace(/\r\n?/g, '\n');
+    // 优先处理：标点簇 + 末引号 + 开引号 -> 保留末引号在本行，之后空一行再开始下一段
+    text = text.replace(/([。？！]+)\s*([”’"'])\s*([“"'])/g, '$1 $2\n\n$3');
+    // 其次：标点簇 + 末引号（后面不是开引号）-> 在末引号后换行
+    text = text.replace(/([。？！]+)\s*([”’"'])(?!\s*[“"'])\s*/g, '$1 $2\n');
+    // 再者：标点簇后直接换行（后面没有末引号）
+    text = text.replace(/([。？！]+)(?!\s*[”’"'])\s*/g, '$1\n');
+    // 行级清理：去除每行首部的空白（含全角空格），以及行尾空白
+    text = text
+      .split('\n')
+      .map(line => line.replace(/^[\t \u3000]+/g, '').replace(/\s+$/g, ''))
+      .join('\n');
+    return text;
+  };
 
   useEffect(() => {
     // 页面初始化
@@ -239,24 +261,7 @@ const VolumeWritingStudio: React.FC = () => {
     };
   }, [currentContent, chapterTitle, chapterId, lastSavedContent, novelId]);
 
-  // 加载本地记忆库（来自大纲阶段保存的数据）
-  useEffect(() => {
-    if (!novelId) return;
-    try {
-      const saved = localStorage.getItem(`novel_workflow_${novelId}`);
-      if (saved) {
-        const data = JSON.parse(saved);
-        if (data.workflow?.memoryBank) {
-          setMemoryBank(data.workflow.memoryBank);
-          if (typeof data.workflow.memoryBank.consistency_score === 'number') {
-            setConsistencyScore(data.workflow.memoryBank.consistency_score);
-          }
-        }
-      }
-    } catch (e) {
-      // 忽略本地解析错误
-    }
-  }, [novelId]);
+  // 前端不再加载/持久化记忆库
 
 
   useEffect(() => {
@@ -1049,7 +1054,7 @@ const VolumeWritingStudio: React.FC = () => {
   };
 
   // 模拟AI写作
-  const simulateAIWriting = async (chapterNum: number) => {
+  const simulateAIWriting = async (_chapterNum: number) => {
     return new Promise<void>((resolve, reject) => {
       try {
         // 触发AI写作按钮
@@ -1074,7 +1079,7 @@ const VolumeWritingStudio: React.FC = () => {
 
   // 等待写作完成（通过检查流式接口的complete事件）
   const waitForWritingComplete = async () => {
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<void>((resolve) => {
       const checkComplete = () => {
         // 直接检查 streamingCompleteRef，不依赖 hasStarted
         if (streamingCompleteRef.current) {
@@ -2014,61 +2019,37 @@ const VolumeWritingStudio: React.FC = () => {
                 <Button 
                   size="small" 
                   onClick={() => {
-                    // 自动格式化整篇文章 - 专业网文排版
-                    let text = currentContent;
-                    
-                    // 1. 移除所有已有的缩进
-                    text = text.replace(/^[　\s]+/gm, '');
-                    
-                    // 2. 按句号、问号、感叹号分段（保留标点）
-                    const sentences = text.split(/([。！？\n])/);
-                    let formatted = '';
-                    let currentParagraph = '';
-                    
-                    for (let i = 0; i < sentences.length; i++) {
-                      const part = sentences[i];
-                      
-                      if (part === '。' || part === '！' || part === '？') {
-                        // 完成一句话
-                        currentParagraph += part;
-                        formatted += currentParagraph;
-                        currentParagraph = '';
-                        
-                        // 句号后换行并缩进
-                        if (part === '。') {
-                          formatted += '\n　　';
-                        }
-                      } else if (part === '\n') {
-                        // 保留原有换行
-                        if (currentParagraph.trim()) {
-                          formatted += currentParagraph;
-                          currentParagraph = '';
-                        }
-                        formatted += '\n　　';
-                      } else if (part.trim()) {
-                        currentParagraph += part;
+                    if (!currentContent || currentContent.trim() === '') {
+                      message.warning('请先输入或生成内容');
+                      return;
+                    }
+                    const textarea = document.getElementById('streaming-textarea') as HTMLTextAreaElement | null;
+                    const source = currentContent;
+                    if (textarea) {
+                      const start = textarea.selectionStart;
+                      const end = textarea.selectionEnd;
+                      if (start !== end) {
+                        const selected = source.substring(start, end);
+                        const formatted = formatChineseSentences(selected);
+                        const newContent = source.substring(0, start) + formatted + source.substring(end);
+                        setCurrentContent(newContent);
+                        setTimeout(() => {
+                          textarea.selectionStart = start;
+                          textarea.selectionEnd = start + formatted.length;
+                          textarea.focus();
+                        }, 0);
+                      } else {
+                        const formatted = formatChineseSentences(source);
+                        setCurrentContent(formatted);
+                        setTimeout(() => {
+                          textarea.focus();
+                        }, 0);
                       }
+                    } else {
+                      const formatted = formatChineseSentences(source);
+                      setCurrentContent(formatted);
                     }
-                    
-                    // 添加剩余内容
-                    if (currentParagraph.trim()) {
-                      formatted += currentParagraph;
-                    }
-                    
-                    // 3. 清理多余空行和空格
-                    formatted = formatted
-                      .replace(/\n{3,}/g, '\n\n') // 最多两个换行
-                      .replace(/^　　/gm, '　　') // 确保段首缩进
-                      .replace(/　　+/g, '　　') // 移除多余缩进
-                      .trim();
-                    
-                    // 4. 确保开头有缩进
-                    if (!formatted.startsWith('　　')) {
-                      formatted = '　　' + formatted;
-                    }
-                    
-                    setCurrentContent(formatted);
-                    message.success('格式化完成！已按句号自动分段并缩进');
+                    message.success('格式化完成');
                   }}
                   type="primary"
                   style={{ fontSize: '12px', height: '28px', marginLeft: '8px' }}
@@ -2120,8 +2101,8 @@ const VolumeWritingStudio: React.FC = () => {
               <textarea
                 ref={textareaRef}
                 id="streaming-textarea"
-                className={`writing-textarea ${isStreaming ? 'streaming' : ''}`}
-                value={currentContent}
+                className={`writing-textarea ${isStreaming ? 'streaming' : ''} ${progressHint && !currentContent ? 'progress-hint' : ''}`}
+                value={progressHint && !currentContent ? progressHint : currentContent}
                 onChange={(e) => setCurrentContent(e.target.value)}
                 placeholder={isStreaming ? "AI正在为您写作中..." : "开始您的创作..."}
                 style={{ 
@@ -2140,7 +2121,8 @@ const VolumeWritingStudio: React.FC = () => {
                   boxShadow: 'none',
                   transition: 'all 0.3s',
                   letterSpacing: '0.5px',
-                  color: '#1a202c',
+                  color: progressHint && !currentContent ? '#94a3b8' : '#1a202c',
+                  fontStyle: progressHint && !currentContent ? 'italic' : 'normal',
                   minHeight: 'calc(100vh - 300px)',
                   height: '100%'
                 }}
@@ -2184,14 +2166,14 @@ const VolumeWritingStudio: React.FC = () => {
                     // 关闭抽屉
                     setAiDrawerVisible(false);
                     
-                    // 记忆库检查：如果没有记忆库，使用空对象（第一章）
-                    const currentMemoryBank = memoryBank || {};
+                    // 记忆库上下文交由后端构建（前端不再传 memoryBank）
                     
                     try {
                       setLoading(true);
                       setIsStreaming(true);
                       streamingCompleteRef.current = false; // 重置完成标志
                       setCurrentContent(''); // 清空当前内容，准备接收流式输出
+                      setProgressHint('[ 正在连接AI服务... ]'); // 初始化进度提示
                       setLastSavedContent(''); // 清空已保存内容，确保AI写作完成后触发自动保存
                       
                       const chapterPlan = {
@@ -2216,7 +2198,6 @@ const VolumeWritingStudio: React.FC = () => {
                       const token = localStorage.getItem('token');
                       const requestBody = withAIConfig({
                         chapterPlan,
-                        memoryBank: currentMemoryBank,
                         userAdjustment: userAdjustment || undefined,
                         model: selectedModel || undefined, // 传递选择的模型
                         promptTemplateId: selectedTemplateId || undefined // 传递选择的提示词模板ID
@@ -2248,7 +2229,7 @@ const VolumeWritingStudio: React.FC = () => {
 
                       // 读取流式响应
                       let buffer = '';
-                      let updatedMemoryBankData = null;
+                      let updatedMemoryBankData = null; // 前端不再持久化/回传给后端，仅用于兼容后端事件
                       let accumulatedContent = ''; // 用于累积内容
                       let currentEventType = ''; // 当前事件类型
 
@@ -2309,57 +2290,72 @@ const VolumeWritingStudio: React.FC = () => {
                                 const parsed = JSON.parse(data);
                                 console.log('🔍 成功解析JSON:', parsed);
 
-                                // 处理进度消息
-                                if (parsed.message && parsed.step) {
-                                  console.log('🔍 进度消息:', parsed.message, parsed.step);
-                                  
-                                  // 根据不同步骤显示不同的loading消息
-                                  if (parsed.step === 'generating_summary') {
-                                    message.loading({ content: '正在生成章节概括...', key: 'summary' });
-                                  } else if (parsed.step === 'saving_chapter') {
-                                    message.loading({ content: '正在保存章节...', key: 'saving' });
-                                  } else if (parsed.step === 'updating_memory') {
-                                    message.loading({ content: '正在更新记忆库...', key: 'memory' });
-                                  } else if (parsed.step === 'final_coherence_check') {
-                                    message.loading({ content: '正在进行连贯性检查...', key: 'coherence' });
-                                  } else {
-                                    message.loading({ content: parsed.message, key: 'progress' });
-                                  }
-                                  
-                                  // 进度消息不添加到内容中
-                                  shouldAddContent = false;
-                                } else if (parsed.type === 'content') {
+                                // 直接文本/数字/数组，作为内容追加（修复数字被屏蔽）
+                                if (typeof parsed === 'string' || typeof parsed === 'number') {
                                   shouldAddContent = true;
-                                  contentToAdd = parsed.content || '';
-                                  console.log('🔍 从JSON获取content:', contentToAdd);
-                                } else if (parsed.type === 'complete') {
-                                  // 保存完成时的记忆库数据
-                                  if (parsed.updatedMemoryBank) {
-                                    updatedMemoryBankData = parsed.updatedMemoryBank;
-                                  }
-                                  if (parsed.generatedContent) {
+                                  contentToAdd = String(parsed);
+                                } else if (Array.isArray(parsed)) {
+                                  const joined = parsed
+                                    .map((v) => (typeof v === 'string' || typeof v === 'number') ? String(v) : '')
+                                    .join('');
+                                  if (joined) {
                                     shouldAddContent = true;
-                                    contentToAdd = parsed.generatedContent || '';
+                                    contentToAdd = joined;
                                   }
-                                } else {
-                                  // NovelCraft 流可能直接返回包含结果的JSON
-                                  if (parsed.updatedMemoryBank) {
-                                    updatedMemoryBankData = parsed.updatedMemoryBank;
-                                  }
-                                  if (parsed.generatedContent) {
-                                    shouldAddContent = true;
-                                    contentToAdd = parsed.generatedContent || '';
-                                  } else if (parsed.content) {
-                                    // 兼容字段
+                                } else if (parsed && typeof parsed === 'object') {
+                                  // 处理进度消息
+                                  if (parsed.message && parsed.step) {
+                                    console.log('🔍 进度消息:', parsed.message, parsed.step);
+                                    if (parsed.step === 'generating_summary') {
+                                      message.loading({ content: '正在生成章节概括...', key: 'summary' });
+                                      setProgressHint('[ 正在生成章节概括... ]');
+                                    } else if (parsed.step === 'saving_chapter') {
+                                      message.loading({ content: '正在保存章节...', key: 'saving' });
+                                      setProgressHint('[ 正在保存章节... ]');
+                                    } else if (parsed.step === 'updating_memory') {
+                                      message.loading({ content: '正在更新记忆库...', key: 'memory' });
+                                      setProgressHint('[ 正在更新记忆库... ]');
+                                    } else if (parsed.step === 'final_coherence_check') {
+                                      message.loading({ content: '正在进行连贯性检查...', key: 'coherence' });
+                                      setProgressHint('[ 正在进行连贯性检查... ]');
+                                    } else {
+                                      message.loading({ content: parsed.message, key: 'progress' });
+                                      setProgressHint(`[ ${parsed.message} ]`);
+                                    }
+                                    shouldAddContent = false;
+                                  } else if (parsed.type === 'content') {
                                     shouldAddContent = true;
                                     contentToAdd = parsed.content || '';
+                                  } else if (parsed.type === 'complete') {
+                                    if (parsed.updatedMemoryBank) {
+                                      updatedMemoryBankData = parsed.updatedMemoryBank;
+                                    }
+                                    if (parsed.generatedContent) {
+                                      shouldAddContent = true;
+                                      contentToAdd = parsed.generatedContent || '';
+                                    }
+                                  } else {
+                                    if (parsed.updatedMemoryBank) {
+                                      updatedMemoryBankData = parsed.updatedMemoryBank;
+                                    }
+                                    if (parsed.generatedContent) {
+                                      shouldAddContent = true;
+                                      contentToAdd = parsed.generatedContent || '';
+                                    } else if (parsed.content) {
+                                      shouldAddContent = true;
+                                      contentToAdd = parsed.content || '';
+                                    }
                                   }
                                 }
                               } catch (err) {
                                 console.log('🔍 JSON解析失败，作为纯文本处理');
-                                // 排除状态消息，其他都当作内容
+                                // 识别进度消息并设置提示，其他都当作内容
                                 const isProgress = data && /构建完整上下文|上下文消息|开始增强AI写作|更新记忆管理系统|记忆库已更新|记忆系统更新失败|写作完成|preparing|writing|context_ready|memory_updated|memory_stats|updating_memory|complete|正在装配记忆库|正在分析前置章节|正在进行连贯性预检查|正在构建AI写作提示词|AI开始创作中|正在保存章节|正在生成章节概括|正在更新记忆库|🧠|📚|🔍|⚡|🤖|💾|📝/.test(data);
-                                if (data && data.trim() !== '' && !isProgress &&
+                                if (isProgress) {
+                                  // 将进度消息显示为提示
+                                  setProgressHint(`[ ${data.trim()} ]`);
+                                  shouldAddContent = false;
+                                } else if (data && data.trim() !== '' &&
                                     !data.includes('开始写作章节') &&
                                     !data.includes('准备写作环境') &&
                                     !data.includes('开始AI写作') &&
@@ -2373,46 +2369,36 @@ const VolumeWritingStudio: React.FC = () => {
                                   shouldAddContent = true;
                                   contentToAdd = data;
                                   console.log('🔍 纯文本内容:', contentToAdd);
+                                } else if (data && data.trim() !== '') {
+                                  // 其他"正在..."类消息也显示为提示
+                                  setProgressHint(`[ ${data.trim()} ]`);
+                                  shouldAddContent = false;
                                 }
                               }
 
                               // 如果需要添加内容，直接累积显示
                               if (shouldAddContent && contentToAdd) {
                                 console.log('✅ 准备添加内容:', contentToAdd);
+                                console.log('✅ 内容长度:', contentToAdd.length);
+                                console.log('✅ 前50字符:', contentToAdd.substring(0, 50));
 
-                                // 过滤进度/系统类消息
-                                const progressRegex = /构建完整上下文|上下文消息|开始增强AI写作|更新记忆管理系统|记忆库已更新|记忆系统更新失败|写作完成|preparing|writing|context_ready|memory_updated|memory_stats|updating_memory|complete|正在装配记忆库|正在分析前置章节|正在进行连贯性预检查|正在构建AI写作提示词|AI开始创作中|正在保存章节|正在生成章节概括|正在更新记忆库|🧠|📚|🔍|⚡|🤖|💾|📝/;
-                                if (progressRegex.test(contentToAdd)) {
-                                  console.log('🔍 识别为进度消息，跳过');
-                                  contentToAdd = '';
+                                // 正文开始生成，清除进度提示
+                                if (progressHint && accumulatedContent.length === 0) {
+                                  setProgressHint('');
                                 }
 
-                                if (contentToAdd) {
-                                  // 直接累积内容，保持原始格式（Markdown）
-                                  accumulatedContent += contentToAdd;
-                                  
-                                  // 处理格式化显示
-                                  let displayContent = accumulatedContent;
-                                  
-                                  // 1. 移除Markdown标题标记（# 标题），但保留标题文本
-                                  displayContent = displayContent.replace(/^#\s+(.+)$/gm, '');
-                                  
-                                  // 2. 移除旧格式标题标记 $[标题]$ 或 $标题$
-                                  displayContent = displayContent.replace(/\$\[(.+?)\]\$/g, '');
-                                  displayContent = displayContent.replace(/\$(.+?)\$/g, '');
-                                  
-                                  // 3. 在句号、感叹号、问号后添加换行（如果后面不是换行的话）
-                                  displayContent = displayContent.replace(/([。！？])([^\n])/g, '$1\n$2');
-                                  
-                                  // 4. 清理多余的空行（3个以上空行合并为2个）
-                                  displayContent = displayContent.replace(/\n{3,}/g, '\n\n');
-                                  
-                                  // 5. 清理开头的空行
-                                  displayContent = displayContent.replace(/^\n+/, '');
+                                // 直接累积内容，保持原始格式（Markdown）
+                                accumulatedContent += contentToAdd;
+                                
+                                // 处理格式化显示（统一复用一键格式化逻辑，兼容跨块标点/引号规则）
+                                const displayContent = formatChineseSentences(accumulatedContent);
 
-                                  // 立即更新state，触发React重新渲染
-                                  setCurrentContent(displayContent);
-                                }
+                                console.log('✅ 即将设置内容，累积长度:', displayContent.length);
+                                
+                                // 立即更新state，触发React重新渲染
+                                setCurrentContent(displayContent);
+                                
+                                console.log('✅ setCurrentContent已调用');
                               } else {
                                 console.log('🔍 跳过内容，data:', data);
                               }
@@ -2424,6 +2410,7 @@ const VolumeWritingStudio: React.FC = () => {
                               
                               if (eventType === 'preparing') {
                                 message.loading({ content: '正在准备写作环境...', key: 'preparing' });
+                                setProgressHint('[ 正在准备写作环境... ]');
                               } else if (eventType === 'progress') {
                                 // 处理进度事件，显示弹出提示但不显示在文本框中
                                 console.log('收到进度事件');
@@ -2431,6 +2418,7 @@ const VolumeWritingStudio: React.FC = () => {
                               } else if (eventType === 'writing') {
                                 message.destroy('preparing');
                                 message.loading({ content: '正在AI写作中...', key: 'writing' });
+                                setProgressHint('[ 正在生成章节内容... ]');
                               } else if (eventType === 'chunk') {
                                 // chunk事件的数据在下一行的data:中，这里只是标记
                                 console.log('检测到chunk事件，等待数据...');
@@ -2447,6 +2435,7 @@ const VolumeWritingStudio: React.FC = () => {
                                 message.destroy('progress');
                                 message.success('章节写作完成！');
                                 streamingCompleteRef.current = true; // 设置完成标志
+                                setProgressHint(''); // 清除进度提示
                               } else if (eventType === 'error') {
                                 throw new Error('写作过程中出现错误');
                               }
@@ -2457,28 +2446,8 @@ const VolumeWritingStudio: React.FC = () => {
                         // 内容已在流式过程中实时更新，无需再次同步
                         console.log('流式完成，最终内容长度:', currentContent.length);
                         
-                        // 处理完成后的记忆库更新
-                        if (updatedMemoryBankData) {
-                          setMemoryBank(updatedMemoryBankData);
-                          const score = updatedMemoryBankData.consistency_score;
-                          if (typeof score === 'number') setConsistencyScore(score);
-                          
-                          // 回存本地工作流
-                          try {
-                            const key = `novel_workflow_${novelId}`;
-                            const saved = localStorage.getItem(key);
-                            const parsed = saved ? JSON.parse(saved) : {};
-                            const next = {
-                              ...parsed,
-                              workflow: {
-                                ...(parsed.workflow || {}),
-                                memoryBank: updatedMemoryBankData,
-                                currentChapter: chapterNumber
-                              }
-                            };
-                            localStorage.setItem(key, JSON.stringify(next));
-                          } catch {}
-                        }
+                        // 处理完成后的记忆库更新（改为仅更新评分展示，不再写回本地/传参与后端）
+                        // 前端不再显示一致性评分，完全由后端管理
 
                         // 标题已由后端异步生成并通过title事件发送，无需前端自动生成
 
@@ -2487,6 +2456,7 @@ const VolumeWritingStudio: React.FC = () => {
                         console.error('流读取错误:', streamError);
                         setLoading(false);
                         setIsStreaming(false);
+                        setProgressHint(''); // 清除进度提示
                         message.destroy();
                         message.error('流式读取失败');
                       } finally {
@@ -2496,6 +2466,7 @@ const VolumeWritingStudio: React.FC = () => {
                     } catch (e: any) {
                       setLoading(false);
                       setIsStreaming(false);
+                      setProgressHint(''); // 清除进度提示
                       message.error(e?.message || 'AI写作失败');
                     }
                   }}

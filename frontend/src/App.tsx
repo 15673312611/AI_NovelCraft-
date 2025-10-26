@@ -17,7 +17,6 @@ import SettingsPage from '@/pages/SettingsPage'
 import NovelCraftStudio from '@/pages/NovelCraftStudio'
 import VolumeManagementPage from '@/pages/VolumeManagementPage'
 import VolumeWritingStudio from '@/pages/VolumeWritingStudio'
-import { WorldViewBuilderPage } from '@/pages/WorldViewBuilderPage'
 import AIControlPanelPage from '@/pages/AIControlPanelPage'
 import PromptLibraryPage from '@/pages/PromptLibraryPage'
 import WelcomeGuide from '@/pages/WelcomeGuide'
@@ -68,8 +67,6 @@ const App: React.FC = () => {
                   <Route path="/novels/:id/edit" element={<NovelEditPage />} />
                   <Route path="/novels/:novelId/editor" element={<NovelEditorPage />} />
                   <Route path="/novels/:novelId/volumes" element={<VolumeManagementPage />} />
-                  <Route path="/world-view-builder" element={<WorldViewBuilderPage />} />
-                  <Route path="/world-view-builder/:id" element={<WorldViewBuilderPage />} />
                   <Route path="/welcome" element={<WelcomeGuide />} />
                   <Route path="/profile" element={<ProfilePage />} />
                   <Route path="/settings" element={<SettingsPage />} />

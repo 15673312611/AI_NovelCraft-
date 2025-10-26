@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Typography, Form, Input, Button, Card, Select, message } from 'antd'
+import { Typography, Form, Input, Button, Card, message } from 'antd'
 import { ArrowLeftOutlined, RocketOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch } from 'react-redux'
@@ -108,17 +108,14 @@ const NovelCreateWizard: React.FC = () => {
                 label={<span className="form-label">小说类型</span>}
                 rules={[{ required: true, message: '请选择小说类型' }]}
               >
-                <Select 
-                  placeholder="请选择小说类型" 
-                  size="large"
-                  className="form-select"
-                >
+                <select className="form-select">
+                  <option value="">请选择小说类型</option>
                   {GENRE_OPTIONS.map(option => (
-                    <Select.Option key={option.value} value={option.value}>
+                    <option key={option.value} value={option.value}>
                       {option.label}
-                    </Select.Option>
+                    </option>
                   ))}
-                </Select>
+                </select>
               </Form.Item>
             </div>
 

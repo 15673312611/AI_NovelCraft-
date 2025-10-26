@@ -217,6 +217,24 @@ public class ChapterSummaryService {
     }
     
     /**
+     * 删除指定章节的概括
+     */
+    public void deleteChapterSummary(Long novelId, Integer chapterNumber) {
+        try {
+            Optional<ChapterSummary> existing = chapterSummaryRepository.findByNovelIdAndChapterNumber(novelId, chapterNumber);
+            if (existing.isPresent()) {
+                chapterSummaryRepository.deleteById(existing.get().getId());
+                logger.info("🗑️ 已删除章节概括: 小说ID={}, 章节={}", novelId, chapterNumber);
+            } else {
+                logger.debug("章节概括不存在，无需删除: 小说ID={}, 章节={}", novelId, chapterNumber);
+            }
+        } catch (Exception e) {
+            logger.error("删除章节概括失败: 小说ID={}, 章节={}", novelId, chapterNumber, e);
+            throw new RuntimeException("删除章节概括失败", e);
+        }
+    }
+    
+    /**
      * 获取小说的完整章节概括报告
      */
     public Map<String, Object> getNovelSummaryReport(Long novelId) {

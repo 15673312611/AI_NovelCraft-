@@ -30,6 +30,19 @@ import java.util.Arrays;
 public class VolumeService {
 
     private static final Logger logger = LoggerFactory.getLogger(VolumeService.class);
+    
+    // 并发控制：记录正在生成卷蓝图的小说ID
+    private final Set<Long> generatingNovels = Collections.synchronizedSet(new HashSet<>());
+    
+    /**
+     * 清理小说的生成标记
+     */
+    public void clearGeneratingFlag(Long novelId) {
+        if (novelId != null) {
+            generatingNovels.remove(novelId);
+            logger.info("🔓 已清理小说 {} 的生成标记", novelId);
+        }
+    }
 
     @Autowired
     private NovelVolumeMapper volumeMapper;
@@ -78,6 +91,16 @@ public class VolumeService {
         if (volume == null) {
             throw new RuntimeException("卷不存在");
         }
+        
+        // 并发控制：检查该小说是否正在生成卷蓝图
+        Long novelId = volume.getNovelId();
+        if (generatingNovels.contains(novelId)) {
+            logger.warn("⚠️ 小说 {} 正在生成卷蓝图，请勿重复请求", novelId);
+            throw new RuntimeException("该小说正在生成卷蓝图，请等待当前任务完成");
+        }
+        
+        // 标记为正在生成
+        generatingNovels.add(novelId);
         
         try {
             // 创建异步AI任务
@@ -405,6 +428,7 @@ public class VolumeService {
             volumeCount,
             volumeCount,
             volumeCount,
+            volumeCount,
             (outline.getPlotStructure() != null && !outline.getPlotStructure().trim().isEmpty()) ? outline.getPlotStructure() : (outline.getBasicIdea() == null ? "" : outline.getBasicIdea())
         );
 
@@ -466,6 +490,7 @@ public class VolumeService {
             "【全书大纲（未分卷文本）】\n%s\n",
             novel.getTitle(),
             novel.getGenre(),
+            volumeCount,
             volumeCount,
             volumeCount,
             volumeCount,
@@ -574,13 +599,43 @@ public class VolumeService {
             String jsonContent = extractJSONFromResponse(response);
             if (jsonContent != null && !jsonContent.trim().isEmpty()) {
                 logger.info("✅ 提取到JSON内容，长度: {}", jsonContent.length());
-                logger.info("🔍 完整JSON内容: {}", jsonContent);
+                logger.info("🔍 完整JSON内容（前500字符）: {}", jsonContent.substring(0, Math.min(500, jsonContent.length())));
                 
                 com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
                 mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
                 mapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-                List<Map> jsonPlans = mapper.readValue(jsonContent, List.class);
-                logger.info("✅ JSON解析成功，获得{}个卷规划", jsonPlans.size());
+                
+                List<Map> jsonPlans = null;
+                
+                // 先尝试直接解析原始JSON
+                try {
+                    jsonPlans = mapper.readValue(jsonContent, List.class);
+                    logger.info("✅ JSON解析成功（原始格式），获得{}个卷规划", jsonPlans.size());
+                } catch (Exception e) {
+                    logger.warn("⚠️ 原始JSON解析失败: {}", e.getMessage());
+                    logger.info("🔧 尝试修复中文引号后重新解析...");
+                    
+                    // 修复中文引号问题：将中文引号替换为英文引号（作为备用方案）
+                    String fixedJson = jsonContent
+                        .replace('\u201C', '"')
+                        .replace('\u201D', '"')
+                        .replace('\u2018', '\'')
+                        .replace('\u2019', '\'');
+                    
+                    logger.info("🔍 修复后的JSON（前500字符）: {}", fixedJson.substring(0, Math.min(500, fixedJson.length())));
+                    
+                    try {
+                        jsonPlans = mapper.readValue(fixedJson, List.class);
+                        logger.info("✅ JSON解析成功（修复后），获得{}个卷规划", jsonPlans.size());
+                    } catch (Exception e2) {
+                        logger.error("❌ 修复后仍然解析失败: {}", e2.getMessage());
+                        throw e2;
+                    }
+                }
+                
+                if (jsonPlans == null) {
+                    throw new RuntimeException("JSON解析失败，未获取到卷规划数据");
+                }
                 
                 for (int i = 0; i < jsonPlans.size(); i++) {
                     Map jsonPlan = jsonPlans.get(i);
@@ -930,6 +985,7 @@ public class VolumeService {
      */
     private String extractJSONFromResponse(String response) {
         try {
+            // 先尝试提取 ```json ... ``` 格式
             String jsonStart = "```json";
             String jsonEnd = "```";
             
@@ -938,19 +994,50 @@ public class VolumeService {
                 startIdx += jsonStart.length();
                 int endIdx = response.indexOf(jsonEnd, startIdx);
                 if (endIdx != -1) {
-                    return response.substring(startIdx, endIdx).trim();
+                    String extracted = response.substring(startIdx, endIdx).trim();
+                    logger.info("✅ 从Markdown代码块中提取JSON，长度: {}", extracted.length());
+                    return extracted;
                 }
             }
             
-            // 查找直接的JSON
+            // 尝试查找完整的JSON数组（匹配括号）
             int braceStart = response.indexOf("[");
-            int braceEnd = response.lastIndexOf("]");
-            if (braceStart != -1 && braceEnd != -1 && braceStart < braceEnd) {
-                return response.substring(braceStart, braceEnd + 1);
+            if (braceStart != -1) {
+                int depth = 0;
+                boolean inString = false;
+                char prevChar = 0;
+                
+                for (int i = braceStart; i < response.length(); i++) {
+                    char c = response.charAt(i);
+                    
+                    // 处理字符串内的引号（忽略转义的引号）
+                    if (c == '"' && prevChar != '\\') {
+                        inString = !inString;
+                    }
+                    
+                    // 只在非字符串内统计括号深度
+                    if (!inString) {
+                        if (c == '[') {
+                            depth++;
+                        } else if (c == ']') {
+                            depth--;
+                            if (depth == 0) {
+                                // 找到完整的JSON数组
+                                String extracted = response.substring(braceStart, i + 1).trim();
+                                logger.info("✅ 通过括号匹配提取JSON，长度: {}", extracted.length());
+                                return extracted;
+                            }
+                        }
+                    }
+                    
+                    prevChar = c;
+                }
             }
             
+            logger.warn("⚠️ 未能提取有效的JSON内容");
+            
         } catch (Exception e) {
-            logger.warn("提取JSON失败: {}", e.getMessage());
+            logger.warn("❌ 提取JSON失败: {}", e.getMessage());
         }
         
         return null;

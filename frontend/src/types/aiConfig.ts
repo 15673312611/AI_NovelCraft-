@@ -9,6 +9,20 @@ export interface AIConfig {
   baseUrl?: string;
 }
 
+/**
+ * 自定义API配置项
+ */
+export interface CustomAPIConfig {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  description?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface AIProvider {
   id: string;
   name: string;

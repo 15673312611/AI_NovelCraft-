@@ -2446,7 +2446,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                     disabled={volumes.every(v => v.contentOutline && v.contentOutline.length > 100) || isGeneratingVolumeOutlines}
                     size="middle"
                   >
-                    {isGeneratingVolumeOutlines ? '生成中...' : '按建议生成所有卷大纲'}
+                    {isGeneratingVolumeOutlines ? '生成中...' : '按建议生成所有卷蓝图'}
                   </Button>
                   <Button
                     icon={<ReloadOutlined />}
@@ -2455,7 +2455,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                     disabled={volumes.every(v => v.contentOutline && v.contentOutline.length > 100) || isGeneratingVolumeOutlines}
                     size="middle"
                   >
-                    {isGeneratingVolumeOutlines ? '生成中...' : '按原主题生成所有卷大纲'}
+                    {isGeneratingVolumeOutlines ? '生成中...' : '按原主题生成所有卷蓝图'}
                     </Button>
                   </Space>
           </div>

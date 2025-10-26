@@ -95,6 +95,25 @@
   background: #fafafa !important;
 }
 
+/* 进度提示样式 */
+.writing-textarea.progress-hint {
+  color: #94a3b8 !important;
+  font-style: italic !important;
+  font-size: 15px !important;
+  text-align: center !important;
+  padding-top: 60px !important;
+  animation: progress-fade 2s ease-in-out infinite;
+}
+
+@keyframes progress-fade {
+  0%, 100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
 /* 流式写作动画 */
 @keyframes pulse {
   0% {

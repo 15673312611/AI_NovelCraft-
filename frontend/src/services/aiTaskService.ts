@@ -205,7 +205,7 @@ class AITaskService {
    * @param onProgress 进度更新回调
    * @param onComplete 任务完成回调
    * @param onError 错误回调
-   * @param interval 轮询间隔（毫秒），默认2秒
+   * @param interval 轮询间隔（毫秒），默认3秒
    * @returns 返回停止轮询的函数
    */
   startPolling(
@@ -213,7 +213,7 @@ class AITaskService {
     onProgress: (progress: any) => void,
     onComplete: (task: AITask) => void,
     onError: (error: string) => void,
-    interval: number = 2000
+    interval: number = 3000
   ): () => void {
     let isPolling = true;
     let timeoutId: NodeJS.Timeout;

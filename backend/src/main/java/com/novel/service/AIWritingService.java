@@ -245,7 +245,8 @@ public class AIWritingService {
                         new java.io.InputStreamReader(response.getBody(), java.nio.charset.StandardCharsets.UTF_8))) {
                         
                         String line;
-                        while ((line = reader.readLine()) != null) {
+                        boolean connectionClosed = false;
+                        while ((line = reader.readLine()) != null && !connectionClosed) {
                             line = line.trim();
                             if (line.startsWith("data: ")) {
                                 String data = line.substring(6);
@@ -268,12 +269,28 @@ public class AIWritingService {
                                                 Object content = ((java.util.Map) deltaObj).get("content");
                                                 if (content instanceof String && !((String) content).trim().isEmpty()) {
                                                     // 回调给消费者
-                                                    chunkConsumer.accept((String) content);
+                                                    try {
+                                                        chunkConsumer.accept((String) content);
+                                                    } catch (Exception ce) {
+                                                        // 连接已断开，停止处理后续数据
+                                                        if (ce.getMessage() != null && ce.getMessage().contains("already completed")) {
+                                                            logger.warn("⚠️ 客户端连接已断开，停止发送数据");
+                                                            connectionClosed = true;
+                                                            break;
+                                                        }
+                                                        throw ce; // 其他异常继续抛出
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 } catch (Exception e) {
+                                    // 如果是连接断开，停止处理
+                                    if (e.getMessage() != null && e.getMessage().contains("already completed")) {
+                                        logger.warn("⚠️ 客户端连接已断开，停止处理数据");
+                                        connectionClosed = true;
+                                        break;
+                                    }
                                     // 解析失败，跳过这一行
                                     logger.warn("解析流式响应数据失败: {}", e.getMessage());
                                 }
@@ -708,7 +725,8 @@ public class AIWritingService {
                         new java.io.InputStreamReader(response.getBody(), java.nio.charset.StandardCharsets.UTF_8))) {
                         
                         String line;
-                        while ((line = reader.readLine()) != null) {
+                        boolean connectionClosed = false;
+                        while ((line = reader.readLine()) != null && !connectionClosed) {
                             line = line.trim();
                             if (line.startsWith("data: ")) {
                                 String data = line.substring(6);
@@ -732,12 +750,28 @@ public class AIWritingService {
                                                 if (content instanceof String && !((String) content).trim().isEmpty()) {
                                                     String chunk = (String) content;
                                                     // 调用回调处理chunk
-                                                    chunkConsumer.accept(chunk);
+                                                    try {
+                                                        chunkConsumer.accept(chunk);
+                                                    } catch (Exception ce) {
+                                                        // 连接已断开，停止处理后续数据
+                                                        if (ce.getMessage() != null && ce.getMessage().contains("already completed")) {
+                                                            logger.warn("⚠️ 客户端连接已断开，停止发送数据");
+                                                            connectionClosed = true;
+                                                            break;
+                                                        }
+                                                        throw ce; // 其他异常继续抛出
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 } catch (Exception e) {
+                                    // 如果是连接断开，停止处理
+                                    if (e.getMessage() != null && e.getMessage().contains("already completed")) {
+                                        logger.warn("⚠️ 客户端连接已断开，停止处理数据");
+                                        connectionClosed = true;
+                                        break;
+                                    }
                                     logger.warn("解析流式数据失败: {}", e.getMessage());
                                 }
                             }

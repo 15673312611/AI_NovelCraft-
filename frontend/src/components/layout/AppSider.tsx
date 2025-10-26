@@ -10,6 +10,7 @@ import {
   BulbOutlined,
   RobotOutlined,
   StarOutlined,
+  CommentOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useSelector } from 'react-redux'
@@ -43,6 +44,13 @@ const AppSider: React.FC = () => {
       icon: <FileTextOutlined />,
       label: '提示词库',
       onClick: () => navigate('/prompt-library'),
+      hidden: !isAuthenticated,
+    },
+    {
+      key: '/ai-chat',
+      icon: <CommentOutlined />,
+      label: 'AI对话',
+      onClick: () => navigate('/ai-chat'),
       hidden: !isAuthenticated,
     },
     {

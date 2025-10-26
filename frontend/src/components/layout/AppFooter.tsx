@@ -17,7 +17,6 @@ const AppFooter: React.FC = () => {
           <a className="footer-link" href="#/novels">我的小说</a>
           <a className="footer-link" href="#/dashboard">仪表盘</a>
           <a className="footer-link" href="#/prompts">提示词库</a>
-          <a className="footer-link" href="#/world-view-builder">世界观</a>
           <a className="footer-link" href="#/settings">设置</a>
         </div>
 

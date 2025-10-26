@@ -436,7 +436,7 @@ const NovelAIWritingPage: React.FC = () => {
                             完整的AI写作环境，包含内容片段管理、智能引用、多AI协作等高级功能
                           </Text>
                         </Col>
-                        <Col xs={24} md={8}>
+                        <Col xs={24} md={12}>
                           <Button 
                             size="large" 
                             block
@@ -447,19 +447,6 @@ const NovelAIWritingPage: React.FC = () => {
                           </Button>
                           <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginTop: 8 }}>
                             经典的富文本编辑器，适合喜欢手动写作的作者
-                          </Text>
-                        </Col>
-                        <Col xs={24} md={8}>
-                          <Button 
-                            size="large" 
-                            block
-                            icon={<HistoryOutlined />}
-                            onClick={() => navigate(`/world-view-builder?novelId=${novelId}`)}
-                          >
-                            世界观构建对话
-                          </Button>
-                          <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginTop: 8 }}>
-                            通过AI对话逐步构建完整的小说世界观
                           </Text>
                         </Col>
                       </Row>
@@ -825,32 +812,6 @@ const NovelAIWritingPage: React.FC = () => {
               </Row>
             </TabPane>
 
-            {/* 世界观构建 */}
-            <TabPane 
-              tab={<span><HistoryOutlined />世界观构建</span>} 
-              key="worldview"
-            >
-              <Row gutter={[16, 16]}>
-                <Col span={24}>
-                  <Card title="AI对话式世界观构建">
-                    <Space direction="vertical" style={{ width: '100%' }}>
-                      <Button 
-                        type="primary" 
-                        size="large" 
-                        icon={<MessageOutlined />}
-                        onClick={() => navigate(`/world-view-builder?novelId=${novelId}`)}
-                      >
-                        开始世界观构建对话
-                      </Button>
-                      <Text type="secondary">
-                        通过与AI的互动对话，逐步构建完整的小说世界观。
-                        AI将引导您思考世界设定、规则体系、历史背景等重要元素。
-                      </Text>
-                    </Space>
-                  </Card>
-                </Col>
-              </Row>
-            </TabPane>
           </Tabs>
         </Content>
       </Layout>

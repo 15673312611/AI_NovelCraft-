@@ -251,12 +251,33 @@ public class AsyncAIGenerationService {
 
                     // 更新卷的大纲内容
                     updateVolumeWithGeneratedOutline(volumeId, result);
+                    
+                    // 清理并发控制标记
+                    try {
+                        NovelVolume vol = novelVolumeMapper.selectById(volumeId);
+                        if (vol != null) {
+                            volumeService.clearGeneratingFlag(vol.getNovelId());
+                        }
+                    } catch (Exception clearEx) {
+                        logger.warn("清理生成标记失败: {}", clearEx.getMessage());
+                    }
 
                     logger.info("✅ 卷 {} 异步大纲生成完成", volumeId);
                     return result;
                 } catch (Exception e) {
                     logger.error("❌ 卷 {} 异步大纲生成失败: {}", volumeId, e.getMessage(), e);
                     aiTaskService.failTask(taskId, "生成失败: " + e.getMessage());
+                    
+                    // 失败时也要清理并发控制标记
+                    try {
+                        NovelVolume vol = novelVolumeMapper.selectById(volumeId);
+                        if (vol != null) {
+                            volumeService.clearGeneratingFlag(vol.getNovelId());
+                        }
+                    } catch (Exception clearEx) {
+                        logger.warn("清理生成标记失败: {}", clearEx.getMessage());
+                    }
+                    
                     throw new RuntimeException(e.getMessage());
                 }
             });
