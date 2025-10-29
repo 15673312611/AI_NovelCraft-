@@ -65,6 +65,32 @@ public class AITaskController {
     }
 
     /**
+     * 批量查询任务状态
+     * POST /ai-tasks/batch-status
+     * 请求体: { "taskIds": [1, 2, 3] }
+     * 返回: { "1": { "id": 1, "status": "COMPLETED", "progressPercentage": 100, ... }, "2": {...} }
+     */
+    @PostMapping("/batch-status")
+    public ResponseEntity<Map<String, AITaskDto>> getBatchTaskStatus(@RequestBody Map<String, Object> request) {
+        @SuppressWarnings("unchecked")
+        List<Number> taskIds = (List<Number>) request.get("taskIds");
+        
+        if (taskIds == null || taskIds.isEmpty()) {
+            return ResponseEntity.ok(new HashMap<>());
+        }
+        
+        // 转换为 Long 类型
+        List<Long> longTaskIds = taskIds.stream()
+                .map(Number::longValue)
+                .collect(Collectors.toList());
+        
+        // 使用 Service 层的批量查询方法（一次性查询，避免循环）
+        Map<String, AITaskDto> result = aiTaskService.getBatchTaskStatus(longTaskIds);
+        
+        return ResponseEntity.ok(result);
+    }
+
+    /**
      * 创建AI任务
      */
     @PostMapping

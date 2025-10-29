@@ -69,7 +69,6 @@ class AIService {
   async writeChapterStream(
     novelId: string,
     chapterPlan: any,
-    memoryBank: any,
     userAdjustment?: string,
     model?: string,
     promptTemplateId?: string
@@ -77,7 +76,6 @@ class AIService {
     const token = localStorage.getItem('token');
     const requestBody = withAIConfig({
       chapterPlan,
-      memoryBank,
       userAdjustment: userAdjustment || undefined,
       model: model || undefined,
       promptTemplateId: promptTemplateId || undefined

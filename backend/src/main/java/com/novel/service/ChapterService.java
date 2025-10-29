@@ -35,7 +35,39 @@ public class ChapterService {
     @Autowired
     private com.novel.repository.NovelTemplateProgressRepository templateProgressRepository;
     
+    @Autowired
+    private NovelFolderService folderService;
 
+
+    /**
+     * 初始化第一章（写作工作室用）
+     */
+    @Transactional
+    public Chapter initFirstChapter(Long novelId) {
+        logger.info("初始化小说ID={}的第一章", novelId);
+        
+        // 检查是否已有第一章
+        Chapter existing = chapterRepository.findByNovelAndChapterNumber(novelId, 1);
+        if (existing != null) {
+            logger.info("小说ID={}的第一章已存在，跳过创建", novelId);
+            return existing;
+        }
+        
+        // 创建第一章
+        Chapter chapter = new Chapter();
+        chapter.setNovelId(novelId);
+        chapter.setChapterNumber(1);
+        chapter.setTitle("开篇");  // 只存章节名
+        chapter.setContent("");
+        chapter.setWordCount(0);
+        chapter.setStatus(Chapter.ChapterStatus.DRAFT);
+        chapter.setIsPublic(false);
+        
+        chapterRepository.insert(chapter);
+        logger.info("小说ID={}的第一章创建成功，章节ID={}", novelId, chapter.getId());
+        
+        return chapter;
+    }
 
     /**
      * 创建章节

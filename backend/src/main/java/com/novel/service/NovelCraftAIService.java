@@ -66,9 +66,9 @@ public class NovelCraftAIService {
     
     @Autowired
     private ContextManagementService contextManagementService;
-
+    
     @Autowired
-    private MultiStageChapterGenerationService multiStageChapterGenerationService;
+    private AIWritingService aiWritingService;
     
     @Autowired
     private LongFormCoherenceService longFormCoherenceService;
@@ -829,35 +829,8 @@ public class NovelCraftAIService {
                 throw new RuntimeException("AI API Key未配置");
             }
 
-            // 构建请求体
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", model);
-            requestBody.put("stream", false);
-            
-            // 根据AI角色调整参数
-            switch (agentRole) {
-                case "ENHANCED_WRITING_EXECUTOR":
-                    requestBody.put("max_tokens", 4000);
-                    requestBody.put("temperature", 0.9);
-                    break;
-                case "CONTEXT_AWARE_WRITER":
-                    requestBody.put("max_tokens", 4000);
-                    requestBody.put("temperature", 0.8);
-                    break;
-                default:
-                    requestBody.put("max_tokens", 2000);
-                    requestBody.put("temperature", 0.7);
-            }
-
-            requestBody.put("messages", messages);
-
-            logger.info("🚀 发送{}条上下文消息到AI [{}]", messages.size(), agentRole);
-            
-            // 计算总token数（估算）
-            int totalTokens = messages.stream()
-                    .mapToInt(msg -> msg.get("content").length())
-                    .sum();
-            logger.info("📊 估计上下文tokens: {}字符", totalTokens);
+            // 为不同角色设置不同的参数
+            Map<String, Object> requestBody = buildAIRequest(agentRole, model, messages.get(messages.size() - 1).getOrDefault("content", ""));
 
             // 发送请求
             RestTemplate restTemplate = createRestTemplate();
@@ -2687,169 +2660,41 @@ public class NovelCraftAIService {
             Long promptTemplateId,
             Boolean enableTemplateLoop) throws IOException {
         
-        // 调用多阶段生成服务
-        multiStageChapterGenerationService.executeMultiStageChapterGeneration(
-            novel, chapterPlan, memoryBank, userAdjustment, 
-            emitter, aiConfig, promptTemplateId, enableTemplateLoop
-        );
-    }
-    
-    // ============================================================
-    // 以下是旧版章节写作方法（已废弃，使用 executeMultiStageStreamingChapterWriting 代替）
-    // ============================================================
-    
-    /**
-     * 流式章节写作（旧版，已废弃）
-     * 
-     * ⚠️ 已废弃：该方法使用一次性生成，上下文过重，生成质量不佳
-     * ✅ 请使用：executeMultiStageStreamingChapterWriting（三步流程：构思→判断→写作）
-     * 
-     * @deprecated 使用 executeMultiStageStreamingChapterWriting 代替
-     */
-    @Deprecated
-    private void executeStreamingChapterWriting_OLD(
-            Novel novel, 
-            Map<String, Object> chapterPlan, 
-            Map<String, Object> memoryBank, 
-            String userAdjustment, 
-            SseEmitter emitter,
-            AIConfigRequest aiConfig,
-            Long promptTemplateId) throws IOException {
-        
         try {
-            // 发送准备事件
-            emitter.send(SseEmitter.event().name("preparing").data("正在构建完整上下文..."));
+            Integer chapterNumber = (Integer) chapterPlan.get("chapterNumber");
+            logger.info("🎬 开始生成第{}章（直接写作模式）", chapterNumber);
             
-            // 构建完整上下文消息列表（支持自定义提示词模板）
-            List<Map<String, String>> contextMessages = contextManagementService.buildFullContextMessages(
+            // 构建完整写作上下文
+            List<Map<String, String>> writingMessages = contextManagementService.buildFullContextMessages(
                 novel, chapterPlan, memoryBank, userAdjustment, promptTemplateId
             );
             
-            emitter.send(SseEmitter.event().name("context_ready")
-                    .data("构建了 " + contextMessages.size() + " 条上下文消息"));
+            // 流式调用AI写作
+            aiWritingService.streamGenerateContentWithMessages(
+                writingMessages, "chapter_writing", aiConfig, 
+                chunk -> {
+                    try {
+                        // 发送JSON格式数据，包裹在content字段中
+                        Map<String, String> data = new HashMap<>();
+                        data.put("content", chunk);
+                        emitter.send(SseEmitter.event().data(data));
+                    } catch (IOException e) {
+                        logger.error("发送chunk失败", e);
+                    }
+                }
+            );
             
-            // 发送开始写作事件
-            emitter.send(SseEmitter.event().name("writing").data("开始增强AI写作..."));
-            
-            // 调用流式AI接口并获取生成的内容
-            String generatedContent = callStreamingAIWithContext_OLD(contextMessages, emitter, aiConfig);
-            
-            // ✅ 写作完成，不再自动更新记忆库（改为前端新建章节时手动触发）
-            emitter.send(SseEmitter.event().name("complete").data("写作完成"));
-            
+            logger.info("✅ 第{}章写作完成", chapterNumber);
             emitter.complete();
             
         } catch (Exception e) {
-            logger.error("增强流式写作失败", e);
-            emitter.send(SseEmitter.event().name("error").data("写作失败: " + e.getMessage()));
-            emitter.completeWithError(e);
-        }
-    }
-
-    /**
-     * 使用完整上下文的流式AI调用（真正的流式）（旧版，已废弃）
-     * 
-     * @deprecated 已废弃，使用新版多阶段生成
-     * @return 生成的完整内容
-     */
-    @Deprecated
-    private String callStreamingAIWithContext_OLD(List<Map<String, String>> contextMessages, SseEmitter emitter, AIConfigRequest aiConfig) throws IOException {
-        if (aiConfig == null || !aiConfig.isValid()) {
-            throw new IOException("AI配置无效");
-        }
-        
-        String baseUrl = aiConfig.getEffectiveBaseUrl();
-        String apiKey = aiConfig.getApiKey();
-        String model = aiConfig.getModel();
-
-        if (apiKey == null || apiKey.trim().isEmpty() || "your-api-key-here".equals(apiKey)) {
-            throw new IOException("API Key未配置");
-        }
-
-        // 构建请求体（启用流式）
-        Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("model", model);
-        requestBody.put("max_tokens", 4000);
-        requestBody.put("temperature", 0.9);
-        requestBody.put("stream", true); // 启用真正的流式响应
-        requestBody.put("messages", contextMessages);
-
-        try {
-            String url = aiConfig.getApiUrl();
-            logger.info("🌐 调用AI流式写作接口: {}", url);
-            
-            // 使用RestTemplate进行流式读取
-            SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-            requestFactory.setConnectTimeout(15000);
-            requestFactory.setReadTimeout(120000);
-            RestTemplate restTemplate = new RestTemplate(requestFactory);
-            
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(apiKey);
-            // 流式接口必须设置Accept为text/event-stream
-            headers.set("Accept", "text/event-stream");
-
-            StringBuilder fullContent = new StringBuilder();
-
-            // 使用ResponseExtractor进行真正的流式读取
-            restTemplate.execute(url, HttpMethod.POST, 
-                req -> {
-                    req.getHeaders().putAll(headers);
-                    req.getBody().write(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsBytes(requestBody));
-                },
-                response -> {
-                    try (java.io.BufferedReader reader = new java.io.BufferedReader(
-                        new java.io.InputStreamReader(response.getBody(), java.nio.charset.StandardCharsets.UTF_8))) {
-                        
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            line = line.trim();
-                            if (line.startsWith("data: ")) {
-                                String data = line.substring(6);
-                                if ("[DONE]".equals(data)) {
-                                    break; // 流式响应结束
-                                }
-                                
-                                try {
-                                    // 解析JSON数据
-                                    com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
-                                    java.util.Map dataMap = om.readValue(data, java.util.Map.class);
-                                    
-                                    Object choicesObj = dataMap.get("choices");
-                                    if (choicesObj instanceof java.util.List) {
-                                        java.util.List choices = (java.util.List) choicesObj;
-                                        if (!choices.isEmpty() && choices.get(0) instanceof java.util.Map) {
-                                            java.util.Map firstChoice = (java.util.Map) choices.get(0);
-                                            Object deltaObj = firstChoice.get("delta");
-                                            if (deltaObj instanceof java.util.Map) {
-                                                Object content = ((java.util.Map) deltaObj).get("content");
-                                                if (content instanceof String && !((String) content).trim().isEmpty()) {
-                                                    String chunk = (String) content;
-                                                    fullContent.append(chunk);
-                                                    // 实时发送给前端
-                                                    emitter.send(SseEmitter.event().name("chunk").data(chunk));
-                                                }
-                                            }
-                                        }
-                                    }
-                                } catch (Exception e) {
-                                    logger.warn("解析流式数据失败: {}", e.getMessage());
-                                }
-                            }
-                        }
-                    } catch (IOException e) {
-                        logger.error("读取流式响应失败", e);
-                        throw new RuntimeException("读取流式响应失败", e);
-                    }
-                    return null;
-                });
-            
-            return fullContent.toString();
-                
-        } catch (Exception e) {
-            logger.error("调用完整上下文流式AI接口失败", e);
-            throw new IOException("完整上下文AI服务调用失败: " + e.getMessage(), e);
+            logger.error("章节生成失败", e);
+            try {
+                emitter.send(SseEmitter.event().name("error").data("生成失败: " + e.getMessage()));
+                emitter.completeWithError(e);
+            } catch (IllegalStateException | IOException ex) {
+                logger.warn("⚠️ 发送错误消息失败: {}", ex.getMessage());
+            }
         }
     }
 

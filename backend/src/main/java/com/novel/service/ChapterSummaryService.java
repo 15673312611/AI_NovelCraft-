@@ -28,6 +28,9 @@ public class ChapterSummaryService {
     
     @Autowired
     private AIWritingService aiWritingService;
+    
+    @Autowired
+    private com.novel.repository.ChapterRepository chapterRepository;
 
     /**
      * 生成章节概括（使用后端配置 - 已弃用，建议使用带AIConfigRequest参数的方法）
@@ -389,5 +392,59 @@ public class ChapterSummaryService {
         }
         
         return "第" + chapter.getChapterNumber() + "章：" + fallback;
+    }
+    
+    /**
+     * 异步生成并保存章节概要（用于优化用户体验）
+     * 在生成当前章节内容后，后台异步提取上一章的概要
+     * 
+     * @param novelId 小说ID
+     * @param chapterNumber 章节号
+     * @param aiConfig AI配置
+     */
+    public void generateAndSaveChapterSummaryAsync(Long novelId, Integer chapterNumber, 
+                                                    com.novel.dto.AIConfigRequest aiConfig) {
+        try {
+            // 查找章节
+            com.novel.domain.entity.Chapter chapter = findChapterByNumber(novelId, chapterNumber);
+            if (chapter == null) {
+                logger.warn("章节不存在: novelId={}, chapterNumber={}", novelId, chapterNumber);
+                return;
+            }
+            
+            // 检查是否已有概要
+            Optional<ChapterSummary> existing = chapterSummaryRepository.findByNovelIdAndChapterNumber(
+                novelId, chapterNumber
+            );
+            
+            if (existing.isPresent()) {
+                logger.debug("章节概要已存在，跳过生成: novelId={}, chapterNumber={}", novelId, chapterNumber);
+                return;
+            }
+            
+            // 生成概要
+            String summary = generateChapterSummary(chapter, aiConfig);
+            
+            // 保存概要
+            saveChapterSummary(novelId, chapterNumber, summary);
+            
+            logger.info("✅ 异步生成并保存章节概要成功: novelId={}, chapterNumber={}", novelId, chapterNumber);
+            
+        } catch (Exception e) {
+            logger.error("异步生成章节概要失败: novelId={}, chapterNumber={}", novelId, chapterNumber, e);
+            // 不抛出异常，避免影响主流程
+        }
+    }
+    
+    /**
+     * 根据章节号查找章节
+     */
+    private com.novel.domain.entity.Chapter findChapterByNumber(Long novelId, Integer chapterNumber) {
+        try {
+            return chapterRepository.findByNovelAndChapterNumber(novelId, chapterNumber);
+        } catch (Exception e) {
+            logger.error("查找章节失败: novelId={}, chapterNumber={}", novelId, chapterNumber, e);
+            return null;
+        }
     }
 }

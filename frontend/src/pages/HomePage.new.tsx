@@ -1,9 +1,7 @@
-import React, { useEffect, useState } from 'react'
-import { Card, Button, Empty, Progress, Typography } from 'antd'
+import React, { useEffect } from 'react'
+import { Card, Button, Empty, Typography } from 'antd'
 import {
   BookOutlined,
-  EditOutlined,
-  FileTextOutlined,
   PlusOutlined,
   RightOutlined,
   ClockCircleOutlined,
@@ -21,11 +19,11 @@ const HomePage: React.FC = () => {
   const navigate = useNavigate()
   const dispatch = useDispatch<AppDispatch>()
   const { isAuthenticated } = useSelector((state: RootState) => state.auth)
-  const { novels, loading } = useSelector((state: RootState) => state.novel)
+  const { novels } = useSelector((state: RootState) => state.novel)
 
   useEffect(() => {
     if (isAuthenticated) {
-      dispatch(fetchNovels())
+      dispatch(fetchNovels({ page: 0, size: 40, append: false }))
     }
   }, [dispatch, isAuthenticated])
 
@@ -61,11 +59,6 @@ const HomePage: React.FC = () => {
       navigate(`/novels/${novelId}/volumes`)
     }
   }
-  
-  // 计算统计数据
-  const totalNovels = novelsArray.length
-  const totalChapters = novelsArray.reduce((sum, n) => sum + (n.chapterCount || 0), 0)
-  const totalWords = novelsArray.reduce((sum, n) => sum + (n.wordCount || 0), 0)
 
   // 获取最近编辑的小说（最多5个）
   const recentNovels = novelsArray
@@ -141,23 +134,16 @@ const HomePage: React.FC = () => {
                       <div className="novel-item-footer">
                         <div className="novel-meta-tags">
                           <span className="meta-tag">
-                            <FileTextOutlined style={{ fontSize: 12 }} />
-                            {novel.chapterCount || 0} 章节
-                          </span>
-                          <span className="meta-tag">
-                            <EditOutlined style={{ fontSize: 12 }} />
-                            {((novel.wordCount || 0) / 10000).toFixed(1)}万字
+                            <ClockCircleOutlined style={{ fontSize: 12 }} />
+                            {new Date(novel.updatedAt || novel.createdAt).toLocaleString('zh-CN', {
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
                           </span>
                         </div>
-                        {novel.wordCount > 0 && (
-                          <Progress 
-                            percent={Math.min(100, (novel.wordCount / 100000) * 100)} 
-                            size="small"
-                            strokeColor="#3b82f6"
-                            showInfo={false}
-                            style={{ marginTop: 6 }}
-                          />
-                        )}
                       </div>
                     </div>
                   </div>

@@ -267,18 +267,26 @@ public class AIWritingService {
                                             Object deltaObj = firstChoice.get("delta");
                                             if (deltaObj instanceof java.util.Map) {
                                                 Object content = ((java.util.Map) deltaObj).get("content");
-                                                if (content instanceof String && !((String) content).trim().isEmpty()) {
-                                                    // 回调给消费者
-                                                    try {
-                                                        chunkConsumer.accept((String) content);
-                                                    } catch (Exception ce) {
-                                                        // 连接已断开，停止处理后续数据
-                                                        if (ce.getMessage() != null && ce.getMessage().contains("already completed")) {
-                                                            logger.warn("⚠️ 客户端连接已断开，停止发送数据");
-                                                            connectionClosed = true;
-                                                            break;
+                                                if (content instanceof String && !((String) content).isEmpty()) {
+                                                    String chunk = (String) content;
+                                                    // 过滤掉 <think> 标签及其内容
+                                                    chunk = chunk.replaceAll("<think>.*?</think>", "");
+                                                    chunk = chunk.replaceAll("<think>.*", ""); // 处理未闭合的情况
+                                                    chunk = chunk.replaceAll(".*</think>", ""); // 处理跨chunk的结束标签
+                                                    
+                                                    if (!chunk.isEmpty()) {
+                                                        // 回调给消费者 (保留换行符，不要trim)
+                                                        try {
+                                                            chunkConsumer.accept(chunk);
+                                                        } catch (Exception ce) {
+                                                            // 连接已断开，停止处理后续数据
+                                                            if (ce.getMessage() != null && ce.getMessage().contains("already completed")) {
+                                                                logger.warn("⚠️ 客户端连接已断开，停止发送数据");
+                                                                connectionClosed = true;
+                                                                break;
+                                                            }
+                                                            throw ce; // 其他异常继续抛出
                                                         }
-                                                        throw ce; // 其他异常继续抛出
                                                     }
                                                 }
                                             }
@@ -747,19 +755,26 @@ public class AIWritingService {
                                             Object deltaObj = firstChoice.get("delta");
                                             if (deltaObj instanceof java.util.Map) {
                                                 Object content = ((java.util.Map) deltaObj).get("content");
-                                                if (content instanceof String && !((String) content).trim().isEmpty()) {
+                                                if (content instanceof String && !((String) content).isEmpty()) {
                                                     String chunk = (String) content;
-                                                    // 调用回调处理chunk
-                                                    try {
-                                                        chunkConsumer.accept(chunk);
-                                                    } catch (Exception ce) {
-                                                        // 连接已断开，停止处理后续数据
-                                                        if (ce.getMessage() != null && ce.getMessage().contains("already completed")) {
-                                                            logger.warn("⚠️ 客户端连接已断开，停止发送数据");
-                                                            connectionClosed = true;
-                                                            break;
+                                                    // 过滤掉 <think> 标签及其内容
+                                                    chunk = chunk.replaceAll("<think>.*?</think>", "");
+                                                    chunk = chunk.replaceAll("<think>.*", ""); // 处理未闭合的情况
+                                                    chunk = chunk.replaceAll(".*</think>", ""); // 处理跨chunk的结束标签
+                                                    
+                                                    if (!chunk.isEmpty()) {
+                                                        // 调用回调处理chunk (保留换行符，不要trim)
+                                                        try {
+                                                            chunkConsumer.accept(chunk);
+                                                        } catch (Exception ce) {
+                                                            // 连接已断开，停止处理后续数据
+                                                            if (ce.getMessage() != null && ce.getMessage().contains("already completed")) {
+                                                                logger.warn("⚠️ 客户端连接已断开，停止发送数据");
+                                                                connectionClosed = true;
+                                                                break;
+                                                            }
+                                                            throw ce; // 其他异常继续抛出
                                                         }
-                                                        throw ce; // 其他异常继续抛出
                                                     }
                                                 }
                                             }

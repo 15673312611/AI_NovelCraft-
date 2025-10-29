@@ -34,56 +34,75 @@ public class AITraceRemovalService {
      * 针对"已优化的文本"执行"退化操作"，使文本从"优化状态"回归"原始状态"
      */
     private String buildRemovalPrompt() {
-        return "# 核心任务\n" +
-                "针对\"已优化的文本\"（指逻辑闭环、细节真实、风格流畅、目标明确的文本），按以下规则执行\"退化操作\"，使文本从\"优化状态\"回归\"原始状态\"，最后输出退化后的文本。\n\n" +
-                
-                "# 一、语言基础退化：失准与粗糙化\n\n" +
-                
-                "## 语言规范性崩坏\n" +
-                "- 标点符号逻辑混乱（如引号与句子停顿脱节、逗号/句号滥用）\n" +
-                "- 堆砌口语化冗余助词（如在陈述句中反复添加\"哈\"\"呢\"\"啦\"，导致表达拖沓）\n" +
-                "- 句式风格割裂，保留语病与拗口表达（如将\"开着辆半新的东风日产往家赶\"退化为\"开着一辆半新的东风日产车回家去\"，通过重复量词\"辆\"、添加冗余后缀\"去\"，造成语言累赘）\n\n" +
-                
-                "## 语言笼统与质感流失\n" +
-                "- 用\"万能词汇\"替代精准措辞（如将\"字句间的分寸、表述的严谨度\"简化为\"公文的写法\"，用模糊表述消解角色特质与场景细节）\n" +
-                "- 放任重复表达，拆分同类信息（如将\"头发贴在头皮、脸上带着青春期油脂\"退化为\"头发贴着头皮，头发有点油，脸上也很油腻\"，通过重复\"油\"字、拆分同类细节，导致描述碎片化）\n\n" +
-                
-                "# 二、对话与叙事退化：生硬与失序\n\n" +
-                
-                "## 对话的语境脱节与同质化\n" +
-                "- 对话脱离人物情绪与身份，语气平板无起伏（如将女人\"陡然提音量\"的请求退化为\"你能不能打个招呼，把我弟弟推荐过去\"，删除\"帮着\"\"哪能不给你面子\"等体现试探与强势的词汇，让对话失去性格辨识度）\n" +
-                "- 用\"对话+解释\"的生硬结构替代情节衔接（如在\"女人被激怒\"前直接添加\"女人听了很生气，于是说\"的解释，而非通过电话里的男声自然引爆冲突，破坏叙事流畅性）\n\n" +
-                
-                "## 叙事节奏的失控\n" +
-                "- **长短句搭配与场景节奏错位**：\n" +
-                "  * 紧张场景用长句（如将车祸前的\"转过急弯，白光——'轰！'\"退化为\"在转过一个急转弯的时候，对面突然射来了一道非常刺眼的白光，然后就听到了一声巨大的'轰'的响声\"，用长句稀释冲击感）\n" +
-                "  * 铺陈场景用短句（如描写教室环境时用\"周围是学生。有的睡觉。有的写卷。\"，用碎片化短句破坏舒缓氛围）\n" +
-                "- **失衡\"事件与反思\"比例**：核心情节简略，空泛反思占比过高（如将相亲电话冲突简化为\"女人让陈着帮忙，陈着拒绝，女人挂电话\"，却用大段文字写\"陈着觉得考公后悔，体制内太累\"，导致反思脱离情节，成为空洞抒情）\n\n" +
-                
-                "# 三、逻辑与情感退化：割裂与肤浅\n\n" +
-                
-                "## 逻辑衔接的显性断裂\n" +
-                "- 依赖生硬连接词，段落过渡脱节（如从\"挂电话\"直接跳转\"陈着回忆考公经历\"时，强行添加\"然而，陈着想起了自己的过去\"，用\"然而\"硬拉逻辑，而非通过\"握方向盘的沉默\"自然过渡）\n" +
-                "- 段落首尾无闭环：开头以\"情绪\"切入，结尾以\"无关细节\"收束（如某段以\"陈着很郁闷\"开头，却以\"教室里的窗帘是蓝色的\"结尾，导致叙事链条断裂，逻辑不完整）\n\n" +
-                
-                "## 情感表达的直白与割裂\n" +
-                "- 用直白抒情替代\"动作/细节反衬\"（如直接写\"陈着很无奈\"，而非通过\"话到嘴边又改成温和建议\"体现，让情绪失去层次感）\n" +
-                "- 环境与心境脱节：用与情绪矛盾的场景细节烘托氛围（如重生后陈着心境释然，却用\"天空乌云密布，教室光线昏暗\"描写环境，导致环境与心境完全割裂，无法传递情感）\n\n" +
-                
-                "# 四、语境适配退化：错位与无效\n\n" +
-                
-                "## 功能场景的语言错位\n" +
-                "- 正文叙事与角色身份脱节：体制内角色的\"肌肉反应\"用口语化表达体现（如将\"树死了，不就只剩'发财'了吗\"退化为\"树死了没事，你肯定能发财\"，失去得体感，不符合人设）\n" +
-                "- 作者结语用生硬书面语（如将\"新人报到，求支持\"退化为\"本作品为作者首作，敬请各位读者予以支持\"，脱离网文语境，显得疏离）\n\n" +
-                
-                "## 伏笔与细节的功能性失效\n" +
-                "- 添加无关细节，不服务主题（如给黄柏涵添加\"喜欢吃苹果\"的描述，既不强化高中生人设，也不铺垫后续情节，成为无效细节）\n" +
-                "- 关键细节脱离核心主题（如\"重生\"设定仅用\"陈着回到了高三\"一句话带过，不通过\"转笔生涩\"\"校服触感\"等细节强化，导致\"重生\"设定缺乏说服力，也不扣\"肌肉反应\"的核心主题）\n\n" +
-                
-                "# 执行要求\n" +
-                "- 严格遵循以上所有退化规则\n" +
-                "- 不要解释，不要分析\n" +
-                "- 直接输出退化后的完整文本";
+        return "你将扮演一个专业的网络小说润色AI，严格遵循以下规则进行润色。\n" +
+                "\n" +
+                "一、核心替换规则\n" +
+                "1. 风格与文笔（面向大众阅读习惯）\n" +
+                "[定位] 任何形式的、跨领域的非字面类比描述（如：将“危机”类比为“风暴”）。\n" +
+                "-[解决] 删除比喻手法，直接描述事件本身的核心事实。\n" +
+                "[定位] 华丽、复杂的辞藻和书面语。\n" +
+                "-[解决] 替换为简单、直白、通俗的口语化词汇。\n" +
+                "[定位] 名词前存在多个形容词堆砌（尤其景物描写）。\n" +
+                "-[解决] 只保留最核心的一个形容词，或用具体动作/场景互动来体现。\n" +
+                "[定位] “最”、“绝对”、“终极”等极端词汇。\n" +
+                "-[解决] 替换为程度较轻的词或直接删除。\n" +
+                "2. 句式结构\n" +
+                "[定位] “总而言之”等总结性句式。\n" +
+                "-[解决] 彻底删除。用场景切换、角色动作或“随即、接着、然后”等口语化转接词来衔接上下文。\n" +
+                "[定位] “不是 A，而是 B”的句式。\n" +
+                "-[解决] 直接陈述 B，不提及 A。\n" +
+                "[定位] 任何不必要的重复，包括机械的句式排比或词汇堆砌（≥3个）。\n" +
+                "-[解决] 采用差异化改写：通过调整句式结构、语态、主语或添加连接词打破工整重复，形成自然语流。\n" +
+                "[定位] “选择一/选择二”或任何分支选项式表述。\n" +
+                "-[解决] 直接让角色做出决定并行动，不呈现选项本身，保持叙事线性推进。\n" +
+                "3. 角色称谓\n" +
+                "[定位] 连续或高频使用人称代词“他/她”。\n" +
+                "-[解决] 优先使用角色名字。若需变化，可使用身份（如“那位剑客”）或特征（如“金发男子”）来指代。多人对话中，交替使用名字和代词以避免重复。\n" +
+                "4. 情绪表达\n" +
+                "[定位] 直接描述极端情绪的词汇（如：绝望、狂喜、暴怒）。\n" +
+                "-[解决] 删除情绪词汇，通过神态、动作、生理反应或内心独白间接呈现。\n" +
+                "[定位] 主角的所有常规情绪词（如“他感到高兴/悲伤”）。\n" +
+                "-[解决] 删除情绪词，通过行为、微表情、语言来间接体现。\n" +
+                "[定位] 配角的小幅度情绪（如疑惑、好奇）。\n" +
+                "-[解决] 可以直接描述，例如：“张三有些疑惑”。\n" +
+                "[定位] 强烈的感叹语气和过多的感叹号！！\n" +
+                "-[解决] 减少感叹号使用，将强烈情感内化为角色的动作或心理活动，保持情绪波动平缓。\n" +
+                "5. 标点与格式\n" +
+                "[定位] 用引号包住的抽象概念或强调名词。\n" +
+                "-[解决] 去掉引号或改为基于事件本质的直白具体表达。\n" +
+                "[定位] 结构助词“地”。\n" +
+                "-[解决] 统一替换为“的”。\n" +
+                "[定位] 任何用顿号“、”连接的，带有修饰成分的并列短语\n" +
+                "-[解决] 抛弃并列结构，改用直接点明因果/依赖关系的自然短句。\n" +
+                "\n" +
+                "二、章节结构指令\n" +
+                "[开头] 必须标注本章标题。章节名取名策略（情绪先行：优先使用感叹、疑问、反转等句式激发读者情绪。信息明确：标题中尽量包含“谁+做了什么+结果/悬念”。贴合人设：萌宝文用可爱语气，系统文用任务提示，修罗场用暧昧拉扯。轻松幽默：大量使用网络用语、口语化表达，降低阅读门槛。）。\n" +
+                "[主体] 严格保持原文剧情与节奏。\n" +
+                "[结尾] 正常收尾，无需刻意留白或设置悬念。\n" +
+                "\n" +
+                "三、书名词汇库集成与应用\n" +
+                "[词汇库构建] 基于当前小说正文内容，自动识别并锁定一本风格最为接近且你内部知识库中拥有完整正文内容的知名网络小说并构建以下词汇库：\n" +
+                "-角色名称库：[主角名、配角名、重要人物称号等]\n" +
+                "-地点场景库：[重要地名、场景名称、特殊区域等]\n" +
+                "-功法技能库：[修炼体系、武技名称、法术名称等]\n" +
+                "-物品法宝库：[神器名称、法宝、重要物品等]\n" +
+                "-组织势力库：[门派名称、帮会、国家势力等]\n" +
+                "-专有术语库：[世界观特有概念、特殊能量体系等]\n" +
+                "[词汇库应用规则]\n" +
+                "-保持名称一致性：所有专有名词必须严格遵循词汇库中的命名\n" +
+                "-避免重复描述：对已定义的概念不再添加解释性描述\n" +
+                "-自然融入叙事：将专有名词有机融入情节发展，避免生硬插入\n" +
+                "-维持风格统一：确保词汇库中的术语与小说整体风格保持一致\n" +
+                "[执行优先级]\n" +
+                "-优先使用词汇库中的专有名词\n" +
+                "-保持术语在不同章节间的一致性\n" +
+                "-避免创造与现有设定冲突的新名词\n" +
+                "\n" +
+                "四、输出要求\n" +
+                "直接输出修改后的完整文本\n" +
+                "不解释修改内容\n" +
+                "保持原文核心情节不变\n" +
+                "确保语句通顺自然";
     }
 
     /**
@@ -114,14 +133,14 @@ public class AITraceRemovalService {
         // 用户消息：需要处理的内容
         Map<String, String> userMessage = new HashMap<>();
         userMessage.put("role", "user");
-        userMessage.put("content", "请对以下内容进行AI消痕处理：\n\n" + content);
+        userMessage.put("content", content);
         messages.add(userMessage);
 
         // 构建请求体
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", model);
         requestBody.put("max_tokens", 8000);
-        requestBody.put("temperature", 0.9);
+        requestBody.put("temperature", 2);
         requestBody.put("messages", messages);
 
         try {
@@ -182,12 +201,14 @@ public class AITraceRemovalService {
     /**
      * 执行AI消痕处理（流式输出）
      */
+    /**
+     * AI消痕（流式）- 完全重写，确保正确处理换行符
+     */
     public void removeAITraceStream(String content, AIConfigRequest aiConfig, SseEmitter emitter) throws IOException {
         if (aiConfig == null || !aiConfig.isValid()) {
             throw new IOException("AI配置无效");
         }
         
-        String baseUrl = aiConfig.getEffectiveBaseUrl();
         String apiKey = aiConfig.getApiKey();
         String model = aiConfig.getModel();
 
@@ -207,24 +228,21 @@ public class AITraceRemovalService {
         // 用户消息：需要处理的内容
         Map<String, String> userMessage = new HashMap<>();
         userMessage.put("role", "user");
-        userMessage.put("content", "请对以下内容进行AI消痕处理：\n\n" + content);
+        userMessage.put("content", content);
         messages.add(userMessage);
 
         // 构建请求体（启用流式）
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", model);
         requestBody.put("max_tokens", 8000);
-        requestBody.put("temperature", 0.9);
-        requestBody.put("stream", true); // 启用流式响应
+        requestBody.put("temperature", 0.8);
+        requestBody.put("stream", true);
         requestBody.put("messages", messages);
 
         try {
             String url = aiConfig.getApiUrl();
             
-            logger.info("开始AI消痕流式处理，调用AI接口: {}", url);
-            
-            // 发送开始事件
-            emitter.send(SseEmitter.event().name("start").data("开始处理"));
+            logger.info("📡 开始AI消痕流式处理，调用AI接口: {}, model: {}, stream: true", url, model);
             
             // 使用RestTemplate进行流式读取
             SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
@@ -235,73 +253,119 @@ public class AITraceRemovalService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.setBearerAuth(apiKey);
-            // 流式接口必须设置Accept为text/event-stream
             headers.set("Accept", "text/event-stream");
 
-            // 使用ResponseExtractor进行真正的流式读取
+            // 使用字节流而不是字符流，避免丢失换行符
             restTemplate.execute(url, HttpMethod.POST, 
                 req -> {
                     req.getHeaders().putAll(headers);
                     req.getBody().write(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsBytes(requestBody));
                 },
                 response -> {
-                    try (BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(response.getBody(), StandardCharsets.UTF_8))) {
+                    try {
+                        // 关键修改：使用字节流读取，保留所有原始字符
+                        java.io.InputStream inputStream = response.getBody();
+                        byte[] buffer = new byte[8192];
+                        StringBuilder lineBuffer = new StringBuilder();
+                        int chunkCount = 0;
+                        int totalChars = 0;
                         
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            line = line.trim();
-                            if (line.startsWith("data: ")) {
-                                String data = line.substring(6);
-                                if ("[DONE]".equals(data)) {
-                                    break; // 流式响应结束
-                                }
+                        while (true) {
+                            int bytesRead = inputStream.read(buffer);
+                            if (bytesRead == -1) break;
+                            
+                            // 将字节转换为字符串，保留所有字符包括\n
+                            String chunk = new String(buffer, 0, bytesRead, StandardCharsets.UTF_8);
+                            lineBuffer.append(chunk);
+                            
+                            // 按行处理，但保留换行符
+                            String bufferContent = lineBuffer.toString();
+                            String[] lines = bufferContent.split("\n", -1);
+                            
+                            // 保留最后一个不完整的行
+                            lineBuffer = new StringBuilder();
+                            if (lines.length > 0) {
+                                lineBuffer.append(lines[lines.length - 1]);
+                            }
+                            
+                            // 处理完整的行
+                            for (int i = 0; i < lines.length - 1; i++) {
+                                String line = lines[i].trim();
                                 
-                                try {
-                                    // 解析JSON获取内容
-                                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                                    @SuppressWarnings("unchecked")
-                                    Map<String, Object> json = mapper.readValue(data, Map.class);
+                                if (line.startsWith("data: ")) {
+                                    String data = line.substring(6);
+                                    if ("[DONE]".equals(data)) {
+                                        logger.info("📨 收到流式结束标记 [DONE]，共处理 {} 个chunk，总字符数: {}", chunkCount, totalChars);
+                                        inputStream.close();
+                                        emitter.complete();
+                                        return null;
+                                    }
                                     
-                                    @SuppressWarnings("unchecked")
-                                    List<Map<String, Object>> choices = (List<Map<String, Object>>) json.get("choices");
-                                    
-                                    if (choices != null && !choices.isEmpty()) {
+                                    try {
+                                        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
                                         @SuppressWarnings("unchecked")
-                                        Map<String, Object> firstChoice = choices.get(0);
-                                        @SuppressWarnings("unchecked")
-                                        Map<String, Object> delta = (Map<String, Object>) firstChoice.get("delta");
+                                        Map<String, Object> json = mapper.readValue(data, Map.class);
                                         
-                                        if (delta != null) {
-                                            String contentChunk = (String) delta.get("content");
-                                            if (contentChunk != null) {
-                                                // 发送内容块到前端
-                                                Map<String, String> eventData = new HashMap<>();
-                                                eventData.put("content", contentChunk);
-                                                emitter.send(SseEmitter.event().data(eventData));
-                                                logger.debug("发送内容块: {}", contentChunk.substring(0, Math.min(20, contentChunk.length())));
+                                        @SuppressWarnings("unchecked")
+                                        List<Map<String, Object>> choices = (List<Map<String, Object>>) json.get("choices");
+                                        
+                                        if (choices != null && !choices.isEmpty()) {
+                                            @SuppressWarnings("unchecked")
+                                            Map<String, Object> firstChoice = choices.get(0);
+                                            @SuppressWarnings("unchecked")
+                                            Map<String, Object> delta = (Map<String, Object>) firstChoice.get("delta");
+                                            
+                                            if (delta != null) {
+                                                String contentChunk = (String) delta.get("content");
+                                                if (contentChunk != null && !contentChunk.isEmpty()) {
+                                                    // 过滤掉 <think> 标签及其内容
+                                                    contentChunk = contentChunk.replaceAll("<think>.*?</think>", "");
+                                                    contentChunk = contentChunk.replaceAll("<think>.*", ""); // 处理未闭合的情况
+                                                    contentChunk = contentChunk.replaceAll(".*</think>", ""); // 处理跨chunk的结束标签
+                                                    
+                                                    if (!contentChunk.isEmpty()) {
+                                                        // 发送JSON格式数据，包裹在content字段中
+                                                        Map<String, String> eventData = new HashMap<>();
+                                                        eventData.put("content", contentChunk);
+                                                        emitter.send(SseEmitter.event().data(eventData));
+                                                        chunkCount++;
+                                                        totalChars += contentChunk.length();
+                                                        
+                                                        if (chunkCount == 1) {
+                                                            logger.info("✅ 开始接收流式数据");
+                                                        }
+                                                        
+                                                        // 调试：记录换行符数量
+                                                        if (chunkCount % 50 == 0) {
+                                                            int newlineCount = contentChunk.length() - contentChunk.replace("\n", "").length();
+                                                            logger.info("📊 Chunk #{}: 长度={}, 换行符数量={}", chunkCount, contentChunk.length(), newlineCount);
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
+                                    } catch (Exception e) {
+                                        logger.warn("⚠️ 解析流式响应失败: {}", e.getMessage());
                                     }
-                                } catch (Exception e) {
-                                    logger.warn("解析流式响应失败: {}", e.getMessage());
                                 }
                             }
                         }
                         
-                        // 完成流式响应
-                        emitter.send(SseEmitter.event().data("[DONE]"));
+                        inputStream.close();
                         emitter.complete();
+                        logger.info("✅ AI消痕完成，总chunk数: {}, 总字符数: {}", chunkCount, totalChars);
                         
                     } catch (IOException e) {
-                        logger.error("读取流式响应失败", e);
-                        emitter.completeWithError(e);
+                        logger.error("❌ 读取流式响应失败", e);
+                        try {
+                            emitter.completeWithError(e);
+                        } catch (Exception ignored) {}
                     }
                     return null;
                 });
 
         } catch (Exception e) {
-            logger.error("AI消痕流式调用失败", e);
+            logger.error("❌ AI消痕流式调用失败", e);
             emitter.completeWithError(e);
             throw new IOException("AI消痕流式调用失败: " + e.getMessage());
         }

@@ -21,6 +21,8 @@ import AIControlPanelPage from '@/pages/AIControlPanelPage'
 import PromptLibraryPage from '@/pages/PromptLibraryPage'
 import WelcomeGuide from '@/pages/WelcomeGuide'
 import AIChatPage from '@/pages/AIChatPage'
+import GeneratorListPage from '@/pages/GeneratorListPage'
+import WritingStudioPage from '@/pages/WritingStudioPage'
 import './App.new.css'
 
 const { Content } = Layout
@@ -42,6 +44,7 @@ const App: React.FC = () => {
           <Routes>
             <Route path="/novels/:novelId/writing" element={<NovelCraftStudio />} />
             <Route path="/novels/:novelId/volumes/:volumeId/writing" element={<VolumeWritingStudio />} />
+            <Route path="/novels/:novelId/writing-studio" element={<WritingStudioPage />} />
           </Routes>
         </Layout>
       ) : isAuthPage ? (
@@ -72,6 +75,7 @@ const App: React.FC = () => {
                   <Route path="/settings" element={<SettingsPage />} />
                   <Route path="/ai-control-panel" element={<AIControlPanelPage />} />
                   <Route path="/prompt-library" element={<PromptLibraryPage />} />
+                  <Route path="/ai-generators" element={<GeneratorListPage />} />
                   <Route path="/ai-chat" element={<AIChatPage />} />
                 </Routes>
               </Content>

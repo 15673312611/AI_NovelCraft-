@@ -6,13 +6,13 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class AIClientConfig {
 
-    @Value("${ai.base-url:https://doradoapi.top}")
+    @Value("${ai.base-url:https://api.openai.com}")
     private String baseUrl;
 
     @Value("${ai.api-key:}")
     private String apiKey;
 
-    @Value("${ai.default-model:claude-opus-4-1-20250805-thinking}")
+    @Value("${ai.default-model:gpt-4o-mini}")
     private String defaultModel;
 
     public String getBaseUrl() { return baseUrl; }

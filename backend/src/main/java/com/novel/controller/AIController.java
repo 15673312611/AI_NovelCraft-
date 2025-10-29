@@ -23,6 +23,9 @@ public class AIController {
 
     @Autowired
     private AITraceRemovalService aiTraceRemovalService;
+    
+    @Autowired
+    private com.novel.service.AIManuscriptReviewService manuscriptReviewService;
 
     /**
      * AI消痕接口（流式）
@@ -157,6 +160,83 @@ public class AIController {
             logger.error("AI消痕处理失败", e);
             return Result.error("AI消痕处理失败: " + e.getMessage());
         }
+    }
+    
+    /**
+     * AI审稿接口（流式）
+     * 对稿件内容进行专业审稿，提供修改建议，使用SSE流式输出
+     */
+    @PostMapping(value = "/review-manuscript-stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter reviewManuscriptStream(@RequestBody Map<String, Object> request) {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter = new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(300000L);
+        
+        try {
+            String content = (String) request.get("content");
+            
+            if (content == null || content.trim().isEmpty()) {
+                emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                    .name("error").data("稿件内容不能为空"));
+                emitter.completeWithError(new Exception("稿件内容不能为空"));
+                return emitter;
+            }
+            
+            // 解析AI配置
+            AIConfigRequest aiConfig = new AIConfigRequest();
+            if (request.containsKey("provider")) {
+                aiConfig.setProvider((String) request.get("provider"));
+                aiConfig.setApiKey((String) request.get("apiKey"));
+                aiConfig.setModel((String) request.get("model"));
+                aiConfig.setBaseUrl((String) request.get("baseUrl"));
+                
+                logger.info("✅ AI审稿流式 - 收到AI配置: provider={}, model={}", 
+                    aiConfig.getProvider(), aiConfig.getModel());
+            } else if (request.get("aiConfig") instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
+                aiConfig.setProvider(aiConfigMap.get("provider"));
+                aiConfig.setApiKey(aiConfigMap.get("apiKey"));
+                aiConfig.setModel(aiConfigMap.get("model"));
+                aiConfig.setBaseUrl(aiConfigMap.get("baseUrl"));
+            }
+            
+            if (!aiConfig.isValid()) {
+                logger.error("❌ AI审稿流式 - AI配置无效: request={}", request);
+                emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                    .name("error").data("AI配置无效，请先在设置页面配置AI服务"));
+                emitter.completeWithError(new Exception("AI配置无效"));
+                return emitter;
+            }
+            
+            logger.info("🔍 开始AI审稿流式处理，稿件长度: {}, 使用模型: {}", content.length(), aiConfig.getModel());
+            
+            // 异步执行AI审稿
+            java.util.concurrent.CompletableFuture.runAsync(() -> {
+                try {
+                    manuscriptReviewService.reviewManuscriptStream(content, aiConfig, emitter);
+                } catch (Exception e) {
+                    logger.error("AI审稿流式处理失败", e);
+                    try {
+                        emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                            .name("error").data("审稿失败: " + e.getMessage()));
+                        emitter.completeWithError(e);
+                    } catch (Exception ex) {
+                        logger.error("发送错误事件失败", ex);
+                    }
+                }
+            });
+            
+        } catch (Exception e) {
+            logger.error("AI审稿初始化失败", e);
+            try {
+                emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                    .name("error").data("初始化失败: " + e.getMessage()));
+                emitter.completeWithError(e);
+            } catch (Exception ex) {
+                logger.error("发送错误事件失败", ex);
+            }
+        }
+        
+        return emitter;
     }
 }
 

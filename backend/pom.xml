@@ -152,6 +152,13 @@
             <artifactId>springdoc-openapi-ui</artifactId>
             <version>1.6.15</version>
         </dependency>
+
+        <!-- Apache POI for DOCX parsing -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.2.3</version>
+        </dependency>
     </dependencies>
 
     <dependencyManagement>

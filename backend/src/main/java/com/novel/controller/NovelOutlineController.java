@@ -80,7 +80,8 @@ public class NovelOutlineController {
                 // 开始调用AI并按块写出与写库
                 outlineService.streamGenerateOutlineContent(outline, aiConfig, chunk -> {
                     try {
-                        emitter.send(SseEmitter.event().name("chunk").data(chunk));
+                        // 直接发送纯文本数据，不带event名称
+                        emitter.send(chunk);
                     } catch (Exception sendEx) {
                         throw new RuntimeException(sendEx);
                     }
@@ -198,7 +199,8 @@ public class NovelOutlineController {
                     aiConfig,
                     chunk -> {
                         try {
-                            emitter.send(SseEmitter.event().name("chunk").data(chunk));
+                            // 直接发送纯文本数据，不带event名称
+                            emitter.send(chunk);
                         } catch (Exception e) {
                             throw new RuntimeException(e);
                         }

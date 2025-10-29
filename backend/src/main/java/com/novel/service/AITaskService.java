@@ -59,6 +59,25 @@ public class AITaskService {
     }
 
     /**
+     * 批量查询任务状态（一次性查询，避免循环）
+     */
+    public Map<String, AITaskDto> getBatchTaskStatus(List<Long> taskIds) {
+        if (taskIds == null || taskIds.isEmpty()) {
+            return new HashMap<>();
+        }
+
+        // 使用 MyBatis Plus 的 selectBatchIds 一次性查询所有任务
+        List<AITask> tasks = aiTaskRepository.selectBatchIds(taskIds);
+        
+        // 转换为 Map<taskId, AITaskDto>
+        return tasks.stream()
+                .collect(Collectors.toMap(
+                        task -> String.valueOf(task.getId()),
+                        AITaskDto::fromEntity
+                ));
+    }
+
+    /**
      * 创建AI任务
      */
     public AITaskDto createTask(AITask task) {

@@ -526,7 +526,7 @@ const VolumeManagementPage: React.FC = () => {
   // 轮询等待卷规划生成完成
   const pollForVolumeGeneration = async () => {
     let attempts = 0;
-    const maxAttempts = 60; // 最多轮询2分钟
+    const maxAttempts = 120; // 最多轮询4分钟（120次 * 4秒 = 480秒）
 
     // 标记正在生成卷（持久化到 localStorage）
     localStorage.setItem(`novel_${novelId}_generating_volumes`, Date.now().toString());
@@ -537,7 +537,7 @@ const VolumeManagementPage: React.FC = () => {
         attempts++;
         try {
           // 更新进度
-          const progress = Math.min(90, 10 + (attempts * 1.5));
+          const progress = Math.min(90, 10 + (attempts * 0.7));
           setTaskProgress({ percentage: progress, message: '生成卷规划中...' });
 
           // 检查卷列表
@@ -583,7 +583,7 @@ const VolumeManagementPage: React.FC = () => {
           message.warning('卷规划生成超时，请刷新查看是否已生成');
           reject(new Error('卷规划生成超时'));
         }
-      }, 2000);
+      }, 4000); // 每次轮询间隔4秒
     });
   };
 
@@ -869,104 +869,6 @@ const VolumeManagementPage: React.FC = () => {
       setStreamingVolumeOutline(''); // 失败时清空
     } finally {
       setIsGeneratingSingleVolume(false);
-    }
-  };
-
-  // 生成详细大纲（异步任务模式，避免超时）
-  const handleGenerateOutline = async (volumeId: string) => {
-    // 防止重复提交
-    if (isGenerating || currentTaskId) {
-      message.warning('任务正在进行中，请勿重复提交');
-      return;
-    }
-
-    setLoading(true);
-    setIsGenerating(true);
-    try {
-      const advice = volumeAdvices[volumeId] || '';
-
-      // 尝试创建异步大纲生成任务
-      const response = await fetch(`/api/volumes/${volumeId}/generate-outline-async`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
-        },
-        body: JSON.stringify({
-          userAdvice: advice
-        }),
-      });
-
-      const result = await response.json();
-
-      if (result.code === 200 && (result.data.asyncTask || result.data.taskId)) {
-        // 异步任务创建成功
-        message.success('大纲生成任务已创建，正在后台处理...');
-
-        setCurrentTaskId(result.data.taskId || result.data.asyncTask?.taskId);
-        setTaskProgress({ percentage: 0, message: '开始生成卷大纲' });
-
-        // 清理建议输入
-        setVolumeAdvices(prev => {
-          const next = { ...prev };
-          delete next[volumeId];
-          return next;
-        });
-
-        // 存储任务信息
-        aiTaskService.storeTask(result.data.taskId || result.data.asyncTask?.taskId, 'VOLUME_OUTLINE', parseInt(novelId!));
-
-        // 开始轮询任务进度
-        const stopPollingFn = aiTaskService.startPolling(
-          result.data.taskId || result.data.asyncTask?.taskId,
-          (progress) => {
-            setTaskProgress({
-              percentage: progress.progressPercentage || 0,
-              message: progress.message || '生成中...'
-            });
-          },
-          () => {
-            // 任务完成
-            setTaskProgress({ percentage: 100, message: '卷大纲生成完成！' });
-            setCurrentTaskId(null);
-            setIsGenerating(false);
-            aiTaskService.removeStoredTask(result.data.taskId);
-
-            message.success('卷大纲生成成功！');
-            loadVolumes(); // 重新加载卷信息
-          },
-          (error) => {
-            // 任务失败
-            setTaskProgress(null);
-            setCurrentTaskId(null);
-            setIsGenerating(false);
-            aiTaskService.removeStoredTask(result.data.taskId);
-            message.error('生成卷大纲失败: ' + error);
-          }
-        );
-
-        setStopPolling(() => stopPollingFn);
-
-      } else {
-        // 如果不支持异步，回退到同步模式
-        message.warning('后端暂不支持异步大纲生成，使用同步模式');
-        setIsGenerating(false);
-
-        await novelVolumeService.generateVolumeOutline(volumeId, advice);
-        message.success('大纲生成成功！');
-        loadVolumes(); // 重新加载卷信息
-        setVolumeAdvices(prev => {
-          const next = { ...prev };
-          delete next[volumeId];
-          return next;
-        });
-      }
-
-    } catch (error: any) {
-      message.error(error.response?.data?.message || error.message || '生成大纲失败');
-      setIsGenerating(false);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -1465,84 +1367,100 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
 
         message.success('批量大纲任务已创建，正在生成中...');
 
-        // 启动真实任务轮询
+        // 启动批量轮询（一次请求查询所有任务）
+        const taskIds = tasks.map(t => t.taskId);
+        const taskIdToVolumeId: Record<number, string> = {};
+        tasks.forEach(task => {
+          taskIdToVolumeId[task.taskId] = String(task.volumeId);
+          try {
+            aiTaskService.storeTask(task.taskId, 'VOLUME_OUTLINE', parseInt(novelId!));
+          } catch {}
+        });
+
         let completedCount = 0;
-        try {
-          tasks.forEach(task => {
-            const taskId = task.taskId;
-            const volumeId = String(task.volumeId);
-            
-            try {
-              aiTaskService.storeTask(taskId, 'VOLUME_OUTLINE', parseInt(novelId!));
-            } catch {}
-            
-            const stop = aiTaskService.startPolling(
-              taskId,
-              (progress) => {
-                // 实时更新进度
-                setVolumeTasks(prev => {
-                  const next = { ...prev };
-                  if (next[volumeId]) {
-                    next[volumeId] = {
-                      taskId: taskId,
-                      progress: progress.percentage || 0,
-                      status: progress.status || 'RUNNING',
-                      message: progress.message || '生成中...'
-                    };
-                  }
-                  return next;
-                });
+        let failedCount = 0;
+        const allCompleted = () => completedCount + failedCount >= tasks.length;
+
+        const batchPollingInterval = setInterval(async () => {
+          try {
+            // 一次请求查询所有任务状态
+            const response = await fetch('/api/ai-tasks/batch-status', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
               },
-              () => {
-                // 单个任务完成
-                completedCount++;
-                setVolumeTasks(prev => {
-                  const next = { ...prev };
-                  if (next[volumeId]) {
-                    next[volumeId] = {
-                      taskId: taskId,
-                      progress: 100,
-                      status: 'COMPLETED',
-                      message: '生成完成'
-                    };
-                  }
-                  return next;
-                });
+              body: JSON.stringify({ taskIds })
+            });
+
+            if (!response.ok) {
+              throw new Error('批量查询任务状态失败');
+            }
+
+            const statusMap = await response.json();
+
+            // 更新所有任务的状态
+            setVolumeTasks(prev => {
+              const next = { ...prev };
+              let newCompletedCount = 0;
+              let newFailedCount = 0;
+
+              Object.entries(statusMap).forEach(([taskIdStr, taskData]: [string, any]) => {
+                const taskId = Number(taskIdStr);
+                const volumeId = taskIdToVolumeId[taskId];
                 
-                // 刷新卷列表
-                loadVolumes();
-                try { aiTaskService.removeStoredTask(taskId); } catch {}
-                
-                // 如果全部完成，显示成功消息
-                if (completedCount === tasks.length) {
-                  message.success('所有卷大纲生成完成！');
+                if (volumeId && next[volumeId]) {
+                  const status = taskData.status || 'RUNNING';
+                  const progress = taskData.progressPercentage || taskData.percentage || 0;
+                  
+                  next[volumeId] = {
+                    taskId: taskId,
+                    progress: progress,
+                    status: status,
+                    message: taskData.message || (status === 'COMPLETED' ? '生成完成' : '生成中...')
+                  };
+
+                  if (status === 'COMPLETED') newCompletedCount++;
+                  if (status === 'FAILED' || status === 'CANCELLED') newFailedCount++;
                 }
-              },
-              (err) => {
-                // 任务失败
-                console.warn('生成任务失败:', err);
-                setVolumeTasks(prev => {
-                  const next = { ...prev };
-                  if (next[volumeId]) {
-                    next[volumeId] = {
-                      taskId: taskId,
-                      progress: 0,
-                      status: 'FAILED',
-                      message: err || '生成失败'
-                    };
-                  }
-                  return next;
-                });
+              });
+
+              // 更新完成计数
+              if (newCompletedCount > completedCount) {
+                completedCount = newCompletedCount;
+              }
+              if (newFailedCount > failedCount) {
+                failedCount = newFailedCount;
+              }
+
+              return next;
+            });
+
+            // 检查是否全部完成
+            if (allCompleted()) {
+              clearInterval(batchPollingInterval);
+              
+              // 刷新卷列表
+              loadVolumes();
+              
+              // 清理任务
+              taskIds.forEach(taskId => {
                 try { aiTaskService.removeStoredTask(taskId); } catch {}
-              },
-              2000  // 2秒轮询一次
-            );
-            // 保存停止函数以便取消
-            setTaskStops(prev => ({ ...prev, [String(taskId)]: stop }));
-          });
-        } catch (e) {
-          console.warn('启动批量任务轮询失败:', e);
-        }
+              });
+
+              if (failedCount > 0) {
+                message.warning(`批量生成完成，${completedCount}个成功，${failedCount}个失败`);
+              } else {
+                message.success('所有卷大纲生成完成！');
+              }
+            }
+          } catch (error) {
+            console.warn('批量轮询失败:', error);
+          }
+        }, 3000); // 3秒轮询一次
+
+        // 保存停止函数
+        setTaskStops(prev => ({ ...prev, 'batch': () => clearInterval(batchPollingInterval) }));
 
       } else {
         throw new Error(result?.message || '批量生成卷详细大纲失败');

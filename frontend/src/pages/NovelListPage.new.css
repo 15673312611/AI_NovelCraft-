@@ -169,7 +169,7 @@
   margin-bottom: clamp(24px, 4vh, 32px);
   padding: 0;
   position: relative;
-  z-index: 2;
+  z-index: 50;
 }
 
 .search-input {
@@ -232,6 +232,7 @@
 /* 排序按钮 */
 .sort-dropdown-wrapper {
   position: relative;
+  z-index: 100;
 }
 
 .sort-button {
@@ -251,6 +252,8 @@
   color: #64748b;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  z-index: 101;
 }
 
 .sort-button:hover,
@@ -273,12 +276,12 @@
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 1050;
+  z-index: 9999;
   min-width: 160px;
   padding: 6px 0;
   border-radius: 10px;
   background: #ffffff;
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.15), 0 0 0 1px rgba(15, 23, 42, 0.05);
   border: 1px solid #e2e8f0;
   animation: dropdownFadeIn 0.18s ease forwards;
 }
@@ -455,7 +458,7 @@
 .card-stats {
   display: flex;
   gap: clamp(16px, 3vw, 24px);
-  padding: 14px 18px;
+  padding: 12px 16px;
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   border-radius: 10px;
   margin-bottom: 18px;
@@ -468,6 +471,28 @@
   align-items: center;
   flex: 1;
   gap: 4px;
+}
+
+.stat-item-full {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.stat-label {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.stat-time {
+  font-size: 13px;
+  color: #0f172a;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .stat-number {

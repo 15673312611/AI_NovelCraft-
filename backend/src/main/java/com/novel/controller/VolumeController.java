@@ -220,7 +220,8 @@ public class VolumeController {
                 // 调用VolumeService的流式生成方法
                 volumeService.streamGenerateVolumeOutline(volumeId, userAdvice, aiConfig, chunk -> {
                     try {
-                        emitter.send(SseEmitter.event().name("chunk").data(chunk));
+                        // 直接发送纯文本数据，不带event名称
+                        emitter.send(chunk);
                     } catch (Exception e) {
                         logger.error("发送SSE chunk失败", e);
                         throw new RuntimeException(e);
@@ -380,7 +381,8 @@ public class VolumeController {
                     aiConfig,
                     chunk -> {
                         try {
-                            emitter.send(SseEmitter.event().name("chunk").data(chunk));
+                            // 直接发送纯文本数据，不带event名称
+                            emitter.send(chunk);
                         } catch (Exception e) {
                             throw new RuntimeException(e);
                         }
@@ -485,60 +487,6 @@ public class VolumeController {
         }
     }
 
-    /**
-     * 兼容前端：为指定卷生成详细大纲（同步返回任务信息，实际异步执行）
-     * POST /volumes/{volumeId}/generate-outline
-     * 注意：与 /volumes/{volumeId}/generate-outline-async 行为相同，仅URL兼容
-     */
-    @PostMapping("/{volumeId}/generate-outline")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> generateVolumeOutlineCompat(
-            @PathVariable Long volumeId,
-            @RequestBody(required = false) Map<String, Object> request) {
-        logger.info("📋 [兼容] 接收卷大纲生成请求: volumeId={}", volumeId);
-        try {
-            String userAdvice = null;
-            AIConfigRequest aiConfig = new AIConfigRequest();
-            
-            if (request != null) {
-                Object adviceObj = request.get("userAdvice");
-                if (adviceObj instanceof String) {
-                    userAdvice = (String) adviceObj;
-                }
-                
-                // 解析AI配置（前端withAIConfig是扁平化的，直接从根级别读取）
-                if (request.containsKey("provider")) {
-                    aiConfig.setProvider((String) request.get("provider"));
-                    aiConfig.setApiKey((String) request.get("apiKey"));
-                    aiConfig.setModel((String) request.get("model"));
-                    aiConfig.setBaseUrl((String) request.get("baseUrl"));
-                    
-                    logger.info("✅ 卷大纲生成[兼容] - 收到AI配置: provider={}, model={}", 
-                        aiConfig.getProvider(), aiConfig.getModel());
-                } else if (request.get("aiConfig") instanceof Map) {
-                    // 兼容旧的嵌套格式
-                    @SuppressWarnings("unchecked")
-                    Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
-                    aiConfig.setProvider(aiConfigMap.get("provider"));
-                    aiConfig.setApiKey(aiConfigMap.get("apiKey"));
-                    aiConfig.setModel(aiConfigMap.get("model"));
-                    aiConfig.setBaseUrl(aiConfigMap.get("baseUrl"));
-                }
-            }
-            
-            if (!aiConfig.isValid()) {
-                logger.error("❌ 卷大纲生成[兼容] - AI配置无效: volumeId={}, request={}", volumeId, request);
-                return ResponseEntity.badRequest().body(
-                    ApiResponse.error("AI配置无效，请先在设置页面配置AI服务")
-                );
-            }
-            
-            Map<String, Object> result = volumeService.generateVolumeOutlineAsync(volumeId, userAdvice, aiConfig);
-            return ResponseEntity.ok(ApiResponse.success("卷大纲生成任务已创建", result));
-        } catch (Exception e) {
-            logger.error("❌ [兼容] 创建卷大纲任务失败: volumeId= {}", volumeId, e);
-            return ResponseEntity.ok(ApiResponse.error("创建卷大纲任务失败: " + e.getMessage()));
-        }
-    }
 
     /**
      * 获取卷详情

@@ -137,35 +137,90 @@ public class AsyncAIGenerationService {
 
             // 卷蓝图提示词（不锁剧情，信息密度高，分段文本）
             StringBuilder prompt = new StringBuilder();
-            prompt.append("你的身份\n")
-                  .append("- 资深网文总编/剧情架构师，负责生成‘卷蓝图’：给方向与约束，不锁剧情与执行路径。\n\n")
-                  .append("任务目标\n")
-                  .append("- 基于全书大纲与本卷信息，输出宏观‘卷蓝图’，指导创作但不逐章规划。\n")
-                  .append("- 仅描述目标、阻力、代价、阶段性里程碑与开放事件池；禁止写对话、过程细节、具体章节编号。\n\n")
-                  .append("卷基本信息\n")
-                  .append("- 卷标题：").append(volume.getTitle() != null ? volume.getTitle() : ("第" + (volume.getVolumeNumber() == null ? 1 : volume.getVolumeNumber()) + "卷")).append("\n")
-                  .append("- 卷序号：第").append(volume.getVolumeNumber() != null ? volume.getVolumeNumber() : 1).append("卷\n")
-                  .append("- 章节范围：第").append(volume.getChapterStart()).append("-第").append(volume.getChapterEnd()).append("章（").append(chapterCount).append("章）\n")
-                  .append("- 预估总字数：").append(totalWords).append("\n")
-                  .append("- 平均每章字数：").append(avgWordsPerChapter).append("\n");
+            prompt.append("你是顶级网文总编，专门设计\"让读者欲罢不能\"的卷蓝图。你的任务是规划大方向和关键节点，但绝不锁死具体剧情。\n\n")
+                  .append("# 核心理念\n")
+                  .append("**蓝图不是剧本**：只给路线图和资源包，不写执行细节。让AI写作时有发挥空间，能根据实际情况灵活调整。\n")
+                  .append("**冲突驱动一切**：每个阶段都要有\"主角想要什么→遇到什么阻碍→付出什么代价→得到什么结果\"的拉扯。\n")
+                  .append("**爽点密度保证**：确保每隔几章就有一个爆点，让读者停不下来。\n\n")
+                  .append("# 卷基本信息\n")
+                  .append("**卷标题**：").append(volume.getTitle() != null ? volume.getTitle() : ("第" + (volume.getVolumeNumber() == null ? 1 : volume.getVolumeNumber()) + "卷")).append("\n")
+                  .append("**卷序号**：第").append(volume.getVolumeNumber() != null ? volume.getVolumeNumber() : 1).append("卷\n")
+                  .append("**章节范围**：第").append(volume.getChapterStart()).append("-").append(volume.getChapterEnd()).append("章（共").append(chapterCount).append("章）\n")
+                  .append("**预估总字数**：").append(totalWords).append(" 字\n")
+                  .append("**平均每章字数**：").append(avgWordsPerChapter).append(" 字\n");
             if (userAdvice != null && !userAdvice.trim().isEmpty()) {
-                prompt.append("- 用户建议：").append(userAdvice.trim()).append("\n");
+                prompt.append("**用户建议**：").append(userAdvice.trim()).append("\n");
             }
-            prompt.append("- 现有卷内容摘要：\n").append(volume.getContentOutline() != null ? volume.getContentOutline() : "无").append("\n\n")
-                  .append("输出结构（分段文字，不用列表编号，不锁事件顺序）\n")
-                  .append("1) 卷主题与核心议题\n")
-                  .append("2) 主角状态转变（起点→终点：能力/地位/关系/认知）\n")
-                  .append("3) 主要对手与压力（目标、手段、逼近路径、代价边界）\n")
-                  .append("4) 冲突升级阶梯（难度/风险阈值与触发条件）\n")
-                  .append("5) 资源/权限与代价规则（可用/可失/可反噬）\n")
-                  .append("6) 三线并行节奏（主角线/友军线/反派线的本卷目标与出镜比例）\n")
-                  .append("7) 伏笔‘种/提/收’计划（本卷必须项，保留必要留白）\n")
-                  .append("8) 开放事件池（≥6条：触发条件+影响方向，仅写目标与影响）\n")
-                  .append("9) 里程碑（3-4个：达成标准与可观测信号）\n")
-                  .append("10) 卷末验收标准（期待提升/悬念移交/风险结转）\n\n")
-                  .append("风格与约束\n")
-                  .append("- 专业编辑口吻；只写‘目标—阻力—选择—代价—新局’因果链；不写执行细节与台词。\n")
-                  .append("- 严禁输出JSON或代码块；整份蓝图信息密度充足，≥1500字。\n");
+            prompt.append("**现有卷内容摘要**：\n").append(volume.getContentOutline() != null ? volume.getContentOutline() : "无").append("\n\n")
+                  
+                  .append("# 输出要求\n\n")
+                  
+                  .append("## 一、本卷核心定位\n")
+                  .append("用2-3句话说清楚：这一卷要解决什么问题？主角要达成什么目标？读者能爽到什么？\n\n")
+                  
+                  .append("## 二、主角成长轨迹\n")
+                  .append("**起点状态**：本卷开始时，主角的实力/地位/资源/心态是什么样？\n")
+                  .append("**终点状态**：本卷结束时，主角会成长到什么程度？（要具体，比如\"从练气三层突破到筑基期\"\"从小保安变成安保部长\"）\n")
+                  .append("**成长路径**：大致分几个阶段？每个阶段有什么标志性突破？\n\n")
+                  
+                  .append("## 三、核心冲突与对手\n")
+                  .append("**主要对手**：谁在跟主角作对？他们的目标是什么？实力如何？\n")
+                  .append("**冲突升级路线**：矛盾怎么一步步激化？从小摩擦到大爆发的节奏是什么？\n")
+                  .append("**压力来源**：除了对手，还有什么在逼主角？（时间限制、资源短缺、规则限制等）\n")
+                  .append("**代价边界**：主角为了达成目标，最多能付出什么代价？什么是绝对不能失去的？\n\n")
+                  
+                  .append("## 四、爽点体系设计\n")
+                  .append("**基础爽点**（每2-3章）：日常小爽，比如打脸路人、小赚一笔、学会新技能。列出3-5个典型场景的触发条件。\n")
+                  .append("**进阶爽点**（每5-10章）：中等爆发，比如击败小BOSS、获得重要资源、身份提升。列出2-3个关键节点。\n")
+                  .append("**高潮爽点**（卷末或重大转折）：终极爆发，比如揭露隐藏身份、逆转绝境、震撼全场。描述1-2个巅峰时刻。\n\n")
+                  
+                  .append("## 五、开放事件池（≥8个）\n")
+                  .append("提供一些\"可选事件包\"，每个事件包括：\n")
+                  .append("- **事件名**：简短标题\n")
+                  .append("- **触发条件**：什么情况下可以用这个事件？\n")
+                  .append("- **核心矛盾**：这个事件的主要冲突是什么？\n")
+                  .append("- **可能结果**：成功/失败/意外，各会导向什么？\n")
+                  .append("- **爽点类型**：这个事件能给读者什么爽感？（打脸/逆袭/获得/成长/揭秘等）\n\n")
+                  .append("**注意**：这些事件不规定顺序，AI写作时可以根据剧情需要灵活选用和组合。\n\n")
+                  
+                  .append("## 六、关键里程碑（3-5个）\n")
+                  .append("本卷必须经过的几个关键节点，每个包括：\n")
+                  .append("- **里程碑名称**：这个节点叫什么？\n")
+                  .append("- **达成条件**：什么情况下算达成？\n")
+                  .append("- **影响范围**：达成后会改变什么？（主角能力、势力格局、剧情走向等）\n")
+                  .append("- **悬念钩子**：这个节点会引出什么新问题或新目标？\n\n")
+                  
+                  .append("## 七、支线与节奏调节\n")
+                  .append("**情感线**：本卷有哪些角色关系会发展？（友情/爱情/师徒/仇恨等）大致走向是什么？\n")
+                  .append("**探索线**：有什么谜团需要揭开？分几步揭示？\n")
+                  .append("**日常调节**：在紧张剧情之间，可以插入什么轻松场景来调节节奏？\n\n")
+                  
+                  .append("## 八、伏笔管理\n")
+                  .append("**本卷要埋的伏笔**：为后续卷做铺垫，列出2-3个关键伏笔及其埋藏方式。\n")
+                  .append("**本卷要收的伏笔**：前面埋下的哪些坑要在本卷填？怎么填才爽？\n")
+                  .append("**本卷要提的伏笔**：之前埋的伏笔，在本卷要不要提一下加深印象？\n\n")
+                  
+                  .append("## 九、卷末状态与钩子\n")
+                  .append("**主角最终状态**：本卷结束时，主角的实力/地位/资源/心态达到什么程度？\n")
+                  .append("**已解决问题**：本卷的核心矛盾解决了吗？怎么解决的？\n")
+                  .append("**新增悬念**：卷末要留什么钩子引出下一卷？（新危机/新目标/新谜团）\n")
+                  .append("**风险结转**：有什么隐患或代价会延续到下一卷？\n\n")
+                  
+                  .append("# 写作风格要求\n")
+                  .append("1. **人话表达**：别用术语和套话，就像老编辑跟作者聊天一样自然\n")
+                  .append("2. **具体可操作**：别说\"主角变强了\"，要说\"从练气三层突破到筑基期，获得御剑术\"\n")
+                  .append("3. **留白适度**：给出方向和资源，但不锁死具体过程，让AI有发挥空间\n")
+                  .append("4. **冲突为王**：每个部分都要体现\"想要什么→遇到什么阻碍→付出什么代价\"\n")
+                  .append("5. **爽点密集**：确保读者每隔几章就能爽一次，不能让剧情平淡\n\n")
+                  
+                  .append("# 禁止事项\n")
+                  .append("❌ 不要写具体对话和场景细节\n")
+                  .append("❌ 不要规定具体章节编号和顺序\n")
+                  .append("❌ 不要用JSON或代码块格式\n")
+                  .append("❌ 不要写成流水账式的事件列表\n")
+                  .append("❌ 不要锁死剧情发展路径\n\n")
+                  
+                  .append("现在，基于以上信息和要求，生成一份让读者\"欲罢不能\"的卷蓝图\n");
 
             // 直接调用AI接口，使用前端传递的AI配置
             String aiResponse = callAIWithConfig(prompt.toString(), aiConfig);
@@ -252,12 +307,9 @@ public class AsyncAIGenerationService {
                     // 更新卷的大纲内容
                     updateVolumeWithGeneratedOutline(volumeId, result);
                     
-                    // 清理并发控制标记
+                    // 清理并发控制标记（改为传递volumeId）
                     try {
-                        NovelVolume vol = novelVolumeMapper.selectById(volumeId);
-                        if (vol != null) {
-                            volumeService.clearGeneratingFlag(vol.getNovelId());
-                        }
+                        volumeService.clearGeneratingFlag(volumeId);
                     } catch (Exception clearEx) {
                         logger.warn("清理生成标记失败: {}", clearEx.getMessage());
                     }
@@ -268,12 +320,9 @@ public class AsyncAIGenerationService {
                     logger.error("❌ 卷 {} 异步大纲生成失败: {}", volumeId, e.getMessage(), e);
                     aiTaskService.failTask(taskId, "生成失败: " + e.getMessage());
                     
-                    // 失败时也要清理并发控制标记
+                    // 失败时也要清理并发控制标记（改为传递volumeId）
                     try {
-                        NovelVolume vol = novelVolumeMapper.selectById(volumeId);
-                        if (vol != null) {
-                            volumeService.clearGeneratingFlag(vol.getNovelId());
-                        }
+                        volumeService.clearGeneratingFlag(volumeId);
                     } catch (Exception clearEx) {
                         logger.warn("清理生成标记失败: {}", clearEx.getMessage());
                     }

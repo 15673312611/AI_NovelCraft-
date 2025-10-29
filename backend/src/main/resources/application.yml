@@ -42,6 +42,11 @@ spring:
       max-file-size: 10MB
       max-request-size: 10MB
 
+ai:
+  base-url: https://api.openai.com
+  api-key: ${AI_API_KEY:}
+  default-model: gpt-4o-mini
+
 # MyBatis Plus配置
 mybatis-plus:
   configuration:

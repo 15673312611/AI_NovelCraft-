@@ -28,6 +28,6 @@
     },
     "allowSyntheticDefaultImports": true
   },
-  "include": ["src"],
+  "include": ["src", "../docs/VolumeWritingStudio.tsx"],
   "references": [{ "path": "./tsconfig.node.json" }]
 } 

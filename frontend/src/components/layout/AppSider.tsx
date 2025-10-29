@@ -47,10 +47,10 @@ const AppSider: React.FC = () => {
       hidden: !isAuthenticated,
     },
     {
-      key: '/ai-chat',
-      icon: <CommentOutlined />,
-      label: 'AI对话',
-      onClick: () => navigate('/ai-chat'),
+      key: '/ai-generators',
+      icon: <RobotOutlined />,
+      label: '生成器',
+      onClick: () => navigate('/ai-generators'),
       hidden: !isAuthenticated,
     },
     {

@@ -1,7 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Row, Col, Card, Button, Input, Space, Empty, Spin, Modal, message, Tag, Statistic, Form } from 'antd'
-import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, BookOutlined, FileTextOutlined, DownOutlined, CheckOutlined } from '@ant-design/icons'
-import novelVolumeService, { NovelVolume } from '@/services/novelVolumeService'
+import React, { useEffect, useRef, useState } from 'react'
+import { Row, Col, Button, Input, Empty, Spin, Modal, message, Tag, Form } from 'antd'
+import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, FileTextOutlined, DownOutlined, CheckOutlined, ClockCircleOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { AppDispatch, RootState } from '@/store'
@@ -149,31 +148,6 @@ const NovelListPage: React.FC = () => {
       }
     })
 
-  // 根据小说ID直接进入对应卷的写作页
-  const enterWritingDirectly = async (novelId: number) => {
-    try {
-      const volumes: NovelVolume[] = await novelVolumeService.getVolumesByNovelId(String(novelId))
-      if (!volumes || volumes.length === 0) {
-        navigate(`/novels/${novelId}/volumes`)
-        return
-      }
-      // 仅当卷已进入写作或具备详细大纲时，才允许直达写作页
-      const byInProgress = volumes.find(v => v.status === 'IN_PROGRESS')
-      const byDetailed = volumes.find((v: any) => v?.contentOutline && v.contentOutline.length >= 100)
-      const target = byInProgress || byDetailed || null
-      if (target && target.id) {
-        navigate(`/novels/${novelId}/volumes/${target.id}/writing`, {
-          state: { initialVolumeId: target.id, sessionData: null }
-        })
-        return
-      }
-      navigate(`/novels/${novelId}/volumes`)
-    } catch (e) {
-      console.error('进入写作页失败:', e)
-      navigate(`/novels/${novelId}/volumes`)
-    }
-  }
-
   const handleDeleteNovel = (novelId: number, novelTitle: string) => {
     Modal.confirm({
       title: '确认删除',
@@ -274,8 +248,8 @@ const NovelListPage: React.FC = () => {
               <div
                 className="novel-card"
                 onClick={() => {
-                  // 直接尝试进入写作页，失败再回退到卷/编辑
-                  enterWritingDirectly(novel.id)
+                  // 直接进入新写作工作室
+                  navigate(`/novels/${novel.id}/writing-studio`)
                 }}
               >
                 <div className="card-header">
@@ -290,13 +264,20 @@ const NovelListPage: React.FC = () => {
                 <p className="card-description">{novel.description}</p>
 
                 <div className="card-stats">
-                  <div className="stat-item">
-                    <span className="stat-number">{novel.chapterCount || 0}</span>
-                    <span className="stat-text">章节</span>
-                  </div>
-                  <div className="stat-item">
-                    <span className="stat-number">{((novel.wordCount || 0) / 10000).toFixed(1)}万</span>
-                    <span className="stat-text">字数</span>
+                  <div className="stat-item stat-item-full">
+                    <span className="stat-label">
+                      <ClockCircleOutlined style={{ fontSize: 14, marginRight: 6 }} />
+                      最近更新
+                    </span>
+                    <span className="stat-time">
+                      {new Date(novel.updatedAt || novel.createdAt).toLocaleString('zh-CN', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
                   </div>
                 </div>
 
@@ -306,7 +287,7 @@ const NovelListPage: React.FC = () => {
                     icon={<EditOutlined />}
                     onClick={(e) => { 
                       e.stopPropagation()
-                      enterWritingDirectly(novel.id)
+                      navigate(`/novels/${novel.id}/writing-studio`)
                     }}
                     block
                   >

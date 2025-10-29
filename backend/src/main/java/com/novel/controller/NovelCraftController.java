@@ -4,6 +4,7 @@ import com.novel.common.Result;
 import com.novel.domain.entity.Novel;
 import com.novel.domain.entity.Chapter;
 import com.novel.domain.entity.NovelVolume;
+import com.novel.domain.entity.PromptTemplate;
 import com.novel.dto.AIConfigRequest;
 import com.novel.service.NovelCraftAIService;
 import com.novel.service.NovelService;
@@ -12,6 +13,7 @@ import com.novel.service.ChapterService;
 import com.novel.service.ChapterSummaryService;
 import com.novel.service.LongNovelMemoryManager;
 import com.novel.service.NovelVolumeService;
+import com.novel.service.PromptTemplateService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,6 +64,9 @@ public class NovelCraftController {
 
     @Autowired
     private NovelVolumeService novelVolumeService;
+
+    @Autowired
+    private PromptTemplateService promptTemplateService;
 
     // ================================
     // 1️⃣ 动态大纲引擎 API
@@ -256,151 +261,251 @@ public class NovelCraftController {
             @PathVariable Long novelId,
             @RequestBody Map<String, Object> request) {
 
-        SseEmitter emitter = new SseEmitter(300000L); // 5分钟超时
+        SseEmitter emitter = new SseEmitter(300000L);
 
         try {
-            Novel novel = novelService.getById(novelId);
-            if (novel == null) {
-                emitter.send(SseEmitter.event().name("error").data("小说不存在"));
-                emitter.completeWithError(new IOException("Novel not found"));
-                return emitter;
-            }
+            // 1. 验证小说
+            Novel novel = validateNovel(novelId, emitter);
+            if (novel == null) return emitter;
 
-            // 解析章节号：优先顶层，其次 chapterPlan 内
-            Integer chapterNumber = null;
-            Object chapterNumberObj = request.get("chapterNumber");
-            if (chapterNumberObj instanceof Number) {
-                chapterNumber = ((Number) chapterNumberObj).intValue();
-            }
-            @SuppressWarnings("unchecked")
-            Map<String, Object> requestPlan = (Map<String, Object>) request.get("chapterPlan");
-            if (chapterNumber == null && requestPlan != null) {
-                Object planCn = requestPlan.get("chapterNumber");
-                if (planCn instanceof Number) {
-                    chapterNumber = ((Number) planCn).intValue();
-                }
-            }
-            if (chapterNumber == null) {
-                chapterNumber = 1;
-            }
-
-            // 后端自行查库装配章节规划
-            Map<String, Object> chapterPlan = requestPlan != null ? new HashMap<>(requestPlan) :
-                    novelMemoryService.generateChapterPlan(novelId, chapterNumber);
-            chapterPlan.put("chapterNumber", chapterNumber);
-
-            // 后端自行查库装配记忆库
-            Map<String, Object> memoryBank = novelMemoryService.buildMemoryBankFromDatabase(novelId);
-
-            // 附加当前卷的大纲上下文，便于上下文构建（流式）
-            try {
-                List<NovelVolume> volumes = novelVolumeService.getVolumesByNovelId(novelId);
-                if (volumes != null && !volumes.isEmpty()) {
-                    for (NovelVolume v : volumes) {
-                        if (v.getChapterStart() != null && v.getChapterEnd() != null
-                                && chapterNumber >= v.getChapterStart() && chapterNumber <= v.getChapterEnd()) {
-                            Map<String, Object> vol = new HashMap<>();
-                            vol.put("id", v.getId());
-                            vol.put("title", v.getTitle());
-                            vol.put("theme", v.getTheme());
-                            vol.put("description", v.getDescription());
-                            vol.put("contentOutline", v.getContentOutline());
-                            vol.put("chapterStart", v.getChapterStart());
-                            vol.put("chapterEnd", v.getChapterEnd());
-                            memoryBank.put("currentVolumeOutline", vol);
-                            break;
-                        }
-                    }
-                }
-            } catch (Exception ignore) {}
-
+            // 2. 解析请求参数
+            Integer chapterNumber = parseChapterNumber(request);
+            Map<String, Object> chapterPlan = buildChapterPlan(request, novelId, chapterNumber);
+            Map<String, Object> memoryBank = buildMemoryBankWithVolume(novelId, chapterNumber);
             String userAdjustment = (String) request.get("userAdjustment");
-            String model = (String) request.get("model"); // 获取前端传递的模型参数
-            Long promptTemplateId = null; // 获取前端传递的提示词模板ID
-            if (request.get("promptTemplateId") != null) {
-                if (request.get("promptTemplateId") instanceof Number) {
-                    promptTemplateId = ((Number) request.get("promptTemplateId")).longValue();
-                }
-            }
-
-            // 解析AI配置（前端withAIConfig是扁平化的，直接从根级别读取）
-            AIConfigRequest aiConfig = new AIConfigRequest();
-            if (request.containsKey("provider")) {
-                // 从根级别直接读取（扁平化格式）
-                aiConfig.setProvider((String) request.get("provider"));
-                aiConfig.setApiKey((String) request.get("apiKey"));
-                aiConfig.setModel((String) request.get("model"));
-                aiConfig.setBaseUrl((String) request.get("baseUrl"));
-                
-                logger.info("✅ 流式章节写作 - 收到AI配置: provider={}, model={}", 
-                    aiConfig.getProvider(), aiConfig.getModel());
-            } else if (request.get("aiConfig") instanceof Map) {
-                // 兼容旧的嵌套格式
-                @SuppressWarnings("unchecked")
-                Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
-                aiConfig.setProvider(aiConfigMap.get("provider"));
-                aiConfig.setApiKey(aiConfigMap.get("apiKey"));
-                aiConfig.setModel(aiConfigMap.get("model"));
-                aiConfig.setBaseUrl(aiConfigMap.get("baseUrl"));
-            }
-
+            Long promptTemplateId = parsePromptTemplateId(request);
+            Long writingStyleId = parseWritingStyleId(request);
+            Map<String, String> referenceContents = parseReferenceContents(request);
+            
+            // 3. 解析AI配置
+            AIConfigRequest aiConfig = parseAIConfig(request);
             if (!aiConfig.isValid()) {
-                logger.error("❌ 流式章节写作 - AI配置无效: {}", request);
                 emitter.send(SseEmitter.event().name("error").data("AI配置无效，请先在设置页面配置AI服务"));
                 emitter.completeWithError(new IOException("AI配置无效"));
                 return emitter;
             }
 
-            // 解析模板循环引擎开关（前端传参）
-            Boolean enableTemplateLoop = false;
-            if (request.containsKey("enableTemplateLoop")) {
-                Object templateLoopValue = request.get("enableTemplateLoop");
-                if (templateLoopValue instanceof Boolean) {
-                    enableTemplateLoop = (Boolean) templateLoopValue;
-                } else if (templateLoopValue != null) {
-                    enableTemplateLoop = Boolean.valueOf(String.valueOf(templateLoopValue));
-                }
-            }
+            // 4. 解析模板循环引擎开关
+            Boolean enableTemplateLoop = parseBooleanParam(request, "enableTemplateLoop");
             
             logger.info("✍️ 开始流式章节写作: 小说ID={}, 章节={}, AI服务商={}, 模型={}, 模板ID={}, 模板循环引擎={}", 
                 novelId, chapterNumber, aiConfig.getProvider(), aiConfig.getModel(), 
                 promptTemplateId != null ? promptTemplateId : "默认", enableTemplateLoop);
 
-            // 发送开始事件
-            emitter.send(SseEmitter.event().name("start").data("开始写作章节 " + chapterNumber));
-
-            // 异步执行流式写作（使用新版多阶段生成）
-            final Long finalTemplateId = promptTemplateId;
-            final Boolean finalEnableTemplateLoop = enableTemplateLoop;
-            CompletableFuture.runAsync(() -> {
-                try {
-                    // ✅ 使用新版多阶段生成（构思→判断→写作）
-                    novelCraftAIService.executeMultiStageStreamingChapterWriting(
-                        novel, chapterPlan, memoryBank, userAdjustment, emitter, aiConfig, 
-                        finalTemplateId, finalEnableTemplateLoop
-                    );
-                } catch (Exception e) {
-                    logger.error("流式章节写作失败", e);
-                    try {
-                        emitter.send(SseEmitter.event().name("error").data("写作失败: " + e.getMessage()));
-                        emitter.completeWithError(e);
-                    } catch (IOException ex) {
-                        logger.error("发送错误事件失败", ex);
-                    }
-                }
-            });
+            // 5. 异步执行写作
+            executeAsyncWriting(novel, chapterPlan, memoryBank, userAdjustment, emitter, 
+                              aiConfig, promptTemplateId, enableTemplateLoop, writingStyleId, referenceContents);
 
         } catch (Exception e) {
-            logger.error("流式章节写作初始化失败", e);
-            try {
-                emitter.send(SseEmitter.event().name("error").data("初始化失败: " + e.getMessage()));
-                emitter.completeWithError(e);
-            } catch (IOException ex) {
-                logger.error("发送错误事件失败", ex);
-            }
+            handleError(emitter, e, "流式章节写作初始化失败");
         }
 
         return emitter;
+    }
+
+    // ============ Helper Methods ============
+    
+    private Novel validateNovel(Long novelId, SseEmitter emitter) throws IOException {
+        Novel novel = novelService.getById(novelId);
+        if (novel == null) {
+            emitter.send(SseEmitter.event().name("error").data("小说不存在"));
+            emitter.completeWithError(new IOException("Novel not found"));
+        }
+        return novel;
+    }
+
+    private Integer parseChapterNumber(Map<String, Object> request) {
+        Object chapterNumberObj = request.get("chapterNumber");
+        if (chapterNumberObj instanceof Number) {
+            return ((Number) chapterNumberObj).intValue();
+        }
+        
+        @SuppressWarnings("unchecked")
+        Map<String, Object> requestPlan = (Map<String, Object>) request.get("chapterPlan");
+        if (requestPlan != null) {
+            Object planCn = requestPlan.get("chapterNumber");
+            if (planCn instanceof Number) {
+                return ((Number) planCn).intValue();
+            }
+        }
+        
+        return 1; // Default
+    }
+
+    private Map<String, Object> buildChapterPlan(Map<String, Object> request, Long novelId, Integer chapterNumber) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> requestPlan = (Map<String, Object>) request.get("chapterPlan");
+        Map<String, Object> chapterPlan = requestPlan != null ? new HashMap<>(requestPlan) :
+                novelMemoryService.generateChapterPlan(novelId, chapterNumber);
+        chapterPlan.put("chapterNumber", chapterNumber);
+        return chapterPlan;
+    }
+
+    private Map<String, Object> buildMemoryBankWithVolume(Long novelId, Integer chapterNumber) {
+        Map<String, Object> memoryBank = novelMemoryService.buildMemoryBankFromDatabase(novelId);
+        
+        try {
+            List<NovelVolume> volumes = novelVolumeService.getVolumesByNovelId(novelId);
+            if (volumes != null) {
+                for (NovelVolume v : volumes) {
+                    if (v.getChapterStart() != null && v.getChapterEnd() != null
+                            && chapterNumber >= v.getChapterStart() && chapterNumber <= v.getChapterEnd()) {
+                        Map<String, Object> vol = new HashMap<>();
+                        vol.put("id", v.getId());
+                        vol.put("title", v.getTitle());
+                        vol.put("theme", v.getTheme());
+                        vol.put("description", v.getDescription());
+                        vol.put("contentOutline", v.getContentOutline());
+                        vol.put("chapterStart", v.getChapterStart());
+                        vol.put("chapterEnd", v.getChapterEnd());
+                        memoryBank.put("currentVolumeOutline", vol);
+                        break;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("附加卷信息失败: {}", e.getMessage());
+        }
+        
+        return memoryBank;
+    }
+
+    private Long parsePromptTemplateId(Map<String, Object> request) {
+        Object templateIdObj = request.get("promptTemplateId");
+        if (templateIdObj instanceof Number) {
+            return ((Number) templateIdObj).longValue();
+        }
+        return null;
+    }
+    
+    private Long parseWritingStyleId(Map<String, Object> request) {
+        Object styleIdObj = request.get("writingStyleId");
+        if (styleIdObj instanceof Number) {
+            return ((Number) styleIdObj).longValue();
+        }
+        return null;
+    }
+    
+    private Map<String, String> parseReferenceContents(Map<String, Object> request) {
+        @SuppressWarnings("unchecked")
+        Map<String, String> contents = (Map<String, String>) request.get("referenceContents");
+        return contents != null ? contents : new HashMap<>();
+    }
+
+    private AIConfigRequest parseAIConfig(Map<String, Object> request) {
+        AIConfigRequest aiConfig = new AIConfigRequest();
+        
+        if (request.containsKey("provider")) {
+            // 扁平化格式
+            aiConfig.setProvider((String) request.get("provider"));
+            aiConfig.setApiKey((String) request.get("apiKey"));
+            aiConfig.setModel((String) request.get("model"));
+            aiConfig.setBaseUrl((String) request.get("baseUrl"));
+            logger.info("✅ 流式章节写作 - 收到AI配置: provider={}, model={}", 
+                aiConfig.getProvider(), aiConfig.getModel());
+        } else if (request.get("aiConfig") instanceof Map) {
+            // 嵌套格式
+            @SuppressWarnings("unchecked")
+            Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
+            aiConfig.setProvider(aiConfigMap.get("provider"));
+            aiConfig.setApiKey(aiConfigMap.get("apiKey"));
+            aiConfig.setModel(aiConfigMap.get("model"));
+            aiConfig.setBaseUrl(aiConfigMap.get("baseUrl"));
+        }
+        
+        return aiConfig;
+    }
+
+    private Boolean parseBooleanParam(Map<String, Object> request, String key) {
+        if (!request.containsKey(key)) {
+            return false;
+        }
+        Object value = request.get(key);
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        return Boolean.valueOf(String.valueOf(value));
+    }
+
+    private void executeAsyncWriting(Novel novel, Map<String, Object> chapterPlan, 
+                                     Map<String, Object> memoryBank, String userAdjustment,
+                                     SseEmitter emitter, AIConfigRequest aiConfig, 
+                                     Long promptTemplateId, Boolean enableTemplateLoop,
+                                     Long writingStyleId, Map<String, String> referenceContents) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                // 将写作风格和关联内容整合到上下文中
+                if (writingStyleId != null || !referenceContents.isEmpty()) {
+                    enrichContextWithStyleAndReferences(memoryBank, writingStyleId, referenceContents);
+                }
+                
+                novelCraftAIService.executeMultiStageStreamingChapterWriting(
+                    novel, chapterPlan, memoryBank, userAdjustment, emitter, aiConfig, 
+                    promptTemplateId, enableTemplateLoop
+                );
+                
+                // 异步提取上一章概要（优化用户体验，不阻塞当前章节生成）
+                Integer currentChapterNumber = (Integer) chapterPlan.get("chapterNumber");
+                if (currentChapterNumber != null && currentChapterNumber > 1) {
+                    CompletableFuture.runAsync(() -> {
+                        try {
+                            Integer previousChapterNumber = currentChapterNumber - 1;
+                            logger.info("🔄 开始异步提取第{}章概要", previousChapterNumber);
+                            chapterSummaryService.generateAndSaveChapterSummaryAsync(
+                                novel.getId(), previousChapterNumber, aiConfig
+                            );
+                            logger.info("✅ 第{}章概要提取完成", previousChapterNumber);
+                        } catch (Exception ex) {
+                            logger.warn("⚠️ 异步提取章节概要失败: {}", ex.getMessage());
+                        }
+                    });
+                }
+            } catch (Exception e) {
+                handleError(emitter, e, "流式章节写作失败");
+            }
+        });
+    }
+    
+    /**
+     * 将写作风格和关联内容整合到记忆库中
+     */
+    private void enrichContextWithStyleAndReferences(Map<String, Object> memoryBank, 
+                                                     Long writingStyleId, 
+                                                     Map<String, String> referenceContents) {
+        // 如果指定了写作风格，加载并添加到上下文
+        if (writingStyleId != null) {
+            try {
+                PromptTemplate template = promptTemplateService.getById(writingStyleId);
+                if (template != null && template.getIsActive()) {
+                    memoryBank.put("writingStyle", template.getContent());
+                    logger.info("✅ 已应用写作风格: {}", template.getName());
+                }
+            } catch (Exception e) {
+                logger.warn("⚠️ 加载写作风格失败: {}", e.getMessage());
+            }
+        }
+        
+        // 如果有用户指定的关联内容，添加到上下文
+        if (!referenceContents.isEmpty()) {
+            StringBuilder refContext = new StringBuilder();
+            refContext.append("\n【用户指定参考内容】\n");
+            for (Map.Entry<String, String> entry : referenceContents.entrySet()) {
+                refContext.append("====== ").append(entry.getKey()).append(" ======\n");
+                refContext.append(entry.getValue()).append("\n\n");
+            }
+            memoryBank.put("userReferenceContents", refContext.toString());
+            logger.info("✅ 已添加{}个用户指定参考内容", referenceContents.size());
+        }
+    }
+
+    private void handleError(SseEmitter emitter, Exception e, String message) {
+        logger.error(message, e);
+        try {
+            emitter.send(SseEmitter.event().name("error").data(message + ": " + e.getMessage()));
+            emitter.completeWithError(e);
+        } catch (IOException ex) {
+            logger.error("发送错误事件失败", ex);
+        }
     }
 
     /**
