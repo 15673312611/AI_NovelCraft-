@@ -2648,25 +2648,26 @@ public class NovelCraftAIService {
      * 步骤2：视角判断 - 判断是否需要切换视角
      * 步骤3：正式写作 - 根据构思+轻量级上下文生成章节
      * 
-     * @param enableTemplateLoop 是否启用模板循环引擎（前端传参）
+     * @param chapterPlan 章节计划（包含chapterNumber/title/coreEvent/writingStyle等）
      */
     public void executeMultiStageStreamingChapterWriting(
             Novel novel, 
             Map<String, Object> chapterPlan, 
-            Map<String, Object> memoryBank, 
             String userAdjustment, 
             SseEmitter emitter,
             AIConfigRequest aiConfig,
-            Long promptTemplateId,
-            Boolean enableTemplateLoop) throws IOException {
+            Long promptTemplateId
+            ) throws IOException {
         
         try {
-            Integer chapterNumber = (Integer) chapterPlan.get("chapterNumber");
-            logger.info("🎬 开始生成第{}章（直接写作模式）", chapterNumber);
+            Object chapterNumberObj = chapterPlan.get("chapterNumber");
+            String chapterTitle = (String) chapterPlan.get("title");
+            String displayTitle = chapterTitle != null ? chapterTitle : "第" + chapterNumberObj + "章";
+            logger.info("🎬 开始生成{}（直接写作模式）", displayTitle);
             
-            // 构建完整写作上下文
+            // 构建完整写作上下文（不再使用memoryBank）
             List<Map<String, String>> writingMessages = contextManagementService.buildFullContextMessages(
-                novel, chapterPlan, memoryBank, userAdjustment, promptTemplateId
+                novel, chapterPlan, userAdjustment, promptTemplateId
             );
             
             // 流式调用AI写作
@@ -2684,7 +2685,6 @@ public class NovelCraftAIService {
                 }
             );
             
-            logger.info("✅ 第{}章写作完成", chapterNumber);
             emitter.complete();
             
         } catch (Exception e) {

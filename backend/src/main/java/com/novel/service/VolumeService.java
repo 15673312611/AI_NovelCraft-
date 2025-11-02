@@ -284,8 +284,9 @@ public class VolumeService {
                   .append("❌ 不要用JSON或代码块格式\n")
                   .append("❌ 不要写成流水账式的事件列表\n")
                   .append("❌ 不要锁死剧情发展路径\n\n")
+                  .append("只输出上述九个部分的正文内容，不要额外添加与卷蓝图无关的话语。\n\n")
                   
-                  .append("现在，基于以上信息和要求，生成一份让读者\"欲罢不能\"的卷蓝图\n");
+                  .append("现在，基于以上信息和要求，生成一份让读者\"欲罢不能\"的卷蓝图，用自然中文分段叙述，禁止附加解释或总结。\n");
 
             logger.info("📝 [流式] 调用AI生成卷蓝图，提示词长度: {}", prompt.length());
             
@@ -324,8 +325,10 @@ public class VolumeService {
     /**
      * 开始卷写作会话
      * 
+     * 注意：前端已不再使用 memoryBank，所有上下文数据由后端在写作时直接从数据库查询
+     * 
      * @param volumeId 卷ID
-     * @return 写作会话数据
+     * @return 写作会话数据（包含volume/novel/aiGuidance等，不再包含memoryBank）
      */
     public Map<String, Object> startVolumeWriting(Long volumeId) {
         logger.info("✍️ 开始卷 {} 的写作会话", volumeId);
@@ -346,15 +349,11 @@ public class VolumeService {
         
         Novel novel = novelService.getById(volume.getNovelId());
         
-        // 从数据库加载记忆库（由概括生成，而不是初始化）
-        Map<String, Object> memoryBank = loadMemoryBankFromDatabase(novel, volume);
-        
-        // 创建写作会话
+        // 创建写作会话（不再包含 memoryBank，前端也不再使用）
         Map<String, Object> writingSession = new HashMap<>();
         writingSession.put("volumeId", volumeId);
         writingSession.put("volume", volume);
         writingSession.put("novel", novel);
-        writingSession.put("memoryBank", memoryBank); // 记忆库可能为空（第一章）
         writingSession.put("currentPosition", 0);
         writingSession.put("sessionStartTime", LocalDateTime.now());
         
@@ -362,7 +361,7 @@ public class VolumeService {
         Map<String, Object> initialGuidance = generateWritingGuidance(novel, volume, null, "开始写作");
         writingSession.put("aiGuidance", initialGuidance);
         
-        logger.info("✅ 卷 {} 写作会话创建成功，包含完整记忆库", volumeId);
+        logger.info("✅ 卷 {} 写作会话创建成功", volumeId);
         return writingSession;
     }
 
@@ -1178,193 +1177,7 @@ public class VolumeService {
         }
     }
     
-    /**
-     * 为卷构建完整的记忆库
-     * 这是解决"缺少记忆库"错误的关键方法
-     */
-    /**
-     * 从数据库加载记忆库（由LongNovelMemoryManager生成）
-     */
-    private Map<String, Object> loadMemoryBankFromDatabase(Novel novel, NovelVolume volume) {
-        logger.info("📚 从数据库加载小说 {} 的记忆库", novel.getId());
-        
-        try {
-            // 使用LongNovelMemoryManager加载记忆库
-            Map<String, Object> memoryBank = longNovelMemoryManager.loadMemoryBankFromDatabase(novel.getId());
-            
-            if (memoryBank == null || memoryBank.isEmpty()) {
-                logger.info("⚠️ 记忆库为空，这是第一章（正常情况）");
-                memoryBank = new HashMap<>();
-            }
-            
-            // 始终添加当前卷信息（不依赖概括）
-            Map<String, Object> volumeInfo = new HashMap<>();
-            volumeInfo.put("id", volume.getId());
-            volumeInfo.put("title", volume.getTitle());
-            volumeInfo.put("theme", volume.getTheme());
-            volumeInfo.put("description", volume.getDescription());
-            volumeInfo.put("contentOutline", volume.getContentOutline()); // 卷大纲内容
-            volumeInfo.put("chapterStart", volume.getChapterStart());
-            volumeInfo.put("chapterEnd", volume.getChapterEnd());
-            volumeInfo.put("keyEvents", volume.getKeyEvents());
-            memoryBank.put("currentVolumeOutline", volumeInfo);
-            
-            // 注意：小说总大纲已在 ContextManagementService.buildOutlineContext 中直接从 novel.getOutline() 读取，无需存入记忆库
-            
-            logger.info("✅ 记忆库加载完成，包含 {} 个组件", memoryBank.size());
-            return memoryBank;
-            
-        } catch (Exception e) {
-            logger.error("加载记忆库失败: {}", e.getMessage(), e);
-            // 返回最小记忆库（只包含卷信息）
-            Map<String, Object> minimalMemoryBank = new HashMap<>();
-            Map<String, Object> volumeInfo = new HashMap<>();
-            volumeInfo.put("contentOutline", volume.getContentOutline());
-            minimalMemoryBank.put("currentVolumeOutline", volumeInfo);
-            return minimalMemoryBank;
-        }
-    }
-    
 
-    
-
-
-    /**
-     * 创建简单的章节大纲结构
-     */
-    private List<Map<String, Object>> createSimpleChapterOutline(NovelVolume volume) {
-        List<Map<String, Object>> chapters = new ArrayList<>();
-        for (int i = volume.getChapterStart(); i <= volume.getChapterEnd(); i++) {
-            Map<String, Object> chapter = new HashMap<>();
-            chapter.put("chapter", i);
-            chapter.put("title", "第" + i + "章");
-            chapter.put("objective", "章节目标待规划");
-            chapter.put("conflict", "冲突设计待完善");
-            chapter.put("hook", "悬念设置待优化");
-            chapters.add(chapter);
-        }
-        return chapters;
-    }
-    
-
-    /**
-     * 解析AI响应为Map对象
-     */
-    private Map<String, Object> parseAIResponse(String response, String type) {
-        try {
-            logger.debug("正在解析AI响应: {}", response.substring(0, Math.min(200, response.length())));
-            
-            // 先尝试提取JSON代码块
-            String jsonContent = extractJSONFromResponse(response);
-            if (jsonContent != null) {
-                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
-                mapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-                Map<String, Object> parsed = mapper.readValue(jsonContent, Map.class);
-                logger.info("✅ 成功解析{}的JSON响应", type);
-                return parsed;
-            }
-            
-            // 尝试直接找JSON对象
-            int braceStart = response.indexOf("{");
-            int braceEnd = response.lastIndexOf("}");
-            if (braceStart != -1 && braceEnd != -1 && braceStart < braceEnd) {
-                String jsonPart = response.substring(braceStart, braceEnd + 1);
-                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
-                mapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-                Map<String, Object> parsed = mapper.readValue(jsonPart, Map.class);
-                logger.info("✅ 成功解析{}的直接JSON", type);
-                return parsed;
-            }
-            
-            // 如果完全不是JSON格式，进行文本解析
-            logger.warn("⚠️ 无法找到JSON格式，对{}进行文本解析", type);
-            return parseTextualResponse(response, type);
-            
-        } catch (Exception e) {
-            logger.warn("解析AI响应失败: {}，使用文本解析备选方案", e.getMessage());
-            return parseTextualResponse(response, type);
-        }
-    }
-    
-    /**
-     * 对非JSON格式的响应进行文本解析
-     */
-    private Map<String, Object> parseTextualResponse(String response, String type) {
-        Map<String, Object> result = new HashMap<>();
-        
-        if ("基础框架".equals(type)) {
-            result.put("volumeTheme", "主题待完善");
-            result.put("mainConflict", "冲突待规划");
-            result.put("characterGrowth", "角色成长待设计");
-            result.put("keyTurningPoints", Arrays.asList("转折点1", "转折点2"));
-            result.put("climaxChapter", "高潮章节待确定");
-            result.put("volumeGoals", "卷目标待明确");
-            result.put("rawResponse", response);
-        } else if ("章节规划".equals(type)) {
-            result.put("chapters", createBasicChapterStructure(response));
-            result.put("rawResponse", response);
-        } else if ("关键要素".equals(type)) {
-            result.put("worldBuilding", "世界观要素待完善");
-            result.put("plotThreads", Arrays.asList("主要情节线"));
-            result.put("foreshadowing", Arrays.asList("伏笔待设置"));
-            result.put("keyLocations", Arrays.asList("重要地点"));
-            result.put("newCharacters", Arrays.asList("新角色"));
-            result.put("volumeHooks", Arrays.asList("悬念点"));
-            result.put("rawResponse", response);
-        } else {
-            result.put("content", response);
-            result.put("type", type);
-        }
-        
-        return result;
-    }
-    
-    /**
-     * 从文本中创建基础章节结构
-     */
-    private List<Map<String, Object>> createBasicChapterStructure(String response) {
-        List<Map<String, Object>> chapters = new ArrayList<>();
-        
-        // 尝试从文本中解析章节信息
-        String[] lines = response.split("\\n");
-        int chapterNum = 1;
-        
-        for (String line : lines) {
-            if (line.contains("章") && (line.contains("第") || line.matches(".*\\d+.*"))) {
-                Map<String, Object> chapter = new HashMap<>();
-                chapter.put("chapterNumber", chapterNum);
-                chapter.put("title", "第" + chapterNum + "章");
-                chapter.put("purpose", line.trim());
-                chapter.put("keyEvents", Arrays.asList("待规划事件"));
-                chapter.put("characterDevelopment", "待规划");
-                chapter.put("foreshadowing", "待设置");
-                chapter.put("chapterGoal", "待明确");
-                chapters.add(chapter);
-                chapterNum++;
-                
-                if (chapters.size() >= 10) break; // 限制数量
-            }
-        }
-        
-        // 如果没有解析到章节，创建默认结构
-        if (chapters.isEmpty()) {
-            for (int i = 1; i <= 5; i++) {
-                Map<String, Object> chapter = new HashMap<>();
-                chapter.put("chapterNumber", i);
-                chapter.put("title", "第" + i + "章");
-                chapter.put("purpose", "章节目标待规划");
-                chapter.put("keyEvents", Arrays.asList("关键事件待确定"));
-                chapter.put("characterDevelopment", "角色发展待规划");
-                chapter.put("foreshadowing", "伏笔待设置");
-                chapter.put("chapterGoal", "章节目标待明确");
-                chapters.add(chapter);
-            }
-        }
-        
-        return chapters;
-    }
     
 
     

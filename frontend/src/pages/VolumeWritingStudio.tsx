@@ -886,9 +886,9 @@ const VolumeWritingStudio: React.FC = () => {
         duration: 3
       });
       
-      // 跳转到下一卷
+      // 跳转到下一卷（使用新的写作工作室）
       setTimeout(() => {
-        navigate(`/novels/${novelId}/volumes/${nextVolume.id}/writing`, {
+        navigate(`/novels/${novelId}/writing-studio`, {
           state: {
             initialVolumeId: nextVolume.id,
             sessionData: null

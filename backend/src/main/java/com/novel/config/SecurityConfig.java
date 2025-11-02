@@ -53,6 +53,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .antMatchers("/actuator/**").permitAll() // 健康检查等监控接口允许访问
                 .antMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll() // API文档允许访问
                 .antMatchers("/ai-adjectives/**").permitAll() // 词库挖掘接口放开
+                .antMatchers("/agentic/**").permitAll() // 词库挖掘接口放开
                 .anyRequest().authenticated() // 其他请求需要认证
             .and()
             .formLogin().disable()

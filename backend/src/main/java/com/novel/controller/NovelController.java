@@ -470,77 +470,8 @@ public class NovelController {
         }
     }
     
-    /**
-     * 获取小说主角实时状态信息
-     * 用于小说审核系统实时获取主角状态
-     */
-    @GetMapping("/{id}/protagonist-status")
-    public ResponseEntity<Object> getProtagonistStatus(
-            @PathVariable Long id,
-            @RequestParam(defaultValue = "1") int currentChapter) {
-        
-        try {
-            String protagonistStatus = protagonistStatusService.buildProtagonistStatus(
-                id, new HashMap<>(), currentChapter);
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("novelId", id);
-            response.put("currentChapter", currentChapter);
-            response.put("protagonistStatus", protagonistStatus);
-            response.put("timestamp", System.currentTimeMillis());
-            
-            return ResponseEntity.ok(response);
-            
-        } catch (Exception e) {
-            System.err.println("获取主角状态失败: " + e.getMessage());
-            e.printStackTrace();
-            
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("error", "获取主角状态失败");
-            errorResponse.put("message", e.getMessage());
-            
-            return ResponseEntity.status(500).body(errorResponse);
-        }
-    }
+
     
-    /**
-     * 检查主角状态是否有变化
-     * 用于小说审核系统判断是否需要更新显示
-     */
-    @PostMapping("/{id}/protagonist-status/check-changes")
-    public ResponseEntity<Object> checkProtagonistStatusChanges(
-            @PathVariable Long id,
-            @RequestBody Map<String, Object> request) {
-
-        try {
-            String lastKnownStatus = (String) request.get("lastKnownStatus");
-            boolean hasChanged = protagonistStatusService.hasStatusChanged(id, lastKnownStatus);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("hasChanged", hasChanged);
-            response.put("novelId", id);
-            response.put("timestamp", System.currentTimeMillis());
-
-            if (hasChanged) {
-                // 如果有变化，返回最新状态
-                int currentChapter = (Integer) request.getOrDefault("currentChapter", 1);
-                String newStatus = protagonistStatusService.buildProtagonistStatus(id, new HashMap<>(), currentChapter);
-                response.put("newStatus", newStatus);
-            }
-
-            return ResponseEntity.ok(response);
-
-        } catch (Exception e) {
-            System.err.println("检查主角状态变化失败: " + e.getMessage());
-            e.printStackTrace();
-
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("error", "检查状态变化失败");
-            errorResponse.put("message", e.getMessage());
-
-            return ResponseEntity.status(500).body(errorResponse);
-        }
-    }
 
     /**
      * 获取小说的创作状态

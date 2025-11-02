@@ -72,46 +72,6 @@ public class NovelCraftController {
     // 1️⃣ 动态大纲引擎 API
     // ================================
 
-    /**
-     * 初始化动态大纲系统
-     * POST /novel-craft/{novelId}/outline/init
-     */
-    @PostMapping("/{novelId}/outline/init")
-    public Result<Map<String, Object>> initializeDynamicOutline(
-            @PathVariable Long novelId,
-            @RequestBody Map<String, String> request) {
-
-        try {
-            Novel novel = novelService.getById(novelId);
-            if (novel == null) {
-                return Result.error("小说不存在");
-            }
-
-            String basicIdea = request.get("basicIdea");
-            if (basicIdea == null || basicIdea.trim().isEmpty()) {
-                return Result.error("请提供基本创作构思");
-            }
-
-            logger.info("🚀 初始化动态大纲: 小说ID={}, 构思长度={}", novelId, basicIdea.length());
-
-            Map<String, Object> outline = novelCraftAIService.initializeDynamicOutline(novel, basicIdea);
-
-            // 初始化记忆库
-            Map<String, Object> memoryBank = initializeMemoryBank(novel, outline);
-
-            Map<String, Object> result = new HashMap<>();
-            result.put("outline", outline);
-            result.put("memoryBank", memoryBank);
-            result.put("status", "dynamic_outline_initialized");
-            result.put("nextStep", "expand_outline");
-
-            return Result.success(result);
-
-        } catch (Exception e) {
-            logger.error("初始化动态大纲失败", e);
-            return Result.error("初始化失败: " + e.getMessage());
-        }
-    }
 
     /**
      * 动态扩展大纲
@@ -271,7 +231,6 @@ public class NovelCraftController {
             // 2. 解析请求参数
             Integer chapterNumber = parseChapterNumber(request);
             Map<String, Object> chapterPlan = buildChapterPlan(request, novelId, chapterNumber);
-            Map<String, Object> memoryBank = buildMemoryBankWithVolume(novelId, chapterNumber);
             String userAdjustment = (String) request.get("userAdjustment");
             Long promptTemplateId = parsePromptTemplateId(request);
             Long writingStyleId = parseWritingStyleId(request);
@@ -285,16 +244,11 @@ public class NovelCraftController {
                 return emitter;
             }
 
-            // 4. 解析模板循环引擎开关
-            Boolean enableTemplateLoop = parseBooleanParam(request, "enableTemplateLoop");
-            
-            logger.info("✍️ 开始流式章节写作: 小说ID={}, 章节={}, AI服务商={}, 模型={}, 模板ID={}, 模板循环引擎={}", 
-                novelId, chapterNumber, aiConfig.getProvider(), aiConfig.getModel(), 
-                promptTemplateId != null ? promptTemplateId : "默认", enableTemplateLoop);
 
-            // 5. 异步执行写作
-            executeAsyncWriting(novel, chapterPlan, memoryBank, userAdjustment, emitter, 
-                              aiConfig, promptTemplateId, enableTemplateLoop, writingStyleId, referenceContents);
+
+            // 5. 异步执行写作（不再使用memoryBank）
+            executeAsyncWriting(novel, chapterPlan, userAdjustment, emitter, 
+                              aiConfig, promptTemplateId, writingStyleId, referenceContents);
 
         } catch (Exception e) {
             handleError(emitter, e, "流式章节写作初始化失败");
@@ -327,47 +281,53 @@ public class NovelCraftController {
             if (planCn instanceof Number) {
                 return ((Number) planCn).intValue();
             }
+            // 如果是字符串类型，尝试从中提取数字
+            if (planCn instanceof String) {
+                String cnStr = (String) planCn;
+                // 尝试提取中文数字或阿拉伯数字
+                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\d+");
+                java.util.regex.Matcher matcher = pattern.matcher(cnStr);
+                if (matcher.find()) {
+                    return Integer.parseInt(matcher.group());
+                }
+            }
         }
         
         return 1; // Default
     }
 
+    /**
+     * 构建章节计划
+     * 
+     * 主要作用：接收前端传的 chapterPlan，并将 chapterNumber 从字符串转为数字
+     * 
+     * 前端传入的字段：
+     * - chapterNumber: 章节标题字符串（如"第二章"）
+     * - title: 章节标题（如"第二章"）
+     * - type: 剧情类型（如"剧情"）
+     * - coreEvent: 核心事件/用户指令（用户输入的创作要求）
+     * - estimatedWords: 预计字数（默认3000）
+     * - priority: 优先级（如"high"）
+     * - mood: 氛围（如"normal"）
+     * 
+     * 后端处理：
+     * - 将 chapterNumber 从字符串（"第二章"）解析为数字（2）并覆盖
+     * 
+     * 后续可能添加的字段（通过 enrichChapterPlanWithStyleAndReferences）：
+     * - writingStyle: 写作风格内容（从模板加载）
+     * - userReferenceContents: 用户指定的参考内容（关联的其他章节）
+     */
     private Map<String, Object> buildChapterPlan(Map<String, Object> request, Long novelId, Integer chapterNumber) {
         @SuppressWarnings("unchecked")
         Map<String, Object> requestPlan = (Map<String, Object>) request.get("chapterPlan");
+        
+        // 前端总是会传 chapterPlan，这里主要是将 chapterNumber 从字符串转为数字
         Map<String, Object> chapterPlan = requestPlan != null ? new HashMap<>(requestPlan) :
-                novelMemoryService.generateChapterPlan(novelId, chapterNumber);
+                novelMemoryService.generateChapterPlan(novelId, chapterNumber); // 降级方案，实际基本用不到
+        
+        // 关键：用解析后的数字 chapterNumber 覆盖前端传的字符串
         chapterPlan.put("chapterNumber", chapterNumber);
         return chapterPlan;
-    }
-
-    private Map<String, Object> buildMemoryBankWithVolume(Long novelId, Integer chapterNumber) {
-        Map<String, Object> memoryBank = novelMemoryService.buildMemoryBankFromDatabase(novelId);
-        
-        try {
-            List<NovelVolume> volumes = novelVolumeService.getVolumesByNovelId(novelId);
-            if (volumes != null) {
-                for (NovelVolume v : volumes) {
-                    if (v.getChapterStart() != null && v.getChapterEnd() != null
-                            && chapterNumber >= v.getChapterStart() && chapterNumber <= v.getChapterEnd()) {
-                        Map<String, Object> vol = new HashMap<>();
-                        vol.put("id", v.getId());
-                        vol.put("title", v.getTitle());
-                        vol.put("theme", v.getTheme());
-                        vol.put("description", v.getDescription());
-                        vol.put("contentOutline", v.getContentOutline());
-                        vol.put("chapterStart", v.getChapterStart());
-                        vol.put("chapterEnd", v.getChapterEnd());
-                        memoryBank.put("currentVolumeOutline", vol);
-                        break;
-                    }
-                }
-            }
-        } catch (Exception e) {
-            logger.warn("附加卷信息失败: {}", e.getMessage());
-        }
-        
-        return memoryBank;
     }
 
     private Long parsePromptTemplateId(Map<String, Object> request) {
@@ -427,21 +387,26 @@ public class NovelCraftController {
         return Boolean.valueOf(String.valueOf(value));
     }
 
+    /**
+     * 异步执行章节写作
+     * 
+     * @param chapterPlan 章节计划（包含title/coreEvent/estimatedWords等，详见buildChapterPlan注释）
+     */
     private void executeAsyncWriting(Novel novel, Map<String, Object> chapterPlan, 
-                                     Map<String, Object> memoryBank, String userAdjustment,
+                                     String userAdjustment,
                                      SseEmitter emitter, AIConfigRequest aiConfig, 
-                                     Long promptTemplateId, Boolean enableTemplateLoop,
+                                     Long promptTemplateId,
                                      Long writingStyleId, Map<String, String> referenceContents) {
         CompletableFuture.runAsync(() -> {
             try {
-                // 将写作风格和关联内容整合到上下文中
+                // 将写作风格和关联内容整合到章节计划中
                 if (writingStyleId != null || !referenceContents.isEmpty()) {
-                    enrichContextWithStyleAndReferences(memoryBank, writingStyleId, referenceContents);
+                    enrichChapterPlanWithStyleAndReferences(chapterPlan, writingStyleId, referenceContents);
                 }
                 
                 novelCraftAIService.executeMultiStageStreamingChapterWriting(
-                    novel, chapterPlan, memoryBank, userAdjustment, emitter, aiConfig, 
-                    promptTemplateId, enableTemplateLoop
+                    novel, chapterPlan, userAdjustment, emitter, aiConfig, 
+                    promptTemplateId
                 );
                 
                 // 异步提取上一章概要（优化用户体验，不阻塞当前章节生成）
@@ -467,17 +432,17 @@ public class NovelCraftController {
     }
     
     /**
-     * 将写作风格和关联内容整合到记忆库中
+     * 将写作风格和关联内容整合到章节计划中
      */
-    private void enrichContextWithStyleAndReferences(Map<String, Object> memoryBank, 
-                                                     Long writingStyleId, 
-                                                     Map<String, String> referenceContents) {
-        // 如果指定了写作风格，加载并添加到上下文
+    private void enrichChapterPlanWithStyleAndReferences(Map<String, Object> chapterPlan, 
+                                                         Long writingStyleId, 
+                                                         Map<String, String> referenceContents) {
+        // 如果指定了写作风格，加载并添加到章节计划
         if (writingStyleId != null) {
             try {
                 PromptTemplate template = promptTemplateService.getById(writingStyleId);
                 if (template != null && template.getIsActive()) {
-                    memoryBank.put("writingStyle", template.getContent());
+                    chapterPlan.put("writingStyle", template.getContent());
                     logger.info("✅ 已应用写作风格: {}", template.getName());
                 }
             } catch (Exception e) {
@@ -485,7 +450,7 @@ public class NovelCraftController {
             }
         }
         
-        // 如果有用户指定的关联内容，添加到上下文
+        // 如果有用户指定的关联内容，添加到章节计划
         if (!referenceContents.isEmpty()) {
             StringBuilder refContext = new StringBuilder();
             refContext.append("\n【用户指定参考内容】\n");
@@ -493,7 +458,7 @@ public class NovelCraftController {
                 refContext.append("====== ").append(entry.getKey()).append(" ======\n");
                 refContext.append(entry.getValue()).append("\n\n");
             }
-            memoryBank.put("userReferenceContents", refContext.toString());
+            chapterPlan.put("userReferenceContents", refContext.toString());
             logger.info("✅ 已添加{}个用户指定参考内容", referenceContents.size());
         }
     }

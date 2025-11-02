@@ -75,5 +75,15 @@ public interface NovelDocumentMapper {
             "(title LIKE CONCAT('%', #{keyword}, '%') OR content LIKE CONCAT('%', #{keyword}, '%')) " +
             "ORDER BY updated_at DESC")
     List<NovelDocument> searchDocuments(@Param("novelId") Long novelId, @Param("keyword") String keyword);
+
+    /**
+     * 获取最近的章节（用于代理式AI写作）
+     */
+    @Select("SELECT * FROM novel_document WHERE novel_id = #{novelId} AND id < #{beforeChapter} " +
+            "ORDER BY id DESC LIMIT #{limit}")
+    List<NovelDocument> findRecentChaptersByNovelId(
+        @Param("novelId") Long novelId, 
+        @Param("beforeChapter") Integer beforeChapter, 
+        @Param("limit") Integer limit);
 }
 
