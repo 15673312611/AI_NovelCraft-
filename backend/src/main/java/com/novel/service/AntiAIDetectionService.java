@@ -302,16 +302,8 @@ public class AntiAIDetectionService {
         optimizePrompt.append("• 让对话更加口语化和个性化\n");
         optimizePrompt.append("• 减少过度修饰，增加生活化描写\n\n");
         
-        // 根据小说类型的特定指导
-        optimizePrompt.append("【").append(novel.getGenre()).append("类小说特殊要求】\n");
-        if (novel.getGenre().equals("都市异能")) {
-            optimizePrompt.append("• 超能力要融入日常生活，不脱离现实\n");
-            optimizePrompt.append("• 人物反应要符合现代人思维\n");
-        } else if (novel.getGenre().equals("玄幻")) {
-            optimizePrompt.append("• 修炼升级要有过程感，不能太突兀\n");
-            optimizePrompt.append("• 世界观设定要自然融入剧情\n");
-        }
-        optimizePrompt.append("\n");
+        // 类型专项指导已移除，避免预设类型影响判断
+
         
         // 原始内容
         optimizePrompt.append("【待优化内容】\n");

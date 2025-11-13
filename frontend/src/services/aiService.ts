@@ -42,6 +42,22 @@ class AIService {
     return api.post('/ai/remove-trace', requestBody);
   }
 
+  async polishSelection(params: {
+    fullContent: string
+    selection: string
+    instructions?: string
+    chapterTitle?: string
+  }): Promise<any> {
+    const { fullContent, selection, instructions, chapterTitle } = params;
+    const requestBody = withAIConfig({
+      chapterContent: fullContent,
+      selection,
+      instructions,
+      chapterTitle,
+    });
+    return api.post('/ai/polish-selection', requestBody);
+  }
+
   /**
    * 生成卷大纲（如果需要AI）
    */

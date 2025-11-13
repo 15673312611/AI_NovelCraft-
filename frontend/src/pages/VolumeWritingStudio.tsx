@@ -67,6 +67,7 @@ const VolumeWritingStudio: React.FC = () => {
   // 章节列表相关状态
   const [chapterList, setChapterList] = useState<any[]>([]);
   const [chapterListLoading, setChapterListLoading] = useState(false);
+  const [chapterDirHovered, setChapterDirHovered] = useState(false); // 章节目录悬停状态
   
   // 自动保存相关状态
   const autoSaveTimerRef = useRef<number | null>(null);
@@ -96,18 +97,18 @@ const VolumeWritingStudio: React.FC = () => {
 
   // 一键格式化：
   // 1) 在句末标点（。？！）簇后换行
-  // 2) 若后面紧跟后引号（”或’或常见引号），则在引号后换行
-  // 3) 若出现句末标点 + 末引号 + 开引号（” “），则在两个引号之间插入一个空行（段落）
-  // 4) 规范：在句末标点与末引号之间保留一个空格（如：“……？ ”）
+  // 2) 若后面紧跟后引号（"或'或常见引号），则在引号后换行
+  // 3) 若出现句末标点 + 末引号 + 开引号（" "），则在两个引号之间插入一个空行（段落）
+  // 4) 规范：在句末标点与末引号之间保留一个空格（如："……？ "）
   const formatChineseSentences = (input: string): string => {
     if (!input) return '';
     let text = input.replace(/\r\n?/g, '\n');
     // 优先处理：标点簇 + 末引号 + 开引号 -> 保留末引号在本行，之后空一行再开始下一段
-    text = text.replace(/([。？！]+)\s*([”’"'])\s*([“"'])/g, '$1 $2\n\n$3');
+    text = text.replace(/([。？！]+)\s*(["'])\s*([""'])/g, '$1 $2\n\n$3');
     // 其次：标点簇 + 末引号（后面不是开引号）-> 在末引号后换行
-    text = text.replace(/([。？！]+)\s*([”’"'])(?!\s*[“"'])\s*/g, '$1 $2\n');
+    text = text.replace(/([。？！]+)\s*(["'])(?!\s*[""'])\s*/g, '$1 $2\n');
     // 再者：标点簇后直接换行（后面没有末引号）
-    text = text.replace(/([。？！]+)(?!\s*[”’"'])\s*/g, '$1\n');
+    text = text.replace(/([。？！]+)(?!\s*[""'])\s*/g, '$1\n');
     // 行级清理：去除每行首部的空白（含全角空格），以及行尾空白
     text = text
       .split('\n')
@@ -406,7 +407,7 @@ const VolumeWritingStudio: React.FC = () => {
     setChapterListLoading(true);
     try {
       // 获取当前卷范围内的所有章节
-      const response = await api.get(`/chapters/novel/${novelId}`);
+      const response = await api.get(`/chapters/novel/${novelId}?summary=true`);
       const chapters = response.data || response || [];
       
       // 筛选出当前卷的章节
@@ -1270,7 +1271,7 @@ const VolumeWritingStudio: React.FC = () => {
     try {
       setChaptersLoading(true);
       // 获取小说的所有章节
-      const response = await api.get(`/chapters/novel/${novelId}`);
+      const response = await api.get(`/chapters/novel/${novelId}?summary=true`);
       const chapters = response.data || response || [];
       
       // 按章节号排序
@@ -1492,16 +1493,36 @@ const VolumeWritingStudio: React.FC = () => {
               borderBottom: '1px solid #e2e8f0',
               background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
             }}>
-              <div style={{ 
-                fontSize: '16px', 
-                fontWeight: 600, 
+              <div style={{
+                fontSize: '16px',
+                fontWeight: 600,
                 color: '#0f172a',
                 marginBottom: '8px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    cursor: 'pointer',
+                    padding: '4px 8px',
+                    borderRadius: '8px',
+                    transition: 'all 0.2s',
+                    background: chapterDirHovered ? 'rgba(59, 130, 246, 0.05)' : 'transparent'
+                  }}
+                  onMouseEnter={() => setChapterDirHovered(true)}
+                  onMouseLeave={() => setChapterDirHovered(false)}
+                  onClick={() => {
+                    if (!loading && chapterId && currentContent && isCurrentChapterLatest()) {
+                      handleCreateNewChapter();
+                    } else {
+                      message.warning('请先完成当前章节的创作');
+                    }
+                  }}
+                >
                   <div style={{
                     width: '32px',
                     height: '32px',
@@ -1515,16 +1536,26 @@ const VolumeWritingStudio: React.FC = () => {
                     <FileTextOutlined style={{ fontSize: '16px', color: '#ffffff' }} />
                   </div>
                   <span>章节目录</span>
+                  {chapterDirHovered && (
+                    <span style={{
+                      fontSize: '18px',
+                      color: '#3b82f6',
+                      marginLeft: '4px',
+                      animation: 'fadeIn 0.2s ease-in'
+                    }}>
+                      ➕
+                    </span>
+                  )}
                 </div>
-                
+
                 {/* 新建章节按钮 */}
-                <Button 
-                  type="primary" 
-                  icon={<PlusOutlined />} 
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
                   size="small"
                   disabled={loading || !chapterId || !currentContent || !isCurrentChapterLatest()}
                   onClick={handleCreateNewChapter}
-                  style={{ 
+                  style={{
                     borderRadius: '6px',
                     height: '32px',
                     background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
@@ -1560,8 +1591,7 @@ const VolumeWritingStudio: React.FC = () => {
                       background: chapterId === String(chapter.id) ? 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)' : '#ffffff',
                       border: chapterId === String(chapter.id) ? '1px solid #3b82f6' : '1px solid #e2e8f0',
                       transition: 'all 0.2s',
-                      position: 'relative',
-                      boxShadow: chapterId === String(chapter.id) ? '0 2px 8px rgba(59, 130, 246, 0.15)' : '0 1px 3px rgba(0, 0, 0, 0.05)'
+                      position: 'relative'
                     }}
                     onMouseEnter={(e) => {
                       if (chapterId !== String(chapter.id)) {

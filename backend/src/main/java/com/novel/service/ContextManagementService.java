@@ -50,17 +50,27 @@ public class ContextManagementService {
     private com.novel.repository.NovelForeshadowingRepository foreshadowingRepository;
 
     @Autowired
+    private com.novel.repository.NovelOutlineRepository outlineRepository;
+
+    @Autowired
     private com.novel.repository.NovelWorldDictionaryRepository worldDictionaryRepository;
 
 
     /**
      * 构建完整的AI上下文消息列表（支持自定义模板）
      * 充分利用128k上下文容量，确保AI获得足够的创作信息
+     * 
+     * @param chapterPlan 章节计划，包含:
+     *                    - chapterNumber: 章节号（Integer）
+     *                    - title: 章节标题
+     *                    - coreEvent: 核心事件/用户指令
+     *                    - type/estimatedWords/priority/mood: 章节属性
+     *                    - writingStyle: 写作风格（可选，由Controller添加）
+     *                    - userReferenceContents: 用户参考内容（可选，由Controller添加）
      */
     public List<Map<String, String>> buildFullContextMessages(
             Novel novel,
             Map<String, Object> chapterPlan,
-            Map<String, Object> memoryBank,
             String userAdjustment,
             Long promptTemplateId) {
 
@@ -74,21 +84,19 @@ public class ContextManagementService {
         // 1.1 番茄小说风格指引
 //        messages.add(createMessage("system", buildTomatoNovelStyleGuide()));
 
-//        // 1.2 去AI味训练对话（用户-助手示例）
-//        messages.add(createMessage("user", "如何写一个好故事？"));
-//        messages.add(createMessage("assistant", buildAntiAITastePrompt()));
+
 
         // 2. 小说基本信息
         messages.add(createMessage("system", buildNovelBasicInfoPrompt(novel)));
 
-        // 3. 系统大纲信息
-        String outlineContext = buildOutlineContext(novel, memoryBank);
+        // 3. 系统大纲信息（直接从novel对象获取）
+        String outlineContext = buildOutlineContext(novel, chapterNumber);
         if (!outlineContext.isEmpty()) {
             messages.add(createMessage("system", outlineContext));
         }
 
-        // 4. 当前卷大纲信息
-        String volumeContext = buildCurrentVolumeContext(memoryBank, chapterNumber);
+        // 4. 当前卷大纲信息（直接从数据库查询）
+        String volumeContext = buildCurrentVolumeContext(novel.getId(), chapterNumber);
         if (!volumeContext.isEmpty()) {
             messages.add(createMessage("system", volumeContext));
         }
@@ -99,11 +107,8 @@ public class ContextManagementService {
             messages.add(createMessage("system", characterContext));
         }
 
-        // 6. 主角详细现状
-        String protagonistStatus = buildProtagonistStatusContext(novel.getId(), memoryBank, chapterNumber);
-        if (!protagonistStatus.isEmpty()) {
-            messages.add(createMessage("system", protagonistStatus));
-        }
+        // 6. 主角详细现状（直接从数据库查询）
+
 
         // 7. 情节线管理信息（暂时禁用）
 //         String plotlineContext = buildPlotlineContext(novel.getId(), memoryBank, chapterNumber);
@@ -149,7 +154,7 @@ public class ContextManagementService {
 
         // 13. 长篇记忆管理上下文包（新增！）
         try {
-            String memoryContext = longNovelMemoryManager.buildContextPackage(memoryBank, chapterNumber);
+            String memoryContext = longNovelMemoryManager.buildContextPackage(chapterNumber);
             if (!memoryContext.isEmpty()) {
                 messages.add(createMessage("system", memoryContext));
             }
@@ -433,11 +438,9 @@ public class ContextManagementService {
 
         // 动态构建小说基本信息
         context.append("小说标题：《").append(novel.getTitle()).append("》\n");
-        context.append("类型：").append(novel.getGenre());
         if (novel.getTags() != null && !novel.getTags().isEmpty()) {
-            context.append(" / ").append(novel.getTags());
+            context.append("标签：").append(novel.getTags()).append("\n");
         }
-        context.append("\n");
         if (novel.getDescription() != null && !novel.getDescription().isEmpty()) {
             context.append("基调：").append(novel.getDescription()).append("\n");
         }
@@ -463,7 +466,7 @@ public class ContextManagementService {
         }
 
         // 动态禁忌词汇（基于小说类型）
-        context.append(buildGenreSpecificForbiddenWords(novel.getGenre())).append("\n");
+        context.append(buildGenreSpecificForbiddenWords("")).append("\n");
 
         // 当前进度和重点
         if (chapterNumber <= 3) {
@@ -657,8 +660,6 @@ public class ContextManagementService {
         StringBuilder context = new StringBuilder();
         context.append("**作品基本信息**\n");
         context.append("- 标题: 《").append(novel.getTitle()).append("》\n");
-        context.append("- 类型: ").append(novel.getGenre()).append("\n");
-
 
         if (novel.getTags() != null && !novel.getTags().trim().isEmpty()) {
             context.append("- 标签: ").append(novel.getTags()).append("\n");
@@ -670,145 +671,86 @@ public class ContextManagementService {
 
     /**
      * 构建大纲上下文
+     * 优先使用核心设定（避免AI上帝视角），如果核心设定不存在则使用完整大纲
      */
     @SuppressWarnings("unchecked")
-    public String buildOutlineContext(Novel novel, Map<String, Object> memoryBank) {
+    public String buildOutlineContext(Novel novel, Integer chapterNumber) {
         StringBuilder context = new StringBuilder();
 
-        // 小说总大纲
+        // 优先尝试获取核心设定
+        try {
+            java.util.Optional<com.novel.domain.entity.NovelOutline> outlineOpt =
+                outlineRepository.findByNovelId(novel.getId());
+
+            if (outlineOpt.isPresent()) {
+                com.novel.domain.entity.NovelOutline outline = outlineOpt.get();
+                String coreSettings = outline.getCoreSettings();
+
+                if (coreSettings != null && !coreSettings.trim().isEmpty()) {
+                    // 使用核心设定（推荐）
+                    context.append("📋 **核心设定**（世界观、力量体系、角色基本设定等，不含具体剧情）\n");
+                    context.append(coreSettings).append("\n\n");
+                    logger.debug("✅ 使用核心设定作为大纲上下文: novelId={}, 长度={}",
+                        novel.getId(), coreSettings.length());
+                    return context.toString();
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("⚠️ 获取核心设定失败，降级使用完整大纲: {}", e.getMessage());
+        }
+
+        // 降级：使用完整大纲（从novel对象直接获取）
         if (novel.getOutline() != null && !novel.getOutline().trim().isEmpty()) {
             context.append("📋 **小说总大纲**\n");
             context.append(novel.getOutline()).append("\n\n");
-        }
-
-        // 从记忆库获取详细大纲信息
-        Object overallOutline = memoryBank.get("overallOutline");
-        if (overallOutline instanceof Map) {
-            Map<String, Object> outlineData = (Map<String, Object>) overallOutline;
-            context.append("📊 **结构规划**\n");
-
-            Object structure = outlineData.get("structure");
-            if (structure != null) {
-                context.append("- 整体结构: ").append(structure).append("\n");
-            }
-
-            Object estimatedChapters = outlineData.get("estimatedChapters");
-            if (estimatedChapters != null) {
-                context.append("- 预计章节数: ").append(estimatedChapters).append("\n");
-            }
-
-            Object targetWords = outlineData.get("targetWords");
-            if (targetWords != null) {
-                context.append("- 目标字数: ").append(targetWords).append("\n");
-            }
-
-            Object mainThemes = outlineData.get("mainThemes");
-            if (mainThemes instanceof List) {
-                List<String> themes = (List<String>) mainThemes;
-                context.append("- 核心主题: ").append(String.join("、", themes)).append("\n");
-            }
+            logger.debug("⚠️ 使用完整大纲作为上下文（核心设定未提炼）: novelId={}", novel.getId());
         }
 
         return context.toString();
     }
 
     /**
-     * 构建当前卷大纲上下文
+     * 构建当前卷大纲上下文（直接从数据库查询）
      */
-    @SuppressWarnings("unchecked")
-    public String buildCurrentVolumeContext(Map<String, Object> memoryBank, int chapterNumber) {
+    public String buildCurrentVolumeContext(Long novelId, int chapterNumber) {
         StringBuilder context = new StringBuilder();
 
-        // 首先尝试从memoryBank获取novelId
-        Long novelId = null;
-        Object novelIdObj = memoryBank.get("novelId");
-        if (novelIdObj instanceof Number) {
-            novelId = ((Number) novelIdObj).longValue();
-        }
-
-        if (novelId != null) {
-            try {
-                // 从数据库查询当前章节所属的卷
-                com.novel.domain.entity.NovelVolume volume = novelVolumeService.findVolumeByChapterNumber(novelId, chapterNumber);
-                
-                if (volume != null) {
-                    context.append("📖 **当前卷信息**\n");
-                    context.append("- 卷标题: ").append(volume.getTitle()).append("\n");
-                    context.append("- 核心主题: ").append(volume.getTheme()).append("\n");
-                    
-                    if (volume.getDescription() != null && !volume.getDescription().isEmpty()) {
-                        context.append("- 卷描述: ").append(volume.getDescription()).append("\n");
-                    }
-                    
-                    if (volume.getContentOutline() != null && !volume.getContentOutline().isEmpty()) {
-                        context.append("- 卷详情大纲:\n").append(volume.getContentOutline()).append("\n");
-                    }
-                    
-                    if (volume.getKeyEvents() != null && !volume.getKeyEvents().isEmpty()) {
-                        context.append("- 关键事件: ").append(volume.getKeyEvents()).append("\n");
-                    }
-                    
-                    if (volume.getCharacterDevelopment() != null && !volume.getCharacterDevelopment().isEmpty()) {
-                        context.append("- 角色发展: ").append(volume.getCharacterDevelopment()).append("\n");
-                    }
-                    
-                    context.append("- 章节范围: 第").append(volume.getChapterStart())
-                           .append("章 - 第").append(volume.getChapterEnd()).append("章\n");
-                    context.append("- **你现在要创作的是：第").append(chapterNumber).append("章**\n");
-                }
-            } catch (Exception e) {
-                logger.warn("查询当前卷信息失败: {}", e.getMessage());
-                // 失败时尝试从memoryBank获取（作为降级方案）
-                Object currentVolumeData = memoryBank.get("currentVolumeOutline");
-                if (currentVolumeData instanceof Map) {
-                    Map<String, Object> volumeData = (Map<String, Object>) currentVolumeData;
-                    context.append("📖 **当前卷信息**\n");
-                    
-                    Object volumeTitle = volumeData.get("title");
-                    if (volumeTitle != null) {
-                        context.append("- 卷标题: ").append(volumeTitle).append("\n");
-                    }
-                    
-                    Object volumeTheme = volumeData.get("theme");
-                    if (volumeTheme != null) {
-                        context.append("- 核心主题: ").append(volumeTheme).append("\n");
-                    }
-                }
-            }
-        } else {
-            // 如果没有novelId，尝试从memoryBank获取（兼容旧逻辑）
-            Object currentVolumeData = memoryBank.get("currentVolumeOutline");
-            if (currentVolumeData instanceof Map) {
-                Map<String, Object> volumeData = (Map<String, Object>) currentVolumeData;
+        try {
+            // 从数据库查询当前章节所属的卷
+            com.novel.domain.entity.NovelVolume volume = novelVolumeService.findVolumeByChapterNumber(novelId, chapterNumber);
+            
+            if (volume != null) {
                 context.append("📖 **当前卷信息**\n");
+                context.append("- 卷标题: ").append(volume.getTitle()).append("\n");
+                context.append("- 核心主题: ").append(volume.getTheme()).append("\n");
                 
-                Object volumeTitle = volumeData.get("title");
-                if (volumeTitle != null) {
-                    context.append("- 卷标题: ").append(volumeTitle).append("\n");
+                if (volume.getDescription() != null && !volume.getDescription().isEmpty()) {
+                    context.append("- 卷描述: ").append(volume.getDescription()).append("\n");
                 }
                 
-                Object volumeTheme = volumeData.get("theme");
-                if (volumeTheme != null) {
-                    context.append("- 核心主题: ").append(volumeTheme).append("\n");
+                if (volume.getContentOutline() != null && !volume.getContentOutline().isEmpty()) {
+                    context.append("- 卷详情大纲:\n").append(volume.getContentOutline()).append("\n");
                 }
+                
+                if (volume.getKeyEvents() != null && !volume.getKeyEvents().isEmpty()) {
+                    context.append("- 关键事件: ").append(volume.getKeyEvents()).append("\n");
+                }
+                
+                if (volume.getCharacterDevelopment() != null && !volume.getCharacterDevelopment().isEmpty()) {
+                    context.append("- 角色发展: ").append(volume.getCharacterDevelopment()).append("\n");
+                }
+                
+                context.append("- 章节范围: 第").append(volume.getChapterStart())
+                       .append("章 - 第").append(volume.getChapterEnd()).append("章\n");
+                context.append("- **你现在要创作的是：第").append(chapterNumber).append("章**\n");
             }
+        } catch (Exception e) {
+            logger.warn("查询当前卷信息失败: {}", e.getMessage());
         }
 
         return context.toString();
     }
 
-    /**
-     * 构建角色上下文（旧版，保留备用）
-     */
-    private String buildCharacterContext(Long novelId, Map<String, Object> memoryBank, int chapterNumber) {
-        String characterSummary = characterManagementService.buildCharacterSummaryForWriting(novelId, memoryBank, chapterNumber);
-
-        if (!characterSummary.isEmpty()) {
-            return "👥 **角色管理信息**\n" + characterSummary;
-        }
-
-        return "";
-    }
 
     /**
      * 构建角色上下文（从数据库查询）
@@ -1173,18 +1115,7 @@ public class ContextManagementService {
         }
     }
 
-    /**
-     * 构建主角详细现状上下文
-     */
-    public String buildProtagonistStatusContext(Long novelId, Map<String, Object> memoryBank, int chapterNumber) {
-        try {
-            String protagonistStatus = protagonistStatusService.buildProtagonistStatus(novelId, memoryBank, chapterNumber);
-            return protagonistStatus;
-        } catch (Exception e) {
-            logger.warn("构建主角状态上下文失败: {}", e.getMessage());
-            return "";
-        }
-    }
+
 
     /**
      * 构建情节线上下文（暂时禁用）
@@ -1789,7 +1720,7 @@ public class ContextManagementService {
         context.append("🎨 **写作风格指导**\n");
 
         // 基于类型的风格指导
-        String genreStyle = getGenreStyleGuidance(novel.getGenre());
+        String genreStyle = getGenreStyleGuidance("");
         if (!genreStyle.isEmpty()) {
             context.append(genreStyle);
         }

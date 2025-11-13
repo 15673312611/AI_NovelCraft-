@@ -109,6 +109,14 @@ class NovelVolumeService {
   }
 
   /**
+   * 更新卷信息
+   */
+  async updateVolume(volumeId: string, data: Partial<NovelVolume>): Promise<NovelVolume> {
+    const res = await api.put(`/volumes/${volumeId}`, data);
+    return this.unwrapResponse<NovelVolume>(res);
+  }
+
+  /**
    * 更新卷的实际字数
    */
   async updateActualWordCount(volumeId: string, request: VolumeWordCountRequest): Promise<void> {

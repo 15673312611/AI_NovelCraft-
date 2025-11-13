@@ -2,6 +2,7 @@ package com.novel.service;
 
 import com.novel.domain.entity.Chapter;
 import com.novel.domain.entity.ChapterSummary;
+import com.novel.dto.AIConfigRequest;
 import com.novel.repository.ChapterSummaryRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +32,9 @@ public class ChapterSummaryService {
     
     @Autowired
     private com.novel.repository.ChapterRepository chapterRepository;
+    
+    @Autowired(required = false)
+    private com.novel.agentic.service.graph.IGraphService graphService;
 
     /**
      * 生成章节概括（使用后端配置 - 已弃用，建议使用带AIConfigRequest参数的方法）
@@ -94,18 +98,59 @@ public class ChapterSummaryService {
             
             // 调用AI生成概括（使用同步非流式方式）
             String summary = callAIForSummary(prompt, aiConfig);
+            if (summary == null || summary.trim().isEmpty()) {
+                // AI可能返回空，使用fallback
+                return generateFallbackSummary(chapter);
+            }
             
             // 确保概括长度合适
             summary = trimSummaryToLength(summary, 200);
+
+            // 🆕 解析并保存Summary Signals（只保存结构化键值，不做任意写入）
+            try {
+                Map<String, String> signals = parseSummarySignals(summary);
+                if (!signals.isEmpty() && graphService != null) {
+                    graphService.addSummarySignals(chapter.getNovelId(), chapter.getChapterNumber(), signals);
+                }
+            } catch (Exception ex) {
+                logger.warn("解析Summary Signals失败（忽略）: {}", ex.getMessage());
+            }
             
             logger.info("✅ 章节概括生成完成: 长度={}字", summary.length());
             return summary;
             
         } catch (Exception e) {
-            logger.error("生成章节概括失败", e);
+            logger.warn("生成章节概括失败，使用fallback概括", e);
             // 返回fallback概括
             return generateFallbackSummary(chapter);
         }
+    }
+
+    /**
+     * 🆕 解析“Summary Signals: key=val; key=val”行为结构化Map
+     */
+    private Map<String, String> parseSummarySignals(String summary) {
+        Map<String, String> result = new java.util.HashMap<>();
+        if (summary == null) return result;
+        String[] lines = summary.split("\r?\n");
+        for (int i = lines.length - 1; i >= 0; i--) {
+            String line = lines[i].trim();
+            if (line.toLowerCase().startsWith("summary signals:")) {
+                String payload = line.substring(line.indexOf(':') + 1).trim();
+                String[] pairs = payload.split(";");
+                for (String pair : pairs) {
+                    String p = pair.trim();
+                    if (p.isEmpty()) continue;
+                    int idx = p.indexOf('=');
+                    if (idx <= 0) continue;
+                    String k = p.substring(0, idx).trim();
+                    String v = p.substring(idx + 1).trim();
+                    if (!k.isEmpty()) result.put(k, v);
+                }
+                break;
+            }
+        }
+        return result;
     }
     
     /**
@@ -138,6 +183,25 @@ public class ChapterSummaryService {
 
         } catch (Exception e) {
             logger.error("保存章节概括失败", e);
+        }
+    }
+
+    public void generateOrUpdateSummary(Chapter chapter, AIConfigRequest aiConfig) {
+        if (chapter == null || chapter.getNovelId() == null || chapter.getChapterNumber() == null) {
+            return;
+        }
+        try {
+            String summary;
+            if (aiConfig != null && aiConfig.isValid()) {
+                summary = generateChapterSummary(chapter, aiConfig);
+            } else {
+                summary = generateChapterSummary(chapter);
+            }
+            saveChapterSummary(chapter.getNovelId(), chapter.getChapterNumber(), summary);
+        } catch (Exception e) {
+            logger.warn("章节概括生成失败: novelId={}, chapter={}", chapter.getNovelId(), chapter.getChapterNumber(), e);
+            String fallback = generateFallbackSummary(chapter);
+            saveChapterSummary(chapter.getNovelId(), chapter.getChapterNumber(), fallback);
         }
     }
 
@@ -270,23 +334,29 @@ public class ChapterSummaryService {
     // ================================
     
     /**
-     * 构建概括生成的提示词
+     * 构建概括提示词
      */
     private String buildSummaryPrompt(Chapter chapter) {
-        StringBuilder prompt = new StringBuilder();
-        
-        prompt.append("请基于以下章节内容，输出一段简洁的中文概括：\n");
-        prompt.append("- 仅描述本章大致发生了什么（主要情节/关键人物/起因-经过-结果的顺序概述）；\n");
-        prompt.append("- 80-150字为宜；\n");
-        prompt.append("- 不要推测伏笔或后续发展，不要分析评价，不要列点或加标题，不要使用Markdown；\n");
-        prompt.append("- 只输出一段纯文本概括。\n\n");
-
-        prompt.append("章节标题：").append(chapter.getTitle()).append("\n");
-        prompt.append("章节内容：\n").append(chapter.getContent()).append("\n\n");
-
-        prompt.append("概括：");
-        
-        return prompt.toString();
+        // 强化为“高信息密度 + 可推理信号”的摘要指令
+        return "你是一位顶尖网文编辑。请为下面这一章生成150-250字的剧情摘要，像“追更提醒”一样高密度、强钩子、可复盘。\n\n" +
+            "【写作目标】只保留对“理解剧情走向”和“承接下一章”必要的信息。\n\n" +
+            "【必须覆盖的4点（自然融入一段内，不要打标签）】\n" +
+            "1) 动作与结果：最关键的“行为→后果”一句。\n" +
+            "2) 情报增量：本章新增的重要信息/设定。\n" +
+            "3) 关系/立场变化：人物关系或冲突格局的显著变动（若无写“无”）。\n" +
+            "4) 悬念钩子：促使读者读下一章的未决点。\n\n" +
+            "【状态信号（务必从正文中提取，若无则写“无”）】在摘要末尾另起一行输出“Summary Signals:”后接半角分号分隔的键值：\n" +
+            "loc=当前位置; realm=境界变动; item=关键物品变动; foreshadow=埋/回收/无; deaths=死亡角色(可空); relChange=关系变动(可空)\n\n" +
+            "【硬性规则】\n" +
+            "- 一段成文，不要分点、不要加任何标题或解释。\n" +
+            "- 不要剧透下一章；只基于当前章节内容。\n" +
+            "- 用语要快节奏、具体、少形容词，避免空话套话。\n\n" +
+            "---\n" +
+            "章节标题：" + chapter.getTitle() + "\n" +
+            "章节内容：\n" +
+            chapter.getContent() + "\n" +
+            "---\n" +
+            "请现在输出摘要正文，其后紧跟一行“Summary Signals: ...”。";
     }
     
     /**
@@ -315,65 +385,26 @@ public class ChapterSummaryService {
      */
     @SuppressWarnings("unchecked")
     private String callAIForSummary(String prompt, com.novel.dto.AIConfigRequest aiConfig) throws Exception {
-        String apiUrl = aiConfig.getApiUrl();
-        String apiKey = aiConfig.getApiKey();
-        String model = aiConfig.getModel();
-        
-        // 构建请求体
-        Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("model", model);
-        requestBody.put("max_tokens", 500);
-        requestBody.put("temperature", 0.7);
-        requestBody.put("stream", false);
-        
+        // 走统一的AI服务，保证与其他请求一致（非流式、带超时、统一解析）
         List<Map<String, String>> messages = new ArrayList<>();
-        Map<String, String> message = new HashMap<>();
-        message.put("role", "user");
-        message.put("content", prompt);
-        messages.add(message);
-        requestBody.put("messages", messages);
-        
-        // 发送HTTP请求
-        org.springframework.web.client.RestTemplate restTemplate = new org.springframework.web.client.RestTemplate();
-        restTemplate.setRequestFactory(new org.springframework.http.client.SimpleClientHttpRequestFactory());
-        
-        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-        headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(apiKey);
-        
-        org.springframework.http.HttpEntity<Map<String, Object>> entity = 
-            new org.springframework.http.HttpEntity<>(requestBody, headers);
-        
-        logger.info("调用AI生成章节概括: {}", apiUrl);
-        org.springframework.http.ResponseEntity<String> response = 
-            restTemplate.postForEntity(apiUrl, entity, String.class);
-        
-        // 解析响应
-        String responseBody = response.getBody();
-        if (responseBody == null) {
-            throw new RuntimeException("AI响应为空");
-        }
-        
-        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-        Map<String, Object> responseMap = mapper.readValue(responseBody, Map.class);
-        
-        List<Map<String, Object>> choices = (List<Map<String, Object>>) responseMap.get("choices");
-        if (choices == null || choices.isEmpty()) {
-            throw new RuntimeException("AI响应格式错误：无choices字段");
-        }
-        
-        Map<String, Object> firstChoice = choices.get(0);
-        Map<String, Object> messageData = (Map<String, Object>) firstChoice.get("message");
-        if (messageData == null) {
-            throw new RuntimeException("AI响应格式错误：无message字段");
-        }
-        
-        String content = (String) messageData.get("content");
-        if (content == null || content.trim().isEmpty()) {
+        Map<String, String> msg = new HashMap<>();
+        msg.put("role", "user");
+        msg.put("content", prompt);
+        messages.add(msg);
+
+        String content = aiWritingService.generateContentWithMessages(messages, "content_summarization", aiConfig);
+        if (content == null) {
             throw new RuntimeException("AI返回内容为空");
         }
-        
-        return content.trim();
+        // 去除可能的<think>噪声
+        content = content.replaceAll("<think>.*?</think>", "");
+        content = content.replaceAll("<think>.*", "");
+        content = content.replaceAll(".*</think>", "");
+        content = content.trim();
+        if (content.isEmpty()) {
+            throw new RuntimeException("AI返回内容为空");
+        }
+        return content;
     }
     
     /**
@@ -433,6 +464,45 @@ public class ChapterSummaryService {
         } catch (Exception e) {
             logger.error("异步生成章节概要失败: novelId={}, chapterNumber={}", novelId, chapterNumber, e);
             // 不抛出异常，避免影响主流程
+        }
+    }
+    
+    /**
+     * 🆕 获取最近N章的概括（返回包含章节号的Map，供上下文构建使用）
+     */
+    public List<Map<String, Object>> getRecentSummaries(Long novelId, Integer currentChapter, int limit) {
+        logger.info("📚 获取前置章节概括（含章节号）: 小说ID={}, 当前章节={}, 获取数量={}", novelId, currentChapter, limit);
+        
+        try {
+            // 计算起始章节
+            int startChapter = Math.max(1, currentChapter - limit);
+            int endChapter = currentChapter - 1;
+            
+            if (endChapter < startChapter) {
+                return new ArrayList<>();
+            }
+            
+            // 从数据库获取概括
+            List<ChapterSummary> summaries = chapterSummaryRepository.findByNovelIdAndChapterNumberBetween(
+                novelId, startChapter, endChapter);
+            
+            // 按章节号排序并转换为Map
+            List<Map<String, Object>> result = summaries.stream()
+                .sorted(Comparator.comparing(ChapterSummary::getChapterNumber))
+                .map(summary -> {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("chapterNumber", summary.getChapterNumber());
+                    map.put("summary", summary.getSummary());
+                    return map;
+                })
+                .collect(Collectors.toList());
+            
+            logger.info("✅ 获取到{}章概括（含章节号）", result.size());
+            return result;
+            
+        } catch (Exception e) {
+            logger.error("获取章节概括失败", e);
+            return new ArrayList<>();
         }
     }
     

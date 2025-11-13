@@ -48,7 +48,7 @@ const HomePage: React.FC = () => {
       const byDetailed = volumes.find((v: any) => v?.contentOutline && v.contentOutline.length >= 100)
       const target = byInProgress || byDetailed || null
       if (target && target.id) {
-        navigate(`/novels/${novelId}/volumes/${target.id}/writing`, {
+        navigate(`/novels/${novelId}/writing-studio`, {
           state: { initialVolumeId: target.id, sessionData: null }
         })
         return

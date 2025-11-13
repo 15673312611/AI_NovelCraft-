@@ -19,8 +19,10 @@
     <description>AI辅助小说创作系统</description>
 
     <properties>
-        <java.version>8</java.version>
+        <java.version>17</java.version>
         <spring-cloud.version>2021.0.8</spring-cloud.version>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
     </properties>
 
     <dependencies>
@@ -159,6 +161,13 @@
             <artifactId>poi-ooxml</artifactId>
             <version>5.2.3</version>
         </dependency>
+
+        <!-- Neo4j Driver for Graph Database (JDK 17 compatible) -->
+        <dependency>
+            <groupId>org.neo4j.driver</groupId>
+            <artifactId>neo4j-java-driver</artifactId>
+            <version>5.13.0</version>
+        </dependency>
     </dependencies>
 
     <dependencyManagement>
@@ -183,10 +192,9 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.6.2</version>
                 <configuration>
-                    <source>8</source>
-                    <target>8</target>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
                 </configuration>
             </plugin>
         </plugins>

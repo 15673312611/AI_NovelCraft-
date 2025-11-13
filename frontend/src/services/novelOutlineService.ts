@@ -1,10 +1,19 @@
 import api from './api';
 
 export interface NovelOutline {
+  id?: number;
   novelId: string;
   outline: string;
   status?: 'DRAFT' | 'CONFIRMED' | 'REVISED' | 'REVISING';
   plotStructure?: string;
+  basicIdea?: string;
+  targetWordCount?: number;
+  targetChapterCount?: number;
+  coreTheme?: string;
+  mainCharacters?: string;
+  worldSetting?: string;
+  keyElements?: string;
+  conflictTypes?: string;
 }
 
 export interface OutlineGenerationRequest {
@@ -41,7 +50,7 @@ class NovelOutlineService {
    */
   async updateOutline(novelId: string, outline: string): Promise<void> {
     try {
-      await api.put(`/novels/${novelId}/outline`, { outline });
+      await api.put(`/outline/novel/${novelId}`, { outline });
       // 如果没有抛出异常，则认为成功
     } catch (error: any) {
       throw new Error(error.response?.data?.message || error.message || '更新大纲失败');

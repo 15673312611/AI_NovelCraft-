@@ -11,9 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -144,19 +142,7 @@ public class AIManuscriptReviewService {
         sb.append("> （提供具体的、可操作的修改方案。根据问题情况，可提供多种方案，无需拘泥于数量限制。）\n\n");
         sb.append("**五、 整体优化建议**\n\n");
         sb.append("（在此处提出宏观的、能够整体提升稿件质量的建议，你的目标同样是最大程度全面地提出所有可行的优化方向。）\n\n");
-        sb.append("**六、 章节标题推荐**\n\n");
-        sb.append("（在此处，基于修订后的稿件内容，为本章节推荐3-5个备选标题。标题的生成需遵循以下策略的组合运用：）\n");
-        sb.append("- **策略1：情绪先行**：优先使用能激发读者好奇与期待的句式，如感叹句、疑问句、或制造反转感的陈述句。\n");
-        sb.append("- **策略2：信息明确**：标题应尽可能概括核心事件，遵循\u201C谁+做了什么+获得了什么/遇到了什么悬念\u201D的结构，让读者对章节内容有基本预期。\n");
-        sb.append("- **策略3：贴合人设/题材**：标题的\u201C语气\u201D需与作品风格保持一致。\n");
-        sb.append("- **策略4：轻松幽默**：可适度使用网络热词、流行梗或口语化表达，创造轻松幽默的氛围，降低读者的阅读心理门槛。\n\n");
-        sb.append("**七、 修订稿全文（Diff格式）**\n\n");
-        sb.append("（在此处，你必须将根据前述所有修改建议生成的、完整的修订后稿件，整体放入一个单独的Markdown代码块中进行输出。代码块内部需严格遵循Diff格式。）\n\n");
-        sb.append("> **格式说明：**\n");
-        sb.append("> - **【增】**：新增的句子或段落，在行首用 + 标记。\n");
-        sb.append("> - **【删】**：删除的句子或段落，在行首用 - 标记。\n");
-        sb.append("> - **【不变】**：未作修改的原文部分可直接保留。为保持报告简洁，若连续未修改的原文过长，可用 [...] 省略。\n");
-        sb.append("> **【绝对纯文本原则】（MANDATORY）**：代码块内部的稿件正文必须是绝对的纯文本。严禁在稿件正文中使用任何Markdown格式。+ 和 - 符号仅用于标记行级别的增删，它们本身是纯文本的一部分，而不是Markdown语法。");
+        // 审稿输出到此为止；不包含标题推荐与修订稿全文。仅提供分析与修改建议，避免与写作阶段职责重叠。
         return sb.toString();
     }
 

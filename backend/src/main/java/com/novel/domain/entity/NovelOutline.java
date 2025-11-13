@@ -40,6 +40,9 @@ public class NovelOutline {
     @TableField("plot_structure")
     private String plotStructure;           // 整体剧情结构/三幕式/起承转合摘要
 
+    @TableField("core_settings")
+    private String coreSettings;            // 核心设定（从大纲提炼，不含具体剧情，用于章节写作上下文）
+
     @TableField("world_setting")
     private String worldSetting;            // 世界观设定（门派、势力、体系等）
 
@@ -152,6 +155,14 @@ public class NovelOutline {
 
     public void setPlotStructure(String plotStructure) {
         this.plotStructure = plotStructure;
+    }
+
+    public String getCoreSettings() {
+        return coreSettings;
+    }
+
+    public void setCoreSettings(String coreSettings) {
+        this.coreSettings = coreSettings;
     }
 
     public String getWorldSetting() {

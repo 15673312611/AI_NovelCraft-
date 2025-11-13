@@ -31,8 +31,8 @@ public class EnhancedWebNovelPromptService {
      * @return 网文风格提示词
      */
     public String getWebNovelWritingPrompt(Novel novel, Map<String, Object> chapterPlan, Integer wordCount) {
-        String genrePrompt = getGenreSpecificPrompt(novel.getGenre());
-        String coolPointsPrompt = getCoolPointsPrompt(novel.getGenre());
+        String genrePrompt = getDefaultGenrePrompt();
+        String coolPointsPrompt = getCoolPointsPrompt(null);
         String pacePrompt = getPaceControlPrompt();
 
         return String.format(
@@ -45,9 +45,8 @@ public class EnhancedWebNovelPromptService {
             "- **读者导向**: 时刻考虑读者的阅读体验\\n\\n" +
 
             "## 🎯 当前任务\\n" +
-            "- **小说**: 《%s》(%s类)\\n" +
+            "- **小说**: 《%s》\\n" +
             "- **章节**: 第%d章《%s》\\n" +
-            "- **类型**: %s\\n" +
             "- **目标字数**: %d字(网文标准长度)\\n" +
             "- **核心事件**: %s\\n\\n" +
 
@@ -86,9 +85,9 @@ public class EnhancedWebNovelPromptService {
 
             "**重要**: 一定要写出让读者想继续看下去的内容！",
 
-            novel.getTitle(), novel.getGenre(),
+            novel.getTitle(),
             (Integer) chapterPlan.get("chapterNumber"), chapterPlan.get("title"),
-            chapterPlan.get("type"), wordCount, chapterPlan.get("coreEvent"),
+            wordCount, chapterPlan.get("coreEvent"),
             genrePrompt, coolPointsPrompt, pacePrompt,
             (Integer) chapterPlan.get("chapterNumber"), chapterPlan.get("title"), wordCount
         );
@@ -103,7 +102,6 @@ public class EnhancedWebNovelPromptService {
 
             "## 📖 小说信息\\n" +
             "- 标题：%s\\n" +
-            "- 类型：%s\\n" +
             "- 基本构思：%s\\n\\n" +
 
             "## 🎯 网文大纲设计原则\\n" +
@@ -146,10 +144,10 @@ public class EnhancedWebNovelPromptService {
             "}\\n" +
             "```\\n\\n" +
 
-            "确保大纲符合%s类网文的特点，有足够的爽点和悬念！",
+            "确保大纲符合网文的特点，有足够的爽点和悬念！",
 
-            novel.getTitle(), novel.getGenre(), basicIdea,
-            getGenreOutlinePrompt(novel.getGenre()), novel.getGenre()
+            novel.getTitle(), basicIdea,
+            getDefaultGenrePrompt()
         );
     }
 
@@ -161,7 +159,7 @@ public class EnhancedWebNovelPromptService {
             "你是【网文创作顾问】，专门为网络小说作者提供创作建议。\\n\\n" +
 
             "## 📊 当前状态\\n" +
-            "- 小说：《%s》(%s类)\\n" +
+            "- 小说：《%s》\\n" +
             "- 当前章节：第%d章\\n" +
             "- 创作状态：正在连载\\n\\n" +
 
@@ -207,8 +205,8 @@ public class EnhancedWebNovelPromptService {
 
             "重点关注读者体验和追读率！",
 
-            novel.getTitle(), novel.getGenre(), currentChapter,
-            getGenreAdvicePrompt(novel.getGenre())
+            novel.getTitle(), currentChapter,
+            getGenreAdvicePrompt(null)
         );
     }
 
@@ -400,20 +398,20 @@ public class EnhancedWebNovelPromptService {
         StringBuilder prompt = new StringBuilder();
         
         // 动态作者人格设定 - 替代传统的"你是XXX AI"模式
-        prompt.append(buildDynamicAuthorPersona(novel.getGenre(), chapterNumber)).append("\\n\\n");
+        prompt.append(buildDynamicAuthorPersona("", chapterNumber)).append("\\n\\n");
         
         // 创作情境沉浸
         prompt.append(buildCreativeImmersion(novel, chapterNumber)).append("\\n\\n");
         
         // 反AI检测核心规则
-        prompt.append(buildAntiAIRules(novel.getGenre(), chapterNumber)).append("\\n\\n");
+        prompt.append(buildAntiAIRules("", chapterNumber)).append("\\n\\n");
         
         // 人性化写作技巧
         prompt.append(buildHumanizedWritingTechniques()).append("\\n\\n");
         
         // 网文专业技巧 - 保留原始功能
-        String genrePrompt = getGenreSpecificPrompt(novel.getGenre());
-        String coolPointsPrompt = getCoolPointsPrompt(novel.getGenre());
+        String genrePrompt = getGenreSpecificPrompt("");
+        String coolPointsPrompt = getCoolPointsPrompt("");
         prompt.append(genrePrompt).append("\\n\\n");
         prompt.append(coolPointsPrompt).append("\\n\\n");
         
@@ -456,10 +454,11 @@ public class EnhancedWebNovelPromptService {
      * 动态构建作者人格 - 让AI成为真实作者而非工具
      */
     private String buildDynamicAuthorPersona(String genre, int chapterNumber) {
+        String genreLabel = (genre != null && !genre.trim().isEmpty()) ? genre.trim() : "网络文学";
         String[] authors = {
-            "你是资深网络文学作者'夜雨声烦'，专注" + genre + "小说创作十年。你的写作风格细腻而富有张力。",
-            "你是知名" + genre + "作者'墨染千秋'，以人物刻画深入和情节紧凑著称。",
-            "你是" + genre + "领域的专业作者'云中君'，擅长营造沉浸感和悬念。"
+            "你是资深网络文学作者'夜雨声烦'，专注" + genreLabel + "小说创作十年。你的写作风格细腻而富有张力。",
+            "你是知名" + genreLabel + "作者'墨染千秋'，以人物刻画深入和情节紧凑著称。",
+            "你是" + genreLabel + "领域的专业作者'云中君'，擅长营造沉浸感和悬念。"
         };
         
         String selectedAuthor = authors[random.nextInt(authors.length)];
@@ -587,7 +586,7 @@ public class EnhancedWebNovelPromptService {
         StringBuilder prompt = new StringBuilder();
         
         // 动态的创作者身份 - 基于小说类型和设定
-        String creatorIdentity = buildDynamicCreatorIdentity(novel.getGenre());
+        String creatorIdentity = buildDynamicCreatorIdentity();
         prompt.append(creatorIdentity).append("\\n\\n")
               
               .append("**【网文长篇创作核心理念】**\\n")
@@ -625,10 +624,10 @@ public class EnhancedWebNovelPromptService {
               
               .append(buildAdvancedAntiAITechniques(novel, chapterNumber)).append("\\n\\n")
               
-              .append("**【").append(novel.getGenre()).append("类深度重构】**\\n");
-              
-        // 添加优化后的类型特定指导
-        String genreSpecific = getAdvancedGenreGuidance(novel.getGenre(), chapterNumber);
+              .append("**【作品风格深度重构】**\\n");
+
+        // 添加优化后的通用指导（不依赖题材）
+        String genreSpecific = getAdvancedGenreGuidance(null, chapterNumber);
         prompt.append(genreSpecific).append("\\n");
         
         // 当前任务信息 - 简化但更聚焦
@@ -804,50 +803,12 @@ public class EnhancedWebNovelPromptService {
     /**
      * 动态构建创作者身份（基于小说类型）
      */
-    private String buildDynamicCreatorIdentity(String genre) {
+    private String buildDynamicCreatorIdentity() {
         StringBuilder identity = new StringBuilder();
-        
-        identity.append("你是一位资深网络文学创作者，专注").append(genre).append("小说领域十年以上。\\n");
-        
-        // 根据类型选择风格参考
-        switch (genre) {
-            case "玄幻":
-                identity.append("你的写作风格融合烽火戏诸侯的沉郁、忘语的细腻、辰东的宏大。\\n")
-                        .append("你擅长：埋设伏笔、控制节奏、塑造真实人物、营造命运感。\\n")
-                        .append("你反对：系统流、无脑爽文、金手指秒生效、角色工具化。");
-                break;
-            case "都市":
-            case "都市异能":
-                identity.append("你的写作风格融合唐家三少的流畅、辰东的爽快、天蚕土豆的节奏感。\\n")
-                        .append("你擅长：现实感描写、情感细腻刻画、商战智斗、都市生活质感。\\n")
-                        .append("你反对：过度脱离现实、装逼过度、金手指太假、感情戏拖沓。");
-                break;
-            case "仙侠":
-                identity.append("你的写作风格融合我吃西红柿的洒脱、梦入神机的深度、忘语的细腻。\\n")
-                        .append("你擅长：修仙哲理、剑道意境、情感克制、古风韵味。\\n")
-                        .append("你反对：修仙变修真、境界混乱、感情现代化、古风不纯。");
-                break;
-            case "科幻":
-                identity.append("你的写作风格融合刘慈欣的宏大、王晋康的思辨、何夕的人文关怀。\\n")
-                        .append("你擅长：科技设定、逻辑推理、未来想象、人性思考。\\n")
-                        .append("你反对：科学Bug、逻辑矛盾、技术堆砌、忽视人文。");
-                break;
-            case "历史":
-                identity.append("你的写作风格融合月关的考证、酒徒的深度、孑与2的幽默。\\n")
-                        .append("你擅长：历史还原、政治智谋、人物刻画、时代氛围。\\n")
-                        .append("你反对：历史错误、现代思维、人物脸谱化、情节狗血。");
-                break;
-            case "军事":
-                identity.append("你的写作风格融合纵横中文的热血、骠骑的专业、华表的激情。\\n")
-                        .append("你擅长：战术描写、军事专业、团队合作、爱国情怀。\\n")
-                        .append("你反对：军事常识错误、个人英雄主义、脱离实际、政治不当。");
-                break;
-            default:
-                identity.append("你的写作风格注重情节紧凑、人物立体、逻辑清晰。\\n")
-                        .append("你擅长：节奏控制、悬念设置、角色刻画、情感渲染。\\n")
-                        .append("你反对：拖沓冗长、人物扁平、逻辑混乱、情感虚假。");
-        }
-        
+        identity.append("你是一位资深网络文学创作者，具备十年以上创作经验。\\n")
+                .append("你的风格注重情节紧凑、人物立体、逻辑清晰。\\n")
+                .append("你擅长：节奏控制、悬念设置、角色刻画、情感渲染。\\n")
+                .append("你反对：拖沓冗长、人物扁平、逻辑混乱、套路堆叠、上帝视角。");
         return identity.toString();
     }
     
@@ -866,23 +827,7 @@ public class EnhancedWebNovelPromptService {
              .append("• 禁止直接命名：避免专业术语满天飞\\n")
              .append("• 禁止反派脸谱化：要有现实逻辑和复杂动机\\n");
         
-        // 基于类型的特定禁忌
-        String genre = novel.getGenre();
-        switch (genre) {
-            case "玄幻":
-                rules.append("• 禁止系统类词汇：\"叮\"\"宿主\"\"任务\"\"奖励\"等\\n")
-                     .append("• 禁止境界直接说：用暗示而非明确等级\\n");
-                break;
-            case "都市":
-            case "都市异能":
-                rules.append("• 禁止过度装逼：成功要有合理过程\\n")
-                     .append("• 禁止脱离现实：保持都市生活真实感\\n");
-                break;
-            case "仙侠":
-                rules.append("• 禁止现代用语：保持古风韵味\\n")
-                     .append("• 禁止修真术语：用传统仙侠概念\\n");
-                break;
-        }
+        // 类型特定禁忌已移除：由AI根据大纲自我推断风格，无需预置题材标签
         
         // 基于章节数的特定要求
         if (chapterNumber <= 3) {
@@ -948,43 +893,15 @@ public class EnhancedWebNovelPromptService {
      */
     private String getAdvancedGenreGuidance(String genre, int chapterNumber) {
         StringBuilder guidance = new StringBuilder();
-        
-        // 特别处理早期章节的神秘感营造
-        boolean isEarlyChapter = chapterNumber <= 10;
-        
-        switch (genre) {
-            case "都市":
-            case "都市异能":
-                guidance.append("• **现实感基础**：从真实的生活细节开始，逐步埋入神秘元素\\n")
-                        .append("• **反派复杂化**：不直接伤害，而是用法律、经济、社会关系施压\\n")
-                        .append("• **力量觉醒**：不是突然获得超能力，而是直觉、灵敏、判断力的提升\\n")
-                        .append("• **生活质感**：具体地名、物价、交通、工作细节要真实\\n");
-                if (isEarlyChapter) {
-                    guidance.append("• **开篇重点**：主角遇到一个小异常，但以为是巧合\\n")
-                            .append("• **禁止**：开篇就明示主角有特殊能力或神秘身份\\n");
-                }
-                break;
-                
-            case "玄幻":
-                guidance.append("• **神秘现象碎片化**：通过感官异常、梦境、记忆闪回暗示\\n")
-                        .append("• **禁止直接命名**：不说\"修仙\"\"真气\"\"灵根\"，用民间说法\\n")
-                        .append("• **异物不解释**：铜镜、玉珮、古书只显现异象，不说明功能\\n")
-                        .append("• **力量不稳定**：时有时无、难以控制、有副作用\\n")
-                        .append("• **觉醒代价**：必须有身体痛苦、精神异常、社会隔离\\n");
-                if (isEarlyChapter) {
-                    guidance.append("• **早期原则**：日常困境 + 一个令人疑惑的细节\\n")
-                            .append("• **严禁**：系统、器灵、天选之子等套路表达\\n")
-                            .append("• **目标**：3个疑问 + 1个情感 + 0个解答\\n");
-                }
-                break;
-                
-            default:
-                guidance.append("• **类型质感**：符合类型期待但避免套路化\\n")
-                        .append("• **人物立体**：每个角色都有个人动机和盲点\\n")
-                        .append("• **因果逻辑**：情节发展要有清晰的因果链\\n");
-        }
-        
-        // 章节数特殊指导
+
+        // 通用深度指导（不依赖题材标签）
+        guidance.append("• **风格一致性**：保持设定、语言、视角的一致性，避免突兀转调\\n")
+                .append("• **信息渐进**：逐步揭示世界规则，避免一次性讲清\\n")
+                .append("• **代价与限制**：任何力量或优势必须有明确代价与限制\\n")
+                .append("• **现实锚点**：在关键场景加入具体可感的细节（物价/地理/风俗）\\n")
+                .append("• **矛盾内化**：外部冲突前先建立人物内部的观念冲突\\n");
+
+        // 章节阶段性指导
         if (chapterNumber <= 3) {
             guidance.append("\\n📍 **开篇黄金法则**：\\n")
                     .append("- 日常生活基调 + 一个令人疑惑的细节\\n")
@@ -996,7 +913,7 @@ public class EnhancedWebNovelPromptService {
                     .append("- 主角变化不明显但读者能感知到\\n")
                     .append("- 埋设关键配角和环境，为后续做铺垫\\n");
         }
-        
+
         guidance.append("\\n");
         return guidance.toString();
     }

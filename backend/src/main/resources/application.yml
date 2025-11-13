@@ -47,6 +47,18 @@ ai:
   api-key: ${AI_API_KEY:}
   default-model: gpt-4o-mini
 
+# Neo4j 图数据库配置
+graph:
+  neo4j:
+    enabled: true  # 改为false则使用内存版（不推荐，重启数据丢失）
+    uri: bolt://localhost:7687
+    username: neo4j
+    password: novel_graph_2025
+    max-connection-pool-size: 50
+    connection-timeout: 30s
+    max-transaction-retry-time: 30s
+    auto-initialize: true
+
 # MyBatis Plus配置
 mybatis-plus:
   configuration:
@@ -71,6 +83,8 @@ jwt:
 logging:
   level:
     com.novel: DEBUG
+    com.novel.agentic.service.graph: INFO  # 图谱服务日志
+    org.neo4j.driver: INFO  # Neo4j驱动日志
     org.springframework.security: DEBUG
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql.BasicBinder: TRACE

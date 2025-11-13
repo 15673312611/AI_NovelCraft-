@@ -2,6 +2,7 @@ package com.novel.controller;
 
 import com.novel.common.Result;
 import com.novel.dto.AIConfigRequest;
+import com.novel.service.AIPolishService;
 import com.novel.service.AITraceRemovalService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,11 +22,69 @@ public class AIController {
 
     private static final Logger logger = LoggerFactory.getLogger(AIController.class);
 
+    private final AITraceRemovalService aiTraceRemovalService;
+    private final com.novel.service.AIManuscriptReviewService manuscriptReviewService;
+    private final AIPolishService aiPolishService;
+
     @Autowired
-    private AITraceRemovalService aiTraceRemovalService;
-    
-    @Autowired
-    private com.novel.service.AIManuscriptReviewService manuscriptReviewService;
+    public AIController(
+            AITraceRemovalService aiTraceRemovalService,
+            com.novel.service.AIManuscriptReviewService manuscriptReviewService,
+            AIPolishService aiPolishService
+    ) {
+        this.aiTraceRemovalService = aiTraceRemovalService;
+        this.manuscriptReviewService = manuscriptReviewService;
+        this.aiPolishService = aiPolishService;
+    }
+
+    @PostMapping("/polish-selection")
+    public Result<Map<String, Object>> polishSelection(@RequestBody Map<String, Object> request) {
+        try {
+            String fullContent = (String) request.getOrDefault("chapterContent", request.get("content"));
+            String selection = (String) request.getOrDefault("selection", request.get("selectedText"));
+            String instructions = (String) request.getOrDefault("instructions", request.get("requirement"));
+            String chapterTitle = (String) request.getOrDefault("chapterTitle", request.get("title"));
+
+            if (selection == null || selection.trim().isEmpty()) {
+                return Result.error("待润色片段不能为空");
+            }
+
+            AIConfigRequest aiConfig = new AIConfigRequest();
+            if (request.containsKey("provider")) {
+                aiConfig.setProvider((String) request.get("provider"));
+                aiConfig.setApiKey((String) request.get("apiKey"));
+                aiConfig.setModel((String) request.get("model"));
+                aiConfig.setBaseUrl((String) request.get("baseUrl"));
+            } else if (request.get("aiConfig") instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
+                aiConfig.setProvider(aiConfigMap.get("provider"));
+                aiConfig.setApiKey(aiConfigMap.get("apiKey"));
+                aiConfig.setModel(aiConfigMap.get("model"));
+                aiConfig.setBaseUrl(aiConfigMap.get("baseUrl"));
+            }
+
+            if (!aiConfig.isValid()) {
+                return Result.error("AI配置无效，请先在设置页面配置AI服务");
+            }
+
+            String polished = aiPolishService.polishSelection(
+                    chapterTitle,
+                    fullContent,
+                    selection,
+                    instructions,
+                    aiConfig
+            );
+
+            Map<String, Object> data = new java.util.HashMap<>();
+            data.put("polishedContent", polished);
+            return Result.success(data);
+
+        } catch (Exception e) {
+            logger.error("AI润色片段失败", e);
+            return Result.error("AI润色失败: " + e.getMessage());
+        }
+    }
 
     /**
      * AI消痕接口（流式）
@@ -239,4 +298,5 @@ public class AIController {
         return emitter;
     }
 }
+
 

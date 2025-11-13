@@ -54,6 +54,8 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .antMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll() // API文档允许访问
                 .antMatchers("/ai-adjectives/**").permitAll() // 词库挖掘接口放开
                 .antMatchers("/agentic/**").permitAll() // 词库挖掘接口放开
+                .antMatchers("/volumes/*/modify-blueprint-stream").permitAll() // 修改卷蓝图接口放开（暂时忽略token验证）
+                .antMatchers("/volumes/*/chapter-outlines/generate").permitAll() // 修改卷蓝图接口放开（暂时忽略token验证）
                 .anyRequest().authenticated() // 其他请求需要认证
             .and()
             .formLogin().disable()

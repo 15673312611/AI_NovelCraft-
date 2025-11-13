@@ -284,20 +284,65 @@
   background: linear-gradient(90deg, #1890ff 0%, #40a9ff 100%);
 }
 
+/* 大纲内容样式优化 */
+.outline-content {
+  padding: 32px 40px;
+  min-height: 450px;
+  max-height: 650px;
+  overflow-y: auto;
+  font-size: 15px;
+  line-height: 2.0;
+  color: #1e293b;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft YaHei", "PingFang SC", sans-serif;
+  background: #ffffff;
+  letter-spacing: 0.3px;
+}
+
+.outline-content-wrapper {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+/* 大纲内容滚动条样式 */
+.outline-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.outline-content::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.outline-content::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.outline-content::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
 /* 响应式设计 */
 @media (max-width: 1200px) {
   .volume-management-page {
     padding: 16px;
   }
-  
+
   .page-header {
     flex-direction: column;
     gap: 16px;
     align-items: stretch;
   }
-  
+
   .header-actions {
     justify-content: flex-end;
+  }
+
+  .outline-content {
+    padding: 24px 28px;
   }
 }
 
@@ -305,25 +350,31 @@
   .volume-management-page {
     padding: 12px;
   }
-  
+
   .page-header {
     padding: 16px;
   }
-  
+
   .stats-dashboard .ant-card-body {
     padding: 16px;
   }
-  
+
   .modern-volume-card .ant-card-body {
     padding: 16px;
   }
-  
+
   .volume-stats {
     flex-direction: column;
     gap: 8px;
   }
-  
+
   .volume-stat-item {
     text-align: left;
+  }
+
+  .outline-content {
+    padding: 20px 16px;
+    font-size: 14px;
+    line-height: 1.8;
   }
 }

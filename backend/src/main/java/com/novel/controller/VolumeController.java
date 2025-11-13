@@ -404,6 +404,87 @@ public class VolumeController {
     }
 
     /**
+     * 根据用户需求修改卷蓝图（流式，考虑前后卷上下文）
+     * POST /volumes/{volumeId}/modify-blueprint-stream
+     * 请求体: { userRequirement: string, provider: string, apiKey: string, model: string, baseUrl?: string }
+     * 返回: SSE流
+     */
+    @PostMapping(value = "/{volumeId}/modify-blueprint-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter modifyVolumeBlueprintStream(
+            @PathVariable Long volumeId,
+            @RequestBody Map<String, Object> request) {
+        
+        logger.info("🔧 接收卷蓝图修改请求: volumeId={}", volumeId);
+        
+        SseEmitter emitter = new SseEmitter(0L); // 不超时
+        
+        new Thread(() -> {
+            try {
+                // 解析用户需求
+                String userRequirement = (String) request.get("userRequirement");
+                if (userRequirement == null || userRequirement.trim().isEmpty()) {
+                    emitter.send(SseEmitter.event().name("error").data("用户修改需求不能为空"));
+                    emitter.completeWithError(new RuntimeException("用户修改需求不能为空"));
+                    return;
+                }
+                
+                // 解析AI配置
+                AIConfigRequest aiConfig = new AIConfigRequest();
+                if (request.containsKey("provider")) {
+                    aiConfig.setProvider((String) request.get("provider"));
+                    aiConfig.setApiKey((String) request.get("apiKey"));
+                    aiConfig.setModel((String) request.get("model"));
+                    aiConfig.setBaseUrl((String) request.get("baseUrl"));
+                    
+                    logger.info("✅ 卷蓝图修改 - 收到AI配置: provider={}, model={}", 
+                        aiConfig.getProvider(), aiConfig.getModel());
+                } else if (request.get("aiConfig") instanceof Map) {
+                    // 兼容嵌套格式
+                    @SuppressWarnings("unchecked")
+                    Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
+                    aiConfig.setProvider(aiConfigMap.get("provider"));
+                    aiConfig.setApiKey(aiConfigMap.get("apiKey"));
+                    aiConfig.setModel(aiConfigMap.get("model"));
+                    aiConfig.setBaseUrl(aiConfigMap.get("baseUrl"));
+                }
+                
+                // 验证AI配置
+                if (!aiConfig.isValid()) {
+                    logger.error("❌ 卷蓝图修改 - AI配置无效: volumeId={}, request={}", volumeId, request);
+                    emitter.send(SseEmitter.event().name("error").data("AI配置无效，请先在设置页面配置AI服务"));
+                    emitter.completeWithError(new RuntimeException("AI配置无效"));
+                    return;
+                }
+                
+                // 调用VolumeService的修改方法
+                volumeService.modifyVolumeBlueprintWithContext(volumeId, userRequirement, aiConfig, chunk -> {
+                    try {
+                        // 直接发送纯文本数据，不带event名称
+                        emitter.send(chunk);
+                    } catch (Exception e) {
+                        logger.error("发送SSE chunk失败", e);
+                        throw new RuntimeException(e);
+                    }
+                });
+                
+                // 完成
+                emitter.send(SseEmitter.event().name("done").data("completed"));
+                emitter.complete();
+                logger.info("✅ 卷 {} 蓝图修改完成", volumeId);
+                
+            } catch (Exception e) {
+                logger.error("❌ 修改卷蓝图失败: volumeId={}", volumeId, e);
+                try {
+                    emitter.send(SseEmitter.event().name("error").data(e.getMessage()));
+                } catch (Exception ignored) {}
+                emitter.completeWithError(e);
+            }
+        }).start();
+        
+        return emitter;
+    }
+
+    /**
      * 更新卷信息
      * PUT /volumes/{volumeId}
      */

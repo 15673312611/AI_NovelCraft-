@@ -267,5 +267,55 @@ public class PromptTemplateController {
             return Result.error("检查收藏状态失败: " + e.getMessage());
         }
     }
+    
+    /**
+     * 根据分类获取模板列表
+     */
+    @GetMapping("/category/{category}")
+    public Result<List<PromptTemplate>> getTemplatesByCategory(@PathVariable String category) {
+        try {
+            // TODO: 从认证信息中获取真实的userId
+            Long userId = 1L; // 临时写死
+
+            List<PromptTemplate> templates = promptTemplateService.getTemplatesByCategory(category, userId);
+            return Result.success(templates);
+        } catch (Exception e) {
+            logger.error("根据分类获取模板列表失败", e);
+            return Result.error("获取模板列表失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取支持的占位符说明
+     */
+    @GetMapping("/placeholders")
+    public Result<Map<String, String>> getPlaceholders() {
+        try {
+            Map<String, String> placeholders = promptTemplateService.getPlaceholderDescriptions();
+            return Result.success(placeholders);
+        } catch (Exception e) {
+            logger.error("获取占位符说明失败", e);
+            return Result.error("获取占位符说明失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 校验模板内容中的占位符
+     */
+    @PostMapping("/validate")
+    public Result<Map<String, Object>> validateTemplate(@RequestBody Map<String, String> request) {
+        try {
+            String content = request.get("content");
+            if (content == null || content.trim().isEmpty()) {
+                return Result.error("模板内容不能为空");
+            }
+
+            Map<String, Object> validation = promptTemplateService.validatePlaceholders(content);
+            return Result.success(validation);
+        } catch (Exception e) {
+            logger.error("校验模板失败", e);
+            return Result.error("校验模板失败: " + e.getMessage());
+        }
+    }
 }
 

@@ -6,7 +6,7 @@ import { useDispatch } from 'react-redux'
 import { AppDispatch } from '@/store'
 import { updateNovel, setCurrentNovel } from '@/store/slices/novelSlice'
 import { novelService } from '@/services/novelService'
-import { GENRE_OPTIONS, NOVEL_GENRES } from '@/constants/genres'
+
 import './NovelEditPage.css'
 
 const { Title, Text } = Typography
@@ -16,7 +16,6 @@ const { Option } = Select
 interface NovelForm {
   title: string
   description: string
-  genre: string
   status: string
   // 新增：创作配置字段
   targetTotalChapters?: number
@@ -48,7 +47,6 @@ const NovelEditPage: React.FC = () => {
       form.setFieldsValue({
         title: novel.title,
         description: novel.description,
-        genre: novel.genre,
         status: novel.status,
         targetTotalChapters: Number(novel.targetTotalChapters) || 100,
         wordsPerChapter: Number(novel.wordsPerChapter) || 3000,
@@ -74,7 +72,6 @@ const NovelEditPage: React.FC = () => {
         const newNovel = await novelService.createNovel({
           title: values.title,
           description: values.description,
-          genre: values.genre,
           targetTotalChapters: Number(values.targetTotalChapters),
           wordsPerChapter: Number(values.wordsPerChapter),
           plannedVolumeCount: Number(values.plannedVolumeCount),
@@ -148,7 +145,7 @@ const NovelEditPage: React.FC = () => {
           initialValues={{
             title: '',
             description: '',
-            genre: '玄幻',
+
             status: 'draft',
             targetTotalChapters: 100,
             wordsPerChapter: 3000,
@@ -183,19 +180,7 @@ const NovelEditPage: React.FC = () => {
             />
           </Form.Item>
 
-          <Form.Item
-            name="genre"
-            label="小说类型"
-            rules={[{ required: true, message: '请选择小说类型' }]}
-          >
-            <Select placeholder="请选择小说类型" size="large">
-              {GENRE_OPTIONS.map(option => (
-                <Option key={option.value} value={option.value}>
-                  {option.label}
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
+
 
           <Form.Item
             name="status"

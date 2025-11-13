@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { useDispatch } from 'react-redux'
 import { AppDispatch } from '@/store'
 import { createNovel } from '@/store/slices/novelSlice'
-import { GENRE_OPTIONS, NOVEL_GENRES } from '@/constants/genres'
+
 import './NovelCreateWizard.new.css'
 
 const { Title, Text } = Typography
@@ -13,7 +13,6 @@ const { TextArea } = Input
 
 interface CreateNovelForm {
   title: string
-  genre: string
   description: string // 这里是构思
 }
 
@@ -26,18 +25,17 @@ const NovelCreateWizard: React.FC = () => {
   const onFinish = async (values: CreateNovelForm) => {
     try {
       setLoading(true)
-      
-      // 使用 Redux 创建新小说
+
+      // 使用 Redux 创建新小说（不再传 genre）
       const result = await dispatch(createNovel({
         title: values.title,
-        genre: values.genre,
         description: values.description,
         targetTotalChapters: 100, // 默认值
         wordsPerChapter: 3000, // 默认值
         plannedVolumeCount: 3, // 默认值
         totalWordTarget: 300000, // 默认值
       })).unwrap()
-      
+
       message.success('小说创建成功！')
       
       // 跳转到卷规划页面，并传递构思，自动触发大纲生成
@@ -83,9 +81,7 @@ const NovelCreateWizard: React.FC = () => {
             layout="vertical"
             onFinish={onFinish}
             className="wizard-form"
-            initialValues={{
-              genre: '玄幻',
-            }}
+            initialValues={{}}
           >
             <div className="form-row">
               <Form.Item
@@ -103,20 +99,7 @@ const NovelCreateWizard: React.FC = () => {
                 />
               </Form.Item>
 
-              <Form.Item
-                name="genre"
-                label={<span className="form-label">小说类型</span>}
-                rules={[{ required: true, message: '请选择小说类型' }]}
-              >
-                <select className="form-select">
-                  <option value="">请选择小说类型</option>
-                  {GENRE_OPTIONS.map(option => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </Form.Item>
+
             </div>
 
             <Form.Item

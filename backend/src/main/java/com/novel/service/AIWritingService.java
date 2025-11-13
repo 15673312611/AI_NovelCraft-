@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import com.novel.config.AIClientConfig;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -182,6 +183,7 @@ public class AIWritingService {
      * 流式调用AI服务（支持实时流式响应）
      * 说明：真正的流式调用，逐块返回AI生成内容
      */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void streamGenerateContent(String prompt, String type, com.novel.dto.AIConfigRequest aiConfigRequest, java.util.function.Consumer<String> chunkConsumer) {
         // 验证AI配置
         if (aiConfigRequest == null || !aiConfigRequest.isValid()) {
@@ -223,8 +225,8 @@ public class AIWritingService {
             
             // 使用RestTemplate进行流式读取
             SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-            requestFactory.setConnectTimeout(15000);
-            requestFactory.setReadTimeout(120000);
+            requestFactory.setConnectTimeout(30000); // 连接超时30秒
+            requestFactory.setReadTimeout(600000); // 读取超时10分钟（有些模型写得慢）
             RestTemplate restTemplate = new RestTemplate(requestFactory);
             
             HttpHeaders headers = new HttpHeaders();
@@ -356,8 +358,8 @@ public class AIWritingService {
         return String.format("请为小说《%s》的章节【%s】生成内容。\n\n" +
                 "章节大纲：%s\n" +
                 "前文内容：%s\n\n" +
-                "要求：字数2000-3000字，保持故事节奏，符合%s类型风格，注意对话真实性。",
-            novel.getTitle(), chapterTitle, outline, previousContent, novel.getGenre()
+                "要求：字数2000-3000字，保持故事节奏，注意对话真实性。",
+            novel.getTitle(), chapterTitle, outline, previousContent
         );
     }
 
@@ -424,8 +426,8 @@ public class AIWritingService {
 
         // 发送HTTP请求（设置超时，避免大回复时读超时/断开）
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(15000);
-        requestFactory.setReadTimeout(120000);
+        requestFactory.setConnectTimeout(30000); // 连接超时30秒
+        requestFactory.setReadTimeout(600000); // 读取超时10分钟（有些模型写得慢）
         RestTemplate restTemplate = new RestTemplate(requestFactory);
         // 确保支持 text/plain 与 JSON
         restTemplate.getMessageConverters().add(0, new org.springframework.http.converter.StringHttpMessageConverter(java.nio.charset.StandardCharsets.UTF_8));
@@ -544,7 +546,7 @@ public class AIWritingService {
      */
     private int getMaxTokensForProvider(String provider, String model) {
         if (provider == null) {
-            return 4000; // 默认值
+            return 8000; // 默认值改为8000，适配更多场景
         }
         
         String providerLower = provider.toLowerCase();
@@ -553,43 +555,47 @@ public class AIWritingService {
             case "deepseek":
                 // DeepSeek 模型支持较大的 max_tokens
                 if (model != null && model.contains("reasoner")) {
-                    // R1 推理模型，使用较大的值
-                    return 8000;
+                    return 16000; // R1 推理模型
                 }
-                return 8000; // DeepSeek 其他模型
+                return 16000; // DeepSeek 其他模型
                 
             case "qwen":
             case "tongyi":
                 // 通义千问的限制
                 if (model != null && model.contains("max")) {
-                    return 8000; // qwen-max 系列
+                    return 16000; // qwen-max 系列
                 } else if (model != null && model.contains("longcontext")) {
-                    return 6000; // 长上下文模型
+                    return 12000; // 长上下文模型
                 }
-                return 6000; // 默认
+                return 8000; // 默认
                 
             case "kimi":
                 // Kimi (月之暗面) 的限制
                 if (model != null && model.contains("k2")) {
-                    return 8000; // K2 系列
+                    return 16000; // K2 系列
                 } else if (model != null && model.contains("thinking")) {
-                    return 8000; // 长思考模型
+                    return 16000; // 长思考模型
                 }
-                return 6000; // 其他 Kimi 模型
+                return 8000; // 其他 Kimi 模型
                 
             case "openai":
                 // OpenAI 模型
                 if (model != null && model.contains("gpt-4")) {
-                    return 8000;
+                    return 16000;
                 } else if (model != null && model.contains("gpt-3.5")) {
                     return 4000;
                 }
-                return 4000;
+                return 8000;
+                
+            case "gemini":
+            case "google":
+                // Google Gemini 系列
+                return 16000;
                 
             default:
-                // 未知提供商，使用保守的默认值
-                logger.warn("未知的AI提供商: {}, 使用默认 max_tokens=4000", provider);
-                return 4000;
+                // 未知提供商，使用通用默认值（中转API通常支持较大值）
+                logger.info("未知的AI提供商: {}, 使用默认 max_tokens=16000", provider);
+                return 16000;
         }
     }
     
@@ -669,6 +675,7 @@ public class AIWritingService {
      * @param aiConfig AI配置
      * @param chunkConsumer 处理每个chunk的回调
      */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void streamGenerateContentWithMessages(
             List<Map<String, String>> messages, 
             String type, 
@@ -712,8 +719,8 @@ public class AIWritingService {
             
             // 使用RestTemplate进行流式读取
             SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-            requestFactory.setConnectTimeout(15000);
-            requestFactory.setReadTimeout(120000);
+            requestFactory.setConnectTimeout(30000); // 连接超时30秒
+            requestFactory.setReadTimeout(600000); // 读取超时10分钟（有些模型写得慢）
             RestTemplate restTemplate = new RestTemplate(requestFactory);
             
             HttpHeaders headers = new HttpHeaders();

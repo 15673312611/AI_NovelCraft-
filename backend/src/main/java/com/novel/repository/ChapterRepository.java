@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.novel.domain.entity.Chapter;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -64,5 +65,17 @@ public interface ChapterRepository extends BaseMapper<Chapter> {
 
     @Select("SELECT * FROM chapters WHERE novel_id = #{novelId} AND status = 'COMPLETED' ORDER BY chapter_number ASC")
     List<Chapter> findCompletedChaptersByNovel(@Param("novelId") Long novelId);
+
+    @Delete("DELETE FROM chapters WHERE novel_id = #{novelId}")
+    int deleteByNovelId(@Param("novelId") Long novelId);
+    
+    @Select("SELECT * FROM chapters WHERE novel_id = #{novelId} AND chapter_number BETWEEN #{startChapter} AND #{endChapter} ORDER BY chapter_number ASC")
+    List<Chapter> findByNovelIdAndChapterNumberBetween(@Param("novelId") Long novelId, @Param("startChapter") Integer startChapter, @Param("endChapter") Integer endChapter);
+    
+    @Select("SELECT * FROM chapters WHERE novel_id = #{novelId} ORDER BY chapter_number ASC")
+    List<Chapter> findByNovelIdOrderByChapterNumberAsc(@Param("novelId") Long novelId);
+
+    @Select("SELECT id, title, chapter_number, status, word_count, is_public, novel_id, created_at, updated_at FROM chapters WHERE novel_id = #{novelId} ORDER BY chapter_number ASC")
+    List<Chapter> findMetadataByNovel(@Param("novelId") Long novelId);
 }
 

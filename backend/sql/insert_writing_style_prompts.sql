@@ -1,9 +1,9 @@
 -- 写作风格提示词库初始化SQL
 -- 录入各种写作风格模板供用户选择
 
-DELETE FROM `prompt_templates` WHERE `category` = 'writing_style' AND `type` = 'official';
+DELETE FROM `` WHERE `category` = 'writing_style' AND `type` = 'official';
 
-INSERT INTO `prompt_templates` (`name`, `content`, `type`, `category`, `description`) VALUES
+INSERT INTO `` (`name`, `content`, `type`, `category`, `description`) VALUES
 
 -- 1. 爽文风格
 ('番茄·爽文引擎', 
@@ -182,13 +182,13 @@ INSERT INTO `prompt_templates` (`name`, `content`, `type`, `category`, `descript
 'official', 'writing_style', '现代都市背景的爽文，强调装逼自然、打脸迅速、专业感强');
 
 -- 设置使用次数初始值
-UPDATE `prompt_templates` 
+UPDATE `` 
 SET `usage_count` = 0 
 WHERE `category` = 'writing_style' AND `type` = 'official';
 
 -- 查看插入结果
 SELECT id, name, category, description, is_active 
-FROM `prompt_templates` 
+FROM `` 
 WHERE `category` = 'writing_style' AND `type` = 'official'
 ORDER BY id;
 

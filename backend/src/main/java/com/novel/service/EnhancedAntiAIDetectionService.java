@@ -45,44 +45,6 @@ public class EnhancedAntiAIDetectionService {
         "优质", "卓越", "极致", "完美", "理想"
     ));
 
-    /**
-     * 检测AI特征并进行多轮优化
-     */
-    public Map<String, Object> analyzeAndOptimize(String content, String genre, int chapterNumber) {
-        logger.info("🔍 开始AI特征检测和优化 - 章节: {}, 类型: {}", chapterNumber, genre);
-        
-        // 第一轮：基础特征检测
-        Map<String, Object> analysis = analyzeAIFeatures(content);
-        double initialScore = (Double) analysis.get("aiScore");
-        
-        String optimizedContent = content;
-        int round = 0;
-        int maxRounds = 3;
-        
-        // 多轮优化直到AI痕迹降到可接受水平
-        while (initialScore > 0.3 && round < maxRounds) {
-            round++;
-            logger.info("🔄 第{}轮优化，当前AI评分: {:.2f}", round, initialScore);
-            
-            optimizedContent = performOptimization(optimizedContent, analysis, genre, round);
-            analysis = analyzeAIFeatures(optimizedContent);
-            initialScore = (Double) analysis.get("aiScore");
-        }
-        
-        Map<String, Object> result = new HashMap<>();
-        result.put("originalContent", content);
-        result.put("optimizedContent", optimizedContent);
-        result.put("initialAIScore", analysis.get("aiScore"));
-        result.put("finalAIScore", initialScore);
-        result.put("optimizationRounds", round);
-        result.put("improvement", calculateImprovement(content, optimizedContent));
-        result.put("qualityMetrics", calculateQualityMetrics(optimizedContent, genre));
-        
-        logger.info("✅ 优化完成 - AI评分从 {:.2f} 降至 {:.2f}，共{}轮优化", 
-                   (Double)result.get("initialAIScore"), initialScore, round);
-        
-        return result;
-    }
 
     /**
      * 检测AI特征
@@ -116,17 +78,6 @@ public class EnhancedAntiAIDetectionService {
         return analysis;
     }
 
-    /**
-     * 执行具体优化
-     */
-    private String performOptimization(String content, Map<String, Object> analysis, String genre, int round) {
-        List<String> issues = (List<String>) analysis.get("detectedPatterns");
-        double aiScore = (Double) analysis.get("aiScore");
-        
-        String optimizationPrompt = buildOptimizationPrompt(content, issues, genre, round, aiScore);
-        
-        return callAI("CONTENT_OPTIMIZER", optimizationPrompt);
-    }
 
     /**
      * 构建优化提示词
@@ -297,68 +248,7 @@ public class EnhancedAntiAIDetectionService {
         return suggestions;
     }
 
-    /**
-     * 计算改进程度
-     */
-    private Map<String, Object> calculateImprovement(String original, String optimized) {
-        Map<String, Object> improvement = new HashMap<>();
-        
-        double originalAI = analyzeAIFeatures(original).get("aiScore") != null ? 
-                          (Double) analyzeAIFeatures(original).get("aiScore") : 0.0;
-        double optimizedAI = analyzeAIFeatures(optimized).get("aiScore") != null ? 
-                           (Double) analyzeAIFeatures(optimized).get("aiScore") : 0.0;
-        
-        improvement.put("aiScoreReduction", originalAI - optimizedAI);
-        improvement.put("improvementPercentage", ((originalAI - optimizedAI) / originalAI) * 100);
-        
-        return improvement;
-    }
 
-    /**
-     * 计算质量指标
-     */
-    private Map<String, Object> calculateQualityMetrics(String content, String genre) {
-        Map<String, Object> metrics = new HashMap<>();
-        
-        // 基础指标
-        metrics.put("wordCount", content.length());
-        metrics.put("readability", calculateReadability(content));
-        metrics.put("emotionalTone", detectEmotionalTone(content));
-        metrics.put("genreCompatibility", calculateGenreCompatibility(content, genre));
-        
-        return metrics;
-    }
-
-    private double calculateReadability(String content) {
-        // 简化的可读性评估
-        int sentences = content.split("[。！？]").length;
-        int words = content.length();
-        return sentences > 0 ? Math.min(words / (double) sentences / 20.0, 1.0) : 0.5;
-    }
-
-    private String detectEmotionalTone(String content) {
-        // 简化的情感检测
-        if (content.matches(".*[激动|兴奋|愤怒].*")) return "激烈";
-        if (content.matches(".*[温暖|温柔|平静].*")) return "温和";
-        if (content.matches(".*[紧张|危险|恐怖].*")) return "紧张";
-        return "中性";
-    }
-
-    private double calculateGenreCompatibility(String content, String genre) {
-        // 简化的类型匹配度评估
-        Map<String, String[]> genreKeywords = new HashMap<>();
-        genreKeywords.put("都市异能", new String[]{"都市", "异能", "现代", "城市"});
-        genreKeywords.put("玄幻", new String[]{"修炼", "灵气", "境界", "法宝"});
-        genreKeywords.put("现代言情", new String[]{"爱情", "感情", "心动", "浪漫"});
-        
-        String[] keywords = genreKeywords.getOrDefault(genre, new String[0]);
-        int matches = 0;
-        for (String keyword : keywords) {
-            if (content.contains(keyword)) matches++;
-        }
-        
-        return keywords.length > 0 ? matches / (double) keywords.length : 0.5;
-    }
 
     /**
      * 调用AI进行优化

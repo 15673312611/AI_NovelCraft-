@@ -36,6 +36,7 @@ public class ChapterService {
     private com.novel.repository.NovelTemplateProgressRepository templateProgressRepository;
     
     @Autowired
+    @SuppressWarnings("unused")
     private NovelFolderService folderService;
 
 
@@ -83,6 +84,9 @@ public class ChapterService {
         if (chapter.getIsPublic() == null) {
             chapter.setIsPublic(false);
         }
+        if (chapter.getGenerationContext() == null) {
+            chapter.setGenerationContext(null);
+        }
         
         // 注意：Chapter实体中没有createdBy字段，如果需要可以后续添加
         
@@ -98,6 +102,56 @@ public class ChapterService {
      */
     public Chapter getChapter(Long id) {
         return chapterRepository.selectById(id);
+    }
+
+    public Chapter getChapterByNovelAndNumber(Long novelId, Integer chapterNumber) {
+        if (novelId == null || chapterNumber == null) {
+            return null;
+        }
+        return chapterRepository.findByNovelAndChapterNumber(novelId, chapterNumber);
+    }
+
+    public List<Chapter> getRecentChapters(Long novelId, Integer currentChapter, int limit) {
+        if (novelId == null || limit <= 0) {
+            return java.util.Collections.emptyList();
+        }
+
+        List<Chapter> chapters;
+        if (currentChapter == null || currentChapter <= 1) {
+            chapters = chapterRepository.findLatestChapterByNovel(novelId, limit);
+        } else {
+            chapters = chapterRepository.findChaptersBefore(novelId, currentChapter);
+            if (chapters.size() > limit) {
+                chapters = chapters.subList(0, limit);
+            }
+        }
+
+        return chapters;
+    }
+
+    /**
+     * 获取小说已存在的最新章节号（如果不存在则返回null）
+     */
+    public Integer getLastChapterNumber(Long novelId) {
+        if (novelId == null) {
+            return null;
+        }
+        List<Chapter> latest = chapterRepository.findLatestChapterByNovel(novelId, 1);
+        if (latest == null || latest.isEmpty()) {
+            return null;
+        }
+        return latest.get(0).getChapterNumber();
+    }
+
+    /**
+     * 计算下一章节号（如果还没有章节，则返回1）
+     */
+    public Integer getNextChapterNumber(Long novelId) {
+        Integer last = getLastChapterNumber(novelId);
+        if (last == null || last < 1) {
+            return 1;
+        }
+        return last + 1;
     }
 
     /**
@@ -135,6 +189,9 @@ public class ChapterService {
             }
             if (chapterData.getStatus() != null) {
                 chapter.setStatus(chapterData.getStatus());
+            }
+            if (chapterData.getGenerationContext() != null) {
+                chapter.setGenerationContext(chapterData.getGenerationContext());
             }
 
             chapterRepository.updateById(chapter);
@@ -250,6 +307,10 @@ public class ChapterService {
      */
     public boolean deleteChapter(Long id) {
         return chapterRepository.deleteById(id) > 0;
+    }
+
+    public List<Chapter> getChapterMetadataByNovel(Long novelId) {
+        return chapterRepository.findMetadataByNovel(novelId);
     }
 
     /**

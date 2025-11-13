@@ -129,93 +129,16 @@ public class LongNovelMemoryManager {
         return memoryBank;
     }
     
-    /**
-     * 从章节内容自动更新记忆管理系统（使用前端传递的AI配置）
-     * @param novelId 小说ID
-     * @param chapterNumber 章节号
-     * @param chapterContent 章节内容
-     * @param currentMemoryBank 当前记忆库
-     * @param aiConfig AI配置（来自前端）
-     * @return 更新后的记忆库
-     */
-    public Map<String, Object> updateMemoryFromChapter(
-            Long novelId, 
-            Integer chapterNumber, 
-            String chapterContent,
-            Map<String, Object> currentMemoryBank,
-            com.novel.dto.AIConfigRequest aiConfig) {
-        
-        logger.info("🧠 开始更新长篇记忆系统（使用前端配置） - 小说ID: {}, 第{}章, provider={}", 
-                   novelId, chapterNumber, aiConfig != null ? aiConfig.getProvider() : "null");
-        
-        // 确保记忆库结构完整
-        Map<String, Object> memoryBank = ensureMemoryBankStructure(currentMemoryBank);
-        
-        // 异步调用AI提取章节信息
-        CompletableFuture<Map<String, Object>> aiExtractionFuture = extractChapterInfoWithAIAsync(
-            novelId, chapterNumber, chapterContent, memoryBank, aiConfig);
-        
-        try {
-            // 等待AI提取完成（这里可以根据需要改为非阻塞方式）
-            Map<String, Object> extractedInfo = aiExtractionFuture.get();
-            
-            // 将AI提取的信息合并到记忆库
-            mergeAIExtractedInfo(memoryBank, extractedInfo);
-            
-            // 执行冲突检测
-            Map<String, List<String>> conflicts = detectConflicts(memoryBank);
-            memoryBank.put("conflictDetection", conflicts);
-            
-            // 更新系统元信息
-            memoryBank.put("lastUpdatedChapter", chapterNumber);
-            memoryBank.put("lastUpdatedTime", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-            memoryBank.put("memoryVersion", (Integer) memoryBank.getOrDefault("memoryVersion", 0) + 1);
-            
-            // 🚀 将更新后的记忆库存储到数据库
-            saveMemoryBankToDatabase(novelId, memoryBank, chapterNumber);
-            
-        } catch (Exception e) {
-            logger.error("❌ AI提取第{}章信息失败: {}", chapterNumber, e.getMessage(), e);
-            // 如果AI提取失败，可以回退到原来的逻辑或记录错误
-        }
-        
-        logger.info("✅ 记忆系统更新完成 - 角色: {}个, 事件: {}个, 伏笔: {}个, 设定: {}个", 
-                   getSize(memoryBank, "characterProfiles"),
-                   getSize(memoryBank, "chronicle"),
-                   getSize(memoryBank, "foreshadowing"),
-                   getSize(memoryBank, "worldDictionary"));
-        
-        return memoryBank;
-    }
+
 
     /**
      * 构建写作前的上下文包
-     * @param memoryBank 记忆库
      * @param upToChapter 截止到第几章的记忆
      * @return 上下文包字符串
      */
-    public String buildContextPackage(Map<String, Object> memoryBank, Integer upToChapter) {
+    public String buildContextPackage( Integer upToChapter) {
         StringBuilder context = new StringBuilder();
-        
-        context.append("=== 长篇小说记忆管理上下文包 ===\n");
-        context.append("截止到第").append(upToChapter).append("章的完整记忆\n\n");
-        
-        // 1. 角色档案摘要
-        context.append(buildCharacterProfilesContext(memoryBank, upToChapter));
-        
-        // 2. 大事年表摘要
-        context.append(buildChronicleContext(memoryBank, upToChapter));
-        
-        // 3. 伏笔追踪摘要
-        context.append(buildForeshadowingContext(memoryBank, upToChapter));
-        
-        // 4. 世界观设定摘要
-        context.append(buildWorldDictionaryContext(memoryBank));
-        
-        // 5. 冲突警告
-        context.append(buildConflictWarnings(memoryBank));
-        
-        context.append("\n=== 记忆包结束 ===\n");
+
         
         return context.toString();
     }
@@ -1970,19 +1893,7 @@ public class LongNovelMemoryManager {
         }
     }
 
-    /**
-     * 从数据库加载记忆库
-     */
-    public Map<String, Object> loadMemoryBankFromDatabase(Long novelId) {
-        try {
-            logger.info("📥 从数据库加载记忆库 - 小说ID: {}", novelId);
-            return novelMemoryService.buildMemoryBankFromDatabase(novelId);
-        } catch (Exception e) {
-            logger.error("❌ 从数据库加载记忆库失败 - 小说ID: {}: {}", novelId, e.getMessage(), e);
-            // 返回空的记忆库结构
-            return ensureMemoryBankStructure(new HashMap<>());
-        }
-    }
+
 
     // ================================
     // 数据库操作辅助方法

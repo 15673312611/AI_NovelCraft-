@@ -5,8 +5,9 @@ export interface Novel {
   id: number
   title: string
   description: string
-  genre: string
+  genre?: string
   status: string
+  creationStage?: string  // 创作阶段：OUTLINE_PENDING, OUTLINE_CONFIRMED, VOLUMES_GENERATED, DETAILED_OUTLINE_GENERATED, WRITING_IN_PROGRESS, WRITING_COMPLETED
   wordCount: number
   chapterCount: number
   createdAt: string
@@ -42,10 +43,9 @@ export const fetchNovels = createAsyncThunk(
 
 export const createNovel = createAsyncThunk(
   'novel/createNovel',
-  async (novelData: { 
+  async (novelData: {
     title: string
     description: string
-    genre: string
     targetTotalChapters?: number
     wordsPerChapter?: number
     plannedVolumeCount?: number

@@ -4,7 +4,7 @@ export interface Novel {
   id: number
   title: string
   description: string
-  genre: string
+  genre?: string
   status: string
   creationStage?: string
   wordCount: number
@@ -22,7 +22,6 @@ export interface Novel {
 export interface CreateNovelRequest {
   title: string
   description: string
-  genre: string
   // 新增创作配置字段
   targetTotalChapters?: number
   wordsPerChapter?: number

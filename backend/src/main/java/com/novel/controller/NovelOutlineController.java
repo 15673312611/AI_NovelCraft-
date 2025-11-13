@@ -77,8 +77,10 @@ public class NovelOutlineController {
                 // 先把outlineId发给前端
                 emitter.send(SseEmitter.event().name("meta").data("{\"outlineId\":" + outline.getId() + "}"));
 
-                // 开始调用AI并按块写出与写库
-                outlineService.streamGenerateOutlineContent(outline, aiConfig, chunk -> {
+                // 开始调用AI并按块写出与写库（支持模板和字数限制）
+                Long templateId = request.getTemplateId();
+                Integer outlineWordLimit = request.getOutlineWordLimit() != null ? request.getOutlineWordLimit() : 2000;
+                outlineService.streamGenerateOutlineContent(outline, aiConfig, templateId, outlineWordLimit, chunk -> {
                     try {
                         // 直接发送纯文本数据，不带event名称
                         emitter.send(chunk);
@@ -160,6 +162,30 @@ public class NovelOutlineController {
                 return ResponseEntity.notFound().build();
             }
         } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+        }
+    }
+
+    /**
+     * 更新小说大纲内容（手动编辑）
+     */
+    @PutMapping("/novel/{novelId}")
+    public ResponseEntity<?> updateOutlineByNovelId(
+            @PathVariable Long novelId,
+            @RequestBody UpdateOutlineRequest request) {
+        try {
+            logger.info("更新小说ID={}的大纲内容", novelId);
+            
+            if (request.getOutline() == null || request.getOutline().trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(new ErrorResponse("大纲内容不能为空"));
+            }
+            
+            NovelOutline outline = outlineService.updateOutlineContent(novelId, request.getOutline());
+            logger.info("大纲更新成功，ID={}", outline.getId());
+            
+            return ResponseEntity.ok(outline);
+        } catch (Exception e) {
+            logger.error("更新大纲失败", e);
             return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         }
     }
@@ -302,12 +328,21 @@ public class NovelOutlineController {
         private String basicIdea;
         private Integer targetWordCount;
         private Integer targetChapterCount;
-        
+
         // AI配置字段
         private String provider;
         private String apiKey;
         private String model;
         private String baseUrl;
+
+        // 模板ID（可选，如果提供则使用模板生成大纲）
+        private Long templateId;
+
+        // 大纲字数限制（默认2000字）
+        private Integer outlineWordLimit;
+
+        // 预期卷数（用于生成卷大纲）
+        private Integer volumeCount;
 
         // Getters and Setters
         public String getNovelId() {
@@ -384,6 +419,30 @@ public class NovelOutlineController {
             this.baseUrl = baseUrl;
         }
         
+        public Long getTemplateId() {
+            return templateId;
+        }
+        
+        public void setTemplateId(Long templateId) {
+            this.templateId = templateId;
+        }
+
+        public Integer getOutlineWordLimit() {
+            return outlineWordLimit;
+        }
+
+        public void setOutlineWordLimit(Integer outlineWordLimit) {
+            this.outlineWordLimit = outlineWordLimit;
+        }
+
+        public Integer getVolumeCount() {
+            return volumeCount;
+        }
+
+        public void setVolumeCount(Integer volumeCount) {
+            this.volumeCount = volumeCount;
+        }
+
         // 获取AIConfigRequest对象
         public com.novel.dto.AIConfigRequest getAiConfig() {
             if (provider != null && apiKey != null && model != null) {
@@ -402,6 +461,18 @@ public class NovelOutlineController {
 
         public void setFeedback(String feedback) {
             this.feedback = feedback;
+        }
+    }
+
+    public static class UpdateOutlineRequest {
+        private String outline;
+
+        public String getOutline() {
+            return outline;
+        }
+
+        public void setOutline(String outline) {
+            this.outline = outline;
         }
     }
 

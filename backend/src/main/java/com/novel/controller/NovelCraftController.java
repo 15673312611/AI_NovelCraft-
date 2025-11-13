@@ -847,7 +847,7 @@ public class NovelCraftController {
             Map<String, Object> status = new HashMap<>();
             status.put("novelId", novelId);
             status.put("title", novel.getTitle());
-            status.put("genre", novel.getGenre());
+            // removed: genre is no longer required; let AI infer from content
             status.put("currentStatus", novel.getStatus());
 
             // 模拟工作流状态
@@ -877,7 +877,7 @@ public class NovelCraftController {
         // 基础信息
         memoryBank.put("novelId", novel.getId());
         memoryBank.put("title", novel.getTitle());
-        memoryBank.put("genre", novel.getGenre());
+        // removed: genre from memory bank to avoid biasing AI
         memoryBank.put("createdAt", new Date());
 
         // 核心记忆结构

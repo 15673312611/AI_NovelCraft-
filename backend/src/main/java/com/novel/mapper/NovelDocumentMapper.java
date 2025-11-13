@@ -69,10 +69,20 @@ public interface NovelDocumentMapper {
     int countByNovelId(@Param("novelId") Long novelId);
 
     /**
-     * 搜索文档
+     * 搜索文档（包含章节和辅助文档）
      */
-    @Select("SELECT * FROM novel_document WHERE novel_id = #{novelId} AND " +
-            "(title LIKE CONCAT('%', #{keyword}, '%') OR content LIKE CONCAT('%', #{keyword}, '%')) " +
+    @Select("SELECT id, novel_id, folder_id, title, content, document_type, word_count, sort_order, created_at, updated_at " +
+            "FROM (" +
+            "  SELECT id, novel_id, NULL as folder_id, title, content, 'chapter' as document_type, " +
+            "         word_count, sort_order, created_at, updated_at " +
+            "  FROM chapters " +
+            "  WHERE novel_id = #{novelId} AND (title LIKE CONCAT('%', #{keyword}, '%') OR content LIKE CONCAT('%', #{keyword}, '%')) " +
+            "  UNION ALL " +
+            "  SELECT id, novel_id, folder_id, title, content, document_type, " +
+            "         word_count, sort_order, created_at, updated_at " +
+            "  FROM novel_document " +
+            "  WHERE novel_id = #{novelId} AND (title LIKE CONCAT('%', #{keyword}, '%') OR content LIKE CONCAT('%', #{keyword}, '%')) " +
+            ") AS combined_results " +
             "ORDER BY updated_at DESC")
     List<NovelDocument> searchDocuments(@Param("novelId") Long novelId, @Param("keyword") String keyword);
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Row, Col, Button, Input, Empty, Spin, Modal, message, Tag, Form } from 'antd'
-import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, FileTextOutlined, DownOutlined, CheckOutlined, ClockCircleOutlined } from '@ant-design/icons'
+import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, FileTextOutlined, DownOutlined, CheckOutlined, ClockCircleOutlined, NodeIndexOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { AppDispatch, RootState } from '@/store'
@@ -8,6 +8,8 @@ import { fetchNovels, deleteNovel, updateNovel } from '@/store/slices/novelSlice
 import EnhancedEmptyState from '@/components/common/EnhancedEmptyState'
 import EnhancedStatsCard from '@/components/common/EnhancedStatsCard'
 import PageBackground from '@/components/common/PageBackground'
+import GraphDataModal from '@/components/graph/GraphDataModal'
+import novelVolumeService, { NovelVolume } from '@/services/novelVolumeService'
 import './NovelListPage.new.css'
 
 const sortOptions = [
@@ -31,6 +33,9 @@ const NovelListPage: React.FC = () => {
 
   const [sortMenuOpen, setSortMenuOpen] = useState(false)
   const sortDropdownRef = useRef<HTMLDivElement | null>(null)
+  
+  const [graphModalVisible, setGraphModalVisible] = useState(false)
+  const [selectedNovelForGraph, setSelectedNovelForGraph] = useState<{ id: number; title: string } | null>(null)
 
   const handleToggleSortMenu = () => {
     setSortMenuOpen((prev) => !prev)
@@ -168,6 +173,81 @@ const NovelListPage: React.FC = () => {
       }
     })
   }
+  
+  const handleViewGraph = (novelId: number, novelTitle: string) => {
+    setSelectedNovelForGraph({ id: novelId, title: novelTitle })
+    setGraphModalVisible(true)
+  }
+
+  /**
+   * 智能跳转到写作页面
+   * 根据小说的创作阶段(creationStage)和卷的状态，决定跳转到哪个页面
+   */
+  const handleStartWriting = async (novel: any) => {
+    try {
+      const novelId = novel.id
+      const creationStage = novel.creationStage || 'OUTLINE_PENDING'
+
+      console.log(`[handleStartWriting] 小说ID: ${novelId}, 创作阶段: ${creationStage}`)
+
+      // 1. 如果小说刚创建，还没有生成大纲 → 跳转到卷管理页面（会引导生成大纲）
+      if (creationStage === 'OUTLINE_PENDING') {
+        message.info('请先生成小说大纲')
+        navigate(`/novels/${novelId}/volumes`)
+        return
+      }
+
+      // 2. 如果已生成大纲，但还没有生成卷 → 跳转到卷管理页面（会引导生成卷）
+      if (creationStage === 'OUTLINE_CONFIRMED') {
+        message.info('请先生成卷规划')
+        navigate(`/novels/${novelId}/volumes`)
+        return
+      }
+
+      // 3. 如果已生成卷，检查卷的详细大纲状态
+      if (creationStage === 'VOLUMES_GENERATED' ||
+          creationStage === 'DETAILED_OUTLINE_GENERATED' ||
+          creationStage === 'WRITING_IN_PROGRESS' ||
+          creationStage === 'WRITING_COMPLETED') {
+
+        // 获取该小说的卷列表
+        const volumes: NovelVolume[] = await novelVolumeService.getVolumesByNovelId(String(novelId))
+
+        if (!volumes || volumes.length === 0) {
+          message.warning('未找到卷信息，请先生成卷规划')
+          navigate(`/novels/${novelId}/volumes`)
+          return
+        }
+
+        // 查找正在进行中的卷，或者直接使用第一个卷（因为卷已经从大纲拆分出来，包含了必要的信息）
+        const byInProgress = volumes.find(v => v.status === 'IN_PROGRESS')
+        const target = byInProgress || volumes[0] || null
+
+        if (target && target.id) {
+          // 找到可以写作的卷，跳转到写作工作室
+          console.log(`[handleStartWriting] 跳转到写作工作室，卷ID: ${target.id}`)
+          navigate(`/novels/${novelId}/writing-studio`, {
+            state: { initialVolumeId: target.id, sessionData: null }
+          })
+          return
+        }
+
+        // 如果没有找到卷，跳转到卷管理页面
+        message.warning('未找到可用的卷')
+        navigate(`/novels/${novelId}/volumes`)
+        return
+      }
+
+      // 默认情况：跳转到卷管理页面
+      navigate(`/novels/${novelId}/volumes`)
+
+    } catch (error: any) {
+      console.error('[handleStartWriting] 错误:', error)
+      message.error('跳转失败，请重试')
+      // 出错时跳转到卷管理页面作为兜底
+      navigate(`/novels/${novel.id}/volumes`)
+    }
+  }
 
   return (
     <div className="modern-novel-list">
@@ -247,9 +327,10 @@ const NovelListPage: React.FC = () => {
             <Col xs={24} sm={12} lg={8} xl={6} key={novel.id}>
               <div
                 className="novel-card"
-                onClick={() => {
-                  // 直接进入新写作工作室
-                  navigate(`/novels/${novel.id}/writing-studio`)
+                onClick={(e) => {
+                  // 点击卡片时使用智能跳转
+                  e.preventDefault()
+                  handleStartWriting(novel)
                 }}
               >
                 <div className="card-header">
@@ -285,15 +366,24 @@ const NovelListPage: React.FC = () => {
                   <Button
                     type="primary"
                     icon={<EditOutlined />}
-                    onClick={(e) => { 
+                    onClick={(e) => {
                       e.stopPropagation()
-                      navigate(`/novels/${novel.id}/writing-studio`)
+                      handleStartWriting(novel)
                     }}
                     block
                   >
                     开始写作
                   </Button>
                   <div className="action-buttons">
+                    <Button
+                      icon={<NodeIndexOutlined />}
+                      onClick={(e) => { 
+                        e.stopPropagation()
+                        handleViewGraph(novel.id, novel.title)
+                      }}
+                    >
+                      图谱
+                    </Button>
                     <Button
                       icon={<FileTextOutlined />}
                       onClick={(e) => { 
@@ -396,6 +486,17 @@ const NovelListPage: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
+      
+      {/* 图谱数据弹窗 */}
+      <GraphDataModal
+        visible={graphModalVisible}
+        novelId={selectedNovelForGraph?.id || null}
+        novelTitle={selectedNovelForGraph?.title || ''}
+        onClose={() => {
+          setGraphModalVisible(false)
+          setSelectedNovelForGraph(null)
+        }}
+      />
     </div>
   )
 }

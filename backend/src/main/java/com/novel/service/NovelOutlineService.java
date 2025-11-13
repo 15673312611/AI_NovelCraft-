@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -40,6 +41,12 @@ public class NovelOutlineService {
 
     @Autowired
     private LongNovelMemoryManager longNovelMemoryManager;
+    
+    @Autowired
+    private PromptTemplateService promptTemplateService;
+
+    @Autowired
+    private CoreSettingsExtractionService coreSettingsExtractionService;
 
     /**
      * 生成初始大纲
@@ -63,7 +70,7 @@ public class NovelOutlineService {
         outline.setTargetWordCount(targetWordCount);
         outline.setTargetChapterCount(targetChapterCount);
         outline.setStatus(NovelOutline.OutlineStatus.DRAFT);
-        outline.setGenre(novel.getGenre()); // 设置小说类型
+        // 类型字段不再强制设置，保留为空以便AI自行推断
 
         // 使用AI生成详细大纲内容
         generateOutlineContentWithAI(outline, novel);
@@ -74,7 +81,7 @@ public class NovelOutlineService {
         System.out.println("  - id: " + outline.getId());
         System.out.println("  - novelId: " + outline.getNovelId());
         System.out.println("  - title: " + outline.getTitle());
-        System.out.println("  - genre: " + outline.getGenre());
+        // System.out.println("  - genre: " + outline.getGenre());
         System.out.println("  - basicIdea: " + outline.getBasicIdea());
         System.out.println("  - coreTheme: " + outline.getCoreTheme());
         System.out.println("  - mainCharacters: " + outline.getMainCharacters());
@@ -93,6 +100,7 @@ public class NovelOutlineService {
 
     /**
      * 初始化大纲记录（用于SSE流式生成前先创建占位记录）
+     * 说明：如果已存在大纲，则清空内容并更新；否则创建新记录
      */
     @Transactional
     public NovelOutline initOutlineRecord(Long novelId, String basicIdea, Integer targetWordCount, Integer targetChapterCount) {
@@ -100,12 +108,41 @@ public class NovelOutlineService {
         if (novel == null) {
             throw new RuntimeException("小说不存在: " + novelId);
         }
-        NovelOutline outline = new NovelOutline(novelId, basicIdea);
-        outline.setTargetWordCount(targetWordCount);
-        outline.setTargetChapterCount(targetChapterCount);
-        outline.setStatus(NovelOutline.OutlineStatus.DRAFT);
-        outline.setGenre(novel.getGenre());
-        outlineRepository.insert(outline);
+
+        // 检查是否已存在大纲
+        Optional<NovelOutline> existingOutline = findByNovelId(novelId);
+        NovelOutline outline;
+
+        if (existingOutline.isPresent()) {
+            // 重新生成：清空现有大纲内容，更新参数
+            outline = existingOutline.get();
+            outline.setBasicIdea(basicIdea);
+            outline.setTargetWordCount(targetWordCount);
+            outline.setTargetChapterCount(targetChapterCount);
+            outline.setStatus(NovelOutline.OutlineStatus.DRAFT);
+            // 清空旧的大纲内容，准备重新生成
+            outline.setPlotStructure("");
+            outline.setCoreTheme(null);
+            outline.setMainCharacters(null);
+            outline.setWorldSetting(null);
+            outline.setKeyElements(null);
+            outline.setConflictTypes(null);
+            outlineRepository.updateById(outline);
+            logger.info("📝 重新生成大纲：清空现有大纲内容，outlineId={}", outline.getId());
+        } else {
+            // 首次生成：创建新记录
+            outline = new NovelOutline(novelId, basicIdea);
+            outline.setTargetWordCount(targetWordCount);
+            outline.setTargetChapterCount(targetChapterCount);
+            outline.setStatus(NovelOutline.OutlineStatus.DRAFT);
+            outlineRepository.insert(outline);
+            logger.info("📝 首次生成大纲：创建新记录，outlineId={}", outline.getId());
+        }
+
+        // 同时清空 novels 表中的 outline 字段
+        novel.setOutline("");
+        novelRepository.updateById(novel);
+
         return outline;
     }
 
@@ -114,14 +151,42 @@ public class NovelOutlineService {
      * 说明：使用流式AI接口，逐块返回生成内容，同时实时写入数据库
      * 注意：移除@Transactional，因为流式处理是渐进式的，每次chunk更新都是独立的数据库操作
      */
-    public void streamGenerateOutlineContent(NovelOutline outline, com.novel.dto.AIConfigRequest aiConfig, java.util.function.Consumer<String> chunkConsumer) {
+    public void streamGenerateOutlineContent(NovelOutline outline, com.novel.dto.AIConfigRequest aiConfig, Long templateId, Integer outlineWordLimit, java.util.function.Consumer<String> chunkConsumer) {
         Novel novel = novelRepository.selectById(outline.getNovelId());
         if (novel == null) {
             throw new RuntimeException("小说不存在: " + outline.getNovelId());
         }
 
-        // 直接复用"超级大纲"的爆款提示词逻辑
-        String prompt = buildSuperOutlinePromptCompat(novel, outline.getBasicIdea(), outline.getTargetChapterCount(), outline.getTargetWordCount());
+        // 默认字数限制为2000
+        int wordLimit = outlineWordLimit != null ? outlineWordLimit : 2000;
+
+        // 如果提供了模板ID，使用模板；否则使用默认提示词
+        String prompt;
+        if (templateId != null) {
+            // 使用模板生成提示词
+            String templateContent = promptTemplateService.getTemplateContent(templateId);
+            if (templateContent != null && !templateContent.trim().isEmpty()) {
+                // 模板内容作为基础，需要替换占位符
+                prompt = buildOutlinePromptFromTemplate(templateContent, novel, outline.getBasicIdea(), outline.getTargetChapterCount(), outline.getTargetWordCount(), wordLimit);
+            } else {
+                // 模板不存在或为空，使用默认提示词
+                logger.warn("模板ID {} 不存在或为空，使用默认提示词", templateId);
+                prompt = buildSuperOutlinePromptCompat(novel, outline.getBasicIdea(), outline.getTargetChapterCount(), outline.getTargetWordCount());
+            }
+        } else {
+            // 使用默认提示词
+            prompt = buildSuperOutlinePromptCompat(novel, outline.getBasicIdea(), outline.getTargetChapterCount(), outline.getTargetWordCount());
+        }
+
+        // 生成并保存 react_decision_log（最小侵入，若列不存在则忽略错误）
+        try {
+            String decisionLog = buildReactDecisionLogForOutline("outline_generation_stream", novel, outline, prompt, templateId, wordLimit, aiConfig);
+            outlineRepository.update(null, new UpdateWrapper<NovelOutline>()
+                .set("react_decision_log", decisionLog)
+                .eq("id", outline.getId()));
+        } catch (Exception e) {
+            logger.warn("react_decision_log 写入失败（不影响主流程）: {}", e.getMessage());
+        }
 
         // 使用真正的流式AI调用 - 从空开始累加（不使用旧的大纲）
         StringBuilder accumulated = new StringBuilder();
@@ -170,72 +235,9 @@ public class NovelOutlineService {
         }
     }
 
-    // 兼容方法：改为宏观不锁剧情的全书大纲提示词
+    // 兼容方法：改为宏观不锁剧情的全书大纲提示词（融入世界设定生成）
     private String buildSuperOutlinePromptCompat(Novel novel, String originalIdea, Integer targetChapters, Integer targetWords) {
-        int tc = targetChapters == null ? 0 : targetChapters;
-        int volumeCount;
-        if (tc >= 200) volumeCount = 8; else if (tc >= 150) volumeCount = 6; else if (tc >= 100) volumeCount = 5; else if (tc >= 50) volumeCount = 3; else volumeCount = 2;
-        return String.format(
-            "你的身份\n" +
-            "- 资深网文总编/剧情架构师，擅长为长篇连载搭建【可持续、不跑偏】的叙事引擎。大纲只给方向与约束，不写具体执行路径。\n\n" +
-            "任务目标\n" +
-            "- 根据输入信息生成【全书大纲 + 分卷框架】的宏观蓝图：风格与方向明确、世界观骨架清晰、冲突与节奏稳健；不固定具体剧情与章节，不写对话与招式过程。\n\n" +
-            "输入\n" +
-            "- 标题：%s\n" +
-            "- 类型/子类型：%s\n" +
-            "- 体量：约%d章，%d字\n" +
-            "- 构思/主题要义：%s\n" +
-            "- 计划卷数：%d\n\n" +
-            "创作总则\n" +
-            "- 市场定位先行：明确目标读者与主卖点，确定叙事基调与阅读节奏承诺。\n" +
-            "- 人物驱动：以【缺陷—欲望—责任—恐惧】驱动选择；转折由人物决策触发。\n" +
-            "- 世界观骨架：只写第一性原理、力量/权限规则与代价、势力与秩序，保留必要留白与不确定性。\n" +
-            "- 冲突系统：设定【主死亡类型】（肉体/事业/心理）为主线，其他为辅；全程维持信息差与悬念。\n" +
-            "- 节奏与爽点：高能节点按等距或渐进间隔布局，延迟满足；始终有目标、代价与回报的闭环。\n" +
-            "- 反派与对手：层级递进、动机自洽，能反向塑造主角段位。\n" +
-            "- 运行约束：不锁具体事件顺序、不编号到章、不写细节过程；保持可扩展与可迭代。\n\n" +
-            "输出结构（用流畅中文分段叙述，非表格、非JSON）\n" +
-            "1) 项目定位\n" +
-            "   - 目标读者与主卖点清单（2-4项）\n" +
-            "   - 叙事基调与阅读节奏承诺\n" +
-            "2) 底层引擎\n" +
-            "   - 冲突升级链（从小到大、从外到内的递进逻辑）\n" +
-            "   - 舞台升级阶梯（空间/权限/地图的层层开权）\n" +
-            "   - 信息差与悬念体系（总悬念 + 阶段性悬念若干）\n" +
-            "   - 力量/权限与代价规则（可用、可失、可反噬）\n" +
-            "3) 核心人物弧光图\n" +
-            "   - 主角：初始处境、缺陷、欲望、原则、底线、成长转折点\n" +
-            "   - 关键角色（2-4名）：各自目标与与主角的动态关系张力\n" +
-            "   - 关系网的进化原则与边界\n" +
-            "4) 分卷框架（共%d卷）\n" +
-            "   - 每卷包含：卷名（隐喻主题）、核心任务（一句话目标）\n" +
-            "   - 关键节点（3-5个，给出【节点类型】标签：纵向突破/横向拓展/关系转折/认知升级/资源更替等；只写目标、阻力与结果，不写执行过程）\n" +
-            "   - 卷末状态：实力与地位、认知与心态、未解悬念与下一卷钩子\n" +
-            "5) 节奏与爽点规划\n" +
-            "   - 高能节点分布策略（频率/强度/代价回收）\n" +
-            "   - 断章钩子与时间锁/空间锁的使用原则\n" +
-            "6) 长线伏笔与回收\n" +
-            "   - 若干条贯穿线：埋设阶段、触发条件、回收方向（不锁具体事件）\n" +
-            "7) 反跑偏守则\n" +
-            "   - 人物一致性与决策准则\n" +
-            "   - 世界规则的不可违背项与可演绎项\n" +
-            "   - 换地图与提权的触发条件与成本\n\n" +
-            "写作与风格要求\n" +
-            "- 采用专业编辑的叙述语气，逻辑清晰、画面感强，但不堆砌细节过程。\n" +
-            "- 只输出大纲正文内容；不输出代码、JSON、列表编号到具体章节。\n" +
-            "- 禁止固定剧情走法与对话描摹；避免模板化腔调与陈词滥调。\n" +
-            "- 全文保持「目标—阻力—选择—代价—新局」的因果链条。\n\n" +
-            "交付格式\n" +
-            "- 使用清晰层级小标题与段落叙述呈现以上七部分。\n" +
-            "- 全文为中文，不添加解释性附注与示范文本。",
-            novel.getTitle(),
-            novel.getGenre(),
-            tc,
-            targetWords == null ? 0 : targetWords,
-            originalIdea == null ? "" : originalIdea,
-            volumeCount,
-            volumeCount
-        );
+        return buildAdvancedOutlinePrompt(novel, originalIdea, targetChapters, targetWords);
     }
 
     /**
@@ -373,7 +375,20 @@ public class NovelOutlineService {
             // 抛出异常，让前端知道失败了
             throw new RuntimeException("生成卷规划失败: " + e.getMessage() + "，大纲状态已回退，请重新确认");
         }
-        
+
+        // 异步提炼核心设定（不阻塞用户操作）
+        if (aiConfig != null && aiConfig.isValid()) {
+            try {
+                logger.info("🔍 触发异步核心设定提炼任务: outlineId={}", outlineId);
+                coreSettingsExtractionService.extractCoreSettingsAsync(outlineId, aiConfig);
+            } catch (Exception e) {
+                // 核心设定提炼失败不影响主流程，只记录日志
+                logger.error("❌ 触发核心设定提炼任务失败（不影响主流程）: {}", e.getMessage(), e);
+            }
+        } else {
+            logger.warn("⚠️ 未提供有效AI配置，跳过核心设定提炼");
+        }
+
         return outline;
     }
 
@@ -389,6 +404,30 @@ public class NovelOutlineService {
      */
     public NovelOutline getById(Long id) {
         return outlineRepository.selectById(id);
+    }
+
+    /**
+     * 更新大纲内容（手动编辑）
+     */
+    public NovelOutline updateOutlineContent(Long novelId, String outlineContent) {
+        Optional<NovelOutline> existingOutline = findByNovelId(novelId);
+        
+        NovelOutline outline;
+        if (existingOutline.isPresent()) {
+            // 更新现有大纲
+            outline = existingOutline.get();
+            outline.setPlotStructure(outlineContent);
+            outlineRepository.updateById(outline);
+        } else {
+            // 创建新大纲
+            outline = new NovelOutline();
+            outline.setNovelId(novelId);
+            outline.setPlotStructure(outlineContent);
+            outline.setStatus(NovelOutline.OutlineStatus.DRAFT);
+            outlineRepository.insert(outline);
+        }
+        
+        return outline;
     }
 
     /**
@@ -442,89 +481,152 @@ public class NovelOutlineService {
     }
 
     /**
+     * 从模板构建大纲生成提示词
+     */
+    private String buildOutlinePromptFromTemplate(String templateContent, Novel novel, String basicIdea, Integer targetChapters, Integer targetWords) {
+        return buildOutlinePromptFromTemplate(templateContent, novel, basicIdea, targetChapters, targetWords, 2000);
+    }
+
+    /**
+     * 从模板构建大纲生成提示词（带字数限制）
+     */
+    private String buildOutlinePromptFromTemplate(String templateContent, Novel novel, String basicIdea, Integer targetChapters, Integer targetWords, Integer outlineWordLimit) {
+        int tc = targetChapters == null ? 0 : targetChapters;
+        int tw = targetWords == null ? 0 : targetWords;
+        int wordLimit = outlineWordLimit == null ? 2000 : outlineWordLimit;
+
+        // 优先使用 basicIdea；为空则回退到 novel.description
+        String idea = (basicIdea != null && !basicIdea.trim().isEmpty()) ? basicIdea : novel.getDescription();
+
+        // 日志输出
+        logger.info("📝 使用模板构建大纲生成提示词:");
+        logger.info("  - 用户构思长度: {}", idea != null ? idea.length() : 0);
+        logger.info("  - 用户构思内容: {}", idea);
+        if ((basicIdea == null || basicIdea.trim().isEmpty()) && novel.getDescription() != null) {
+            logger.info("  - 提示: basicIdea 为空，已使用 novel.description 作为构思输入");
+        }
+
+        String prompt;
+        try {
+            // 采用 String.format 风格模板（按顺序提供足量参数，允许模板按需取用）
+            // 推荐顺序：标题、类型(留空)、目标章数、目标字数、用户构思、纲要字数上限
+            prompt = String.format(
+                templateContent,
+                novel.getTitle() != null ? novel.getTitle() : "",
+                tc,
+                tw,
+                idea != null ? idea : ""
+            );
+        } catch (Exception e) {
+            // 模板可能包含未转义的 % 或占位符数量不匹配，进行稳健回退
+            logger.warn("⚠️ 模板 String.format 失败，回退到原样模板 + 输入信息: {}", e.getMessage());
+            prompt = templateContent;
+            String escapedIdea = idea != null ? idea.replace("%", "%%") : "";
+            prompt += String.format(
+                "\n\n**输入信息**\n- 小说标题：%s\n- 预计体量：约%d章，%d字\n- **用户核心构思**：%s",
+                novel.getTitle(), tc, tw, escapedIdea
+            );
+        }
+
+        // 若模板没有包含关键输入提示，则补充一份（避免信息缺失）
+        if (!prompt.contains("小说标题") && !prompt.contains("用户核心构思")) {
+            String escapedIdea = (idea != null ? idea.replace("%", "%%") : "");
+            prompt += String.format(
+                "\n\n**输入信息**\n- 小说标题：%s\n- 预计体量：约%d章，%d字\n- **用户核心构思**：%s",
+                novel.getTitle(), tc, tw, escapedIdea
+            );
+        }
+
+        // 输出完整的提示词，检查构思是否被正确填充
+        logger.info("=".repeat(100));
+        logger.info("📤 使用模板生成的完整提示词:");
+        logger.info(prompt);
+        logger.info("=".repeat(100));
+
+        return prompt;
+    }
+
+    // 生成react决策日志（msg1/msg2...格式，完整保留提示词与上下文）
+    private String buildReactDecisionLogForOutline(String route, Novel novel, NovelOutline outline, String prompt, Long templateId, Integer outlineWordLimit, com.novel.dto.AIConfigRequest aiConfig) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[react_decision_log]\n");
+        sb.append("route: ").append(route).append('\n');
+        sb.append("time: ").append(java.time.LocalDateTime.now()).append('\n');
+        // msg1 = 最终提示词
+        sb.append("msg1: <<<PROMPT>>>").append('\n');
+        sb.append(prompt == null ? "" : prompt).append('\n');
+        sb.append("<<<END_PROMPT>>>\n");
+        // 其余上下文逐条列出
+        sb.append("msg2: novelId=").append(outline.getNovelId()).append(", title=").append(novel.getTitle()).append('\n');
+        String desc = novel.getDescription();
+        if (desc != null) {
+            String clipped = desc.length() > 800 ? desc.substring(0, 800) + "..." : desc;
+            sb.append("msg3: novel.description=").append(clipped).append('\n');
+        } else {
+            sb.append("msg3: novel.description=null\n");
+        }
+        sb.append("msg4: basicIdea=").append(outline.getBasicIdea()).append('\n');
+        sb.append("msg5: targetChapterCount=").append(outline.getTargetChapterCount()).append(", targetWordCount=").append(outline.getTargetWordCount()).append('\n');
+        sb.append("msg6: outlineWordLimit=").append(outlineWordLimit).append('\n');
+        sb.append("msg7: templateId=").append(templateId).append('\n');
+        if (aiConfig != null) {
+            sb.append("msg8: ai.provider=").append(aiConfig.getProvider())
+              .append(", model=").append(aiConfig.getModel())
+              .append(", baseUrl=").append(aiConfig.getBaseUrl()).append('\n');
+        } else {
+            sb.append("msg8: ai.config=null\n");
+        }
+        return sb.toString();
+    }
+
+    /**
      * 构建网文专用大纲生成提示词（基于专业指导重构）
      */
     private String buildOutlineGenerationPrompt(NovelOutline outline, Novel novel) {
-        int tc = outline.getTargetChapterCount() != null ? outline.getTargetChapterCount() : 0;
-        int volumeCount;
-        if (tc >= 200) volumeCount = 8; else if (tc >= 150) volumeCount = 6; else if (tc >= 100) volumeCount = 5; else if (tc >= 50) volumeCount = 3; else volumeCount = 2;
-        return String.format(
-            "你的身份\n" +
-            "- 资深网文总编/剧情架构师，擅长为长篇连载搭建【可持续、不跑偏】的叙事引擎。大纲只给方向与约束，不写具体执行路径。\n\n" +
-            "任务目标\n" +
-            "- 根据输入信息生成【全书大纲 + 分卷框架】的宏观蓝图：风格与方向明确、世界观骨架清晰、冲突与节奏稳健；不固定具体剧情与章节，不写对话与招式过程。\n\n" +
-            "输入\n" +
-            "- 标题：%s\n" +
-            "- 类型/子类型：%s\n" +
-            "- 体量：约%d章，%d字\n" +
-            "- 构思/主题要义：%s\n" +
-            "- 计划卷数：%d\n\n" +
-            "创作总则\n" +
-            "- 市场定位先行：明确目标读者与主卖点，确定叙事基调与阅读节奏承诺。\n" +
-            "- 人物驱动：以【缺陷—欲望—责任—恐惧】驱动选择；转折由人物决策触发。\n" +
-            "- 世界观骨架：只写第一性原理、力量/权限规则与代价、势力与秩序，保留必要留白与不确定性。\n" +
-            "- 冲突系统：设定【主死亡类型】（肉体/事业/心理）为主线，其他为辅；全程维持信息差与悬念。\n" +
-            "- 节奏与爽点：高能节点按等距或渐进间隔布局，延迟满足；始终有目标、代价与回报的闭环。\n" +
-            "- 反派与对手：层级递进、动机自洽，能反向塑造主角段位。\n" +
-            "- 运行约束：不锁具体事件顺序、不编号到章、不写细节过程；保持可扩展与可迭代。\n\n" +
-            "输出结构（用流畅中文分段叙述，非表格、非JSON）\n" +
-            "1) 项目定位\n" +
-            "   - 目标读者与主卖点清单（2-4项）\n" +
-            "   - 叙事基调与阅读节奏承诺\n" +
-            "2) 世界设定骨架（逻辑自洽，为故事提供坚实基础）\n" +
-            "   - 世界形态：存在形式（如星球、大陆、位面）、规模、核心与边缘的划分\n" +
-            "   - 核心地理区域：3-5个关键区域，说明位置、环境、资源、危险及特殊属性\n" +
-            "   - 主要物种：除人类外，2-3类代表性生物，说明外形、习性、与人类的关系\n" +
-            "   - 核心力量体系：力量本质与来源、等级划分、限制与代价\n" +
-            "   - 主要势力：3-4个影响力大的势力，说明势力范围、组织架构、核心资源\n" +
-            "   - 文化与价值观：主要信仰、文化符号、核心价值观与禁忌\n" +
-            "   - 关键历史事件：对现状产生重大影响的事件、时间线与传说秘闻\n" +
-            "3) 底层引擎\n" +
-            "   - 冲突升级链（从小到大、从外到内的递进逻辑）\n" +
-            "   - 舞台升级阶梯（空间/权限/地图的层层开权）\n" +
-            "   - 信息差与悬念体系（总悬念 + 阶段性悬念若干）\n" +
-            "   - 力量/权限与代价规则（可用、可失、可反噬）\n" +
-            "4) 核心人物弧光图\n" +
-            "   - 主角：初始处境、缺陷、欲望、原则、底线、成长转折点\n" +
-            "   - 关键角色（2-4名）：各自目标与与主角的动态关系张力\n" +
-            "   - 关系网的进化原则与边界\n" +
-            "5) 分卷框架（共%d卷）\n" +
-            "   - 每卷包含：卷名（隐喻主题）、核心任务（一句话目标）\n" +
-            "   - 关键节点（3-5个，给出【节点类型】标签：纵向突破/横向拓展/关系转折/认知升级/资源更替等；只写目标、阻力与结果，不写执行过程）\n" +
-            "   - 卷末状态：实力与地位、认知与心态、未解悬念与下一卷钩子\n" +
-            "6) 节奏与爽点规划\n" +
-            "   - 高能节点分布策略（频率/强度/代价回收）\n" +
-            "   - 断章钩子与时间锁/空间锁的使用原则\n" +
-            "7) 长线伏笔与回收\n" +
-            "   - 若干条贯穿线：埋设阶段、触发条件、回收方向（不锁具体事件）\n" +
-            "8) 反跑偏守则\n" +
-            "   - 人物一致性与决策准则\n" +
-            "   - 世界规则的不可违背项与可演绎项\n" +
-            "   - 换地图与提权的触发条件与成本\n\n" +
-            "世界设定详细要求（确保逻辑自洽，各部分内容相互关联）\n" +
-            "- 基础物质与空间：明确世界的存在形式、核心地理区域（3-5个）、空间规则特性\n" +
-            "- 生态与生物：主要物种构成（除人类外2-3类）、自然运行规则\n" +
-            "- 核心力量体系：力量的本质与来源、力量等级与划分、力量的限制与代价\n" +
-            "- 社会与势力：主要势力构成（3-4个）、势力间关系、社会结构与规则\n" +
-            "- 文化与精神：信仰与思想体系、文化符号与传承、核心价值观与禁忌\n" +
-            "- 历史与时间：关键历史事件、时间线与时代划分、传说与秘闻\n" +
-            "- 注意：地理资源分布应影响势力格局，力量体系应与社会规则相适配\n\n" +
-            "写作与风格要求\n" +
-            "- 采用专业编辑的叙述语气，逻辑清晰、画面感强，但不堆砌细节过程。\n" +
-            "- 只输出大纲正文内容；不输出代码、JSON、列表编号到具体章节。\n" +
-            "- 禁止固定剧情走法与对话描摹；避免模板化腔调与陈词滥调。\n" +
-            "- 全文保持「目标—阻力—选择—代价—新局」的因果链条。\n\n" +
-            "交付格式\n" +
-            "- 使用清晰层级小标题与段落叙述呈现以上八部分（含世界设定骨架）。\n" +
-            "- 全文为中文，不添加解释性附注与示范文本。",
+        return buildAdvancedOutlinePrompt(novel, outline.getBasicIdea(), outline.getTargetChapterCount(), outline.getTargetWordCount());
+    }
+    
+    private String buildAdvancedOutlinePrompt(Novel novel, String originalIdea, Integer targetChapters, Integer targetWords) {
+        String genreGuidance = "";
+
+        int tc = targetChapters == null ? 0 : targetChapters;
+        int tw = targetWords == null ? 0 : targetWords;
+
+        // 优先使用 originalIdea；若为空则回退到 novel.description
+        String idea = (originalIdea != null && !originalIdea.trim().isEmpty())
+                ? originalIdea
+                : novel.getDescription();
+
+        // 转义用户输入中的 % 字符，避免 String.format 错误
+        String escapedOriginalIdea = idea != null ? idea.replace("%", "%%") : "";
+
+        // 添加日志输出，检查用户构思是否正确传递
+        logger.info("📝 构建大纲生成提示词:");
+        logger.info("  - 小说标题: {}", novel.getTitle());
+        logger.info("  - 小说类型: 自动识别/未指定");
+        logger.info("  - 目标章数: {}", tc);
+        logger.info("  - 目标字数: {}", tw);
+        logger.info("  - 用户构思长度: {}", idea != null ? idea.length() : 0);
+        logger.info("  - 用户构思内容: {}", idea);
+        if ((originalIdea == null || originalIdea.trim().isEmpty()) && novel.getDescription() != null) {
+            logger.info("  - 提示: originalIdea 为空，已使用 novel.description 作为构思输入");
+        }
+
+        String prompt = String.format("你是一位资深网文主编兼大纲架构师,擅长从用户构思中提炼核心创意与写作指南,产出可拆分卷的全书大纲与世界观蓝图。【重要说明】本大纲将同时用于两个下游任务:- 拆分卷:需要清晰的剧情阶段划分(三幕式、卷级目标)- 提炼核心设定:需要明确\"核心创意、写作基调、叙事风格、主角核心特质、写作禁忌\"等稳定信息。因此:请在第1部分详尽给出写作指南;剧情部分只提供阶段走向,不写具体章节细节。**第一步:风格分析与定位** 1. **深度解读构思**:请仔细阅读下面的用户构思,识别其核心风格(例如:热血爽文、悬疑惊悚、甜宠恋爱、残酷黑暗等)、叙事节奏(快节奏/慢热)、以及潜在的目标读者(男频/女频,青少年/成人)。2. **抓住核心魅力**:找出构思中最吸引人的\"钩子\",是独特的金手指设定?是新颖的世界观?还是极致的情感冲突?以此为中心进行放大。**输入信息** - 小说标题:%s - 预计体量:约%d章,%d字 - **用户核心构思**:%s **第二步:大纲创作核心原则** 1. **风格至上**:生成的大纲必须与用户构思的风格和基调完全一致。如果构思是轻松幽默的,大纲就不能严肃沉重。反之亦然。2. **拥抱设定,拒绝说教**:对于\"金手指\"或不寻常的设定,你的任务是让它变得更酷、更有趣,而不是去质疑其合理性或起源。直接展示其强大和独特,激发读者爽点。3. **严守题材边界,拒绝画蛇添足**:严格在用户构思的题材内进行扩展。例如,一个女频\"读心\"或\"弹幕\"类的轻松爽文,其金手指的来源解释应保持简洁或模糊化,重点是利用它来制造爽点和情节。**严禁**擅自引入与核心题材无关的宏大概念,如\"高维文明\"、\"宇宙实验\"、\"AI觉醒\"等,除非用户构思中明确提出。4. **读者为王**:时刻思考\"读者想看什么?\"。围绕核心魅力点,设计升级打怪、情感纠葛、解开谜题等情节,持续提供读者期待的内容。5. **动态与留白**:大纲是蓝图而非剧本。只设定关键转折点、核心冲突和人物成长弧光,为具体情节保留创作自由度。6. **逻辑自洽**:确保大纲中的所有设定、人物行为、剧情发展都符合内在逻辑。人物的能力与限制要前后一致,重大事件的因果关系要合理,角色的动机与行为要匹配。避免为了制造冲突而强行降智或违背已有设定。特别注意:如果设定了某个角色拥有强大能力,必须合理解释为何在关键时刻未能发挥作用;如果设定了某个金手指有限制,后续剧情不能随意突破这个限制。%s **第三步:输出结构** 请用流畅的中文分段叙述,总字数控制在4000字以内,保持精炼和高信息密度。1. **核心创意与写作指南** - 一句话核心创意(用一句话概括这本小说的独特之处)- 核心看点(3-5个,明确读者为什么要看)- 写作基调(如:轻松幽默/热血爽快/黑暗压抑/克制写实)- 叙事风格(节奏:快/慢;语言特点:口语/古风/网感;重点描写:战斗/心理/对话/氛围)- 写作禁忌(明确不写什么,避免偏题)- 创作前提假设(列出支撑故事逻辑的关键前提,确保后续剧情有据可依)2. **世界观核心设定** - 力量体系(核心规则、等级划分、限制与代价、特色设定,要易于理解且爽点突出)- 关键势力与地图(3-4个初期核心势力,以及它们的关系与主要冲突)- 支撑故事的核心法则或背景(简要,不做硬科普)3. **主角人物设定** - 主角名称 - 初始状态与核心驱动力(他/她最大的欲望和恐惧是什么?)- 金手指/核心能力(直接说明其效果和限制,以及它如何让主角与众不同)- 核心特质(贯穿全书不变的性格特征)- 行事风格(果断/谨慎/莽撞/智谋等)- 成长方向(大方向,不写具体剧情)4. **重要配角设定** - 列出2-4位关键配角:人设、性格、与主角关系定位 - 初始目标与立场(只写初始设定,不写后续发展)5. **全书故事线(三幕式)** - **初期(1-3卷)**:开局与崛起。主角如何获得金手指/卷入事件,快速建立优势,解决第一个大危机,确立短期目标。- **中期(4-6卷)**:发展与挑战。主角进入更大舞台,遭遇更强敌人,揭露世界观的冰山一角,达成中期目标,但引出更大危机/谜团。- **后期(7-N卷)**:高潮与结局。面对终极BOSS或解决核心矛盾,达成人生目标或揭开最终真相,故事圆满收尾。**交付要求** - 第1部分\"核心创意与写作指南\"必须详细,这是后续AI写作的核心参考。- **绝对禁止**:输出任何反思、说教、建议或对用户构思的批评。你的任务是执行和优化,不是评审。- **严格遵守**:只输出上述结构要求的大纲正文,不要有任何额外的文字,包括\"好的,这是您的大纲\"这类话语。- **保持简洁**:不要使用复杂的表格或JSON,就用清晰的小标题和段落文字。",
             novel.getTitle(),
-            novel.getGenre() == null ? "" : novel.getGenre(),
             tc,
-            outline.getTargetWordCount() != null ? outline.getTargetWordCount() : 0,
-            outline.getBasicIdea() == null ? "" : outline.getBasicIdea(),
-            volumeCount,
-            volumeCount
+            tw,
+            escapedOriginalIdea,  // 使用转义后的构思
+            genreGuidance
         );
+
+        // 输出完整的提示词，检查构思是否被正确填充
+        logger.info("=".repeat(100));
+        logger.info("📤 完整的大纲生成提示词:");
+        logger.info(prompt);
+        logger.info("=".repeat(100));
+
+        return prompt;
     }
     
     /**
@@ -701,7 +803,6 @@ public class NovelOutlineService {
             prompt.append("你是一位资深网文编辑，现在需要根据用户的建议优化小说大纲。\n\n");
             prompt.append("**小说信息：**\n");
             prompt.append("- 标题：").append(novel.getTitle()).append("\n");
-            prompt.append("- 类型：").append(novel.getGenre()).append("\n");
             if (novel.getDescription() != null && !novel.getDescription().isEmpty()) {
                 prompt.append("- 简介：").append(novel.getDescription()).append("\n");
             }
@@ -764,7 +865,6 @@ public class NovelOutlineService {
             prompt.append("你是一位资深网文编辑，现在需要根据用户的建议优化小说大纲。\n\n");
             prompt.append("**小说信息：**\n");
             prompt.append("- 标题：").append(novel.getTitle()).append("\n");
-            prompt.append("- 类型：").append(novel.getGenre()).append("\n");
             if (novel.getDescription() != null && !novel.getDescription().isEmpty()) {
                 prompt.append("- 简介：").append(novel.getDescription()).append("\n");
             }
@@ -807,42 +907,6 @@ public class NovelOutlineService {
         }
     }
 
-    /**
-     * 根据大纲生成世界观并保存到记忆库
-     */
-    private void generateAndSaveWorldView(Novel novel, String outlineContent, com.novel.dto.AIConfigRequest aiConfig) {
-        logger.info("🌍 开始根据大纲生成世界观，小说ID: {}", novel.getId());
-        
-        try {
-            // 构建AI提示词
-            String prompt = buildWorldViewGenerationPrompt(novel, outlineContent);
-            
-            // 调用AI生成世界观（使用带AI配置的方法）
-            String worldViewJson = aiWritingService.generateContent(prompt, "world_view_generation", aiConfig);
-            
-            // 解析世界观JSON
-            Map<String, Object> worldView = parseWorldViewJson(worldViewJson);
-            
-            // 加载或创建记忆库
-            Map<String, Object> memoryBank = longNovelMemoryManager.loadMemoryBankFromDatabase(novel.getId());
-            if (memoryBank == null) {
-                memoryBank = new java.util.HashMap<>();
-                logger.info("创建新的记忆库");
-            }
-            
-            // 将世界观保存到记忆库
-            memoryBank.put("worldSettings", worldView);
-            
-            // 保存记忆库到数据库
-            longNovelMemoryManager.saveMemoryBankToDatabase(novel.getId(), memoryBank, 0);
-            
-            logger.info("✅ 世界观生成并保存成功");
-            
-        } catch (Exception e) {
-            logger.error("世界观生成失败: {}", e.getMessage(), e);
-            // 不抛出异常，世界观生成失败不应影响大纲生成
-        }
-    }
 
     /**
      * 构建世界观生成的AI提示词
@@ -853,7 +917,6 @@ public class NovelOutlineService {
         prompt.append("根据以下小说信息和大纲，生成详细的世界观设定。\n\n");
         prompt.append("小说基本信息：\n");
         prompt.append("- 标题：").append(novel.getTitle()).append("\n");
-        prompt.append("- 类型：").append(novel.getGenre()).append("\n");
         if (novel.getDescription() != null) {
             prompt.append("- 简介：").append(novel.getDescription()).append("\n");
         }

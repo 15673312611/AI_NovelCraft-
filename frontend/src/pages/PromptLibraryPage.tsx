@@ -183,8 +183,10 @@ const PromptLibraryPage: React.FC = () => {
       const sortedVolumes = [...volumes].sort((a: any, b: any) => a.volumeNumber - b.volumeNumber);
       const firstVolume = sortedVolumes[0];
       
-      // 模仿卷规划页面的跳转逻辑，从第一卷开始创作，通过URL参数传递templateId
-      navigate(`/novels/${selectedNovelId}/volumes/${firstVolume.id}/writing?templateId=${selectedTemplate.id}`);
+      // 跳转到新的writing-studio页面，通过URL参数传递templateId
+      navigate(`/novels/${selectedNovelId}/writing-studio?templateId=${selectedTemplate.id}`, {
+        state: { initialVolumeId: firstVolume.id }
+      });
       setNovelSelectVisible(false);
       setSelectedNovelId(null);
     } catch (error) {

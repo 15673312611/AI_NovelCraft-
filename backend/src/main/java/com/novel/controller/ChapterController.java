@@ -56,9 +56,12 @@ public class ChapterController {
      * 获取小说的所有章节
      */
     @GetMapping("/novel/{novelId}")
-    public ResponseEntity<?> getNovelChapters(@PathVariable Long novelId) {
+    public ResponseEntity<?> getNovelChapters(@PathVariable Long novelId,
+                                              @RequestParam(value = "summary", required = false, defaultValue = "false") boolean summary) {
         try {
-            java.util.List<Chapter> chapters = chapterService.getChaptersByNovelId(novelId);
+            java.util.List<Chapter> chapters = summary
+                    ? chapterService.getChapterMetadataByNovel(novelId)
+                    : chapterService.getChaptersByNovelId(novelId);
             return ResponseEntity.ok(chapters);
         } catch (Exception e) {
             logger.error("获取小说章节失败: novelId={}", novelId, e);

@@ -97,6 +97,14 @@ public class NovelDocumentService {
     }
 
     /**
+     * 获取最近的章节（用于代理式AI写作）
+     */
+    public List<NovelDocument> getRecentChapters(Long novelId, Integer beforeChapter, Integer limit) {
+        log.info("获取小说ID={}在第{}章之前的最近{}章", novelId, beforeChapter, limit);
+        return documentMapper.findRecentChaptersByNovelId(novelId, beforeChapter, limit);
+    }
+
+    /**
      * 删除文档
      */
     @Transactional

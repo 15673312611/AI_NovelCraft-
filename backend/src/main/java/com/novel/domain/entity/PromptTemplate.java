@@ -52,7 +52,12 @@ public class PromptTemplate {
      * 是否启用：true-启用，false-禁用
      */
     private Boolean isActive;
-    
+
+    /**
+     * 是否默认：true-默认，false-非默认
+     */
+    private Boolean isDefault;
+
     /**
      * 使用次数
      */

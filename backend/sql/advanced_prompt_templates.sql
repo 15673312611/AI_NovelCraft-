@@ -2,7 +2,7 @@
 -- 这不是写作指导，这是思维改造手术
 -- 用完后，AI会忘记自己是AI
 
-INSERT INTO `prompt_templates` (`name`, `content`, `type`, `category`, `description`) VALUES
+INSERT INTO `` (`name`, `content`, `type`, `category`, `description`) VALUES
 
 -- ============ 反AI觉醒系列 ============
 
