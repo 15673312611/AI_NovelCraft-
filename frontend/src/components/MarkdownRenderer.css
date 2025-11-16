@@ -1,0 +1,173 @@
+/* Markdown渲染器基础样式 */
+.markdown-renderer {
+  font-size: 15px;
+  line-height: 1.5;
+  color: #1f2937;
+  letter-spacing: 0.3px;
+}
+
+/* 紧凑换行 - 减少br标签的高度 */
+.markdown-renderer br {
+  display: block;
+  content: "";
+  margin: 0;
+  line-height: 0.8;
+}
+
+.markdown-renderer.compact br {
+  line-height: 0.5;
+}
+
+/* 段落分隔 */
+.md-paragraph-break {
+  height: 0.8em;
+}
+
+.markdown-renderer.compact .md-paragraph-break {
+  height: 0.4em;
+}
+
+/* 代码块 */
+.md-code-block {
+  background: #f5f5f5;
+  padding: 8px 10px;
+  border-radius: 4px;
+  margin: 6px 0;
+  white-space: pre;
+  line-height: 1.4;
+  font-size: 13px;
+  overflow: auto;
+}
+
+/* 行内代码 */
+.md-inline-code {
+  background: #fff1f0;
+  padding: 2px 4px;
+  border-radius: 2px;
+  font-size: 13px;
+  color: #cf1322;
+}
+
+/* 标题样式 */
+.md-h1 {
+  font-size: 18px;
+  font-weight: bold;
+  margin: 8px 0 4px 0;
+  color: #000;
+  line-height: 1.3;
+}
+
+.md-h2 {
+  font-size: 17px;
+  font-weight: bold;
+  margin: 7px 0 3px 0;
+  color: #262626;
+  line-height: 1.3;
+}
+
+.md-h3 {
+  font-size: 16px;
+  font-weight: bold;
+  margin: 6px 0 2px 0;
+  color: #595959;
+  line-height: 1.3;
+}
+
+.md-h4 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 5px 0 2px 0;
+  color: #595959;
+  line-height: 1.3;
+}
+
+/* 引用块 */
+.md-blockquote {
+  border-left: 2px solid #1890ff;
+  padding: 4px 8px;
+  margin: 4px 0;
+  color: #595959;
+  background: #f0f5ff;
+  border-radius: 3px;
+  line-height: 1.4;
+}
+
+/* 列表项 */
+.md-list-item {
+  padding-left: 20px;
+  margin: 2px 0;
+  line-height: 1.5;
+}
+
+.md-bullet {
+  margin-right: 8px;
+}
+
+.md-number {
+  margin-right: 8px;
+}
+
+/* 粗体 */
+.md-bold {
+  font-weight: 700;
+  color: #d4380d;
+}
+
+/* 斜体 */
+.md-italic {
+  color: #595959;
+}
+
+/* 分隔线 */
+.md-separator {
+  border: none;
+  border-top: 1px solid #e8e8e8;
+  margin: 8px 0;
+}
+
+/* 紧凑模式 - 极度压缩间距 */
+.markdown-renderer.compact {
+  line-height: 1.4;
+}
+
+.markdown-renderer.compact .md-h1 {
+  margin: 4px 0 2px 0;
+  font-size: 17px;
+}
+
+.markdown-renderer.compact .md-h2 {
+  margin: 3px 0 1px 0;
+  font-size: 16px;
+}
+
+.markdown-renderer.compact .md-h3 {
+  margin: 2px 0 1px 0;
+  font-size: 15px;
+}
+
+.markdown-renderer.compact .md-h4 {
+  margin: 2px 0 0 0;
+  font-size: 14px;
+}
+
+.markdown-renderer.compact .md-code-block {
+  margin: 2px 0;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+.markdown-renderer.compact .md-blockquote {
+  margin: 2px 0;
+  padding: 3px 6px;
+}
+
+.markdown-renderer.compact .md-list-item {
+  margin: 0;
+  padding-left: 16px;
+  line-height: 1.4;
+}
+
+.markdown-renderer.compact .md-separator {
+  margin: 4px 0;
+}
+

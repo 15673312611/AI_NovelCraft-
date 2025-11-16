@@ -1,0 +1,327 @@
+/* ==========================================
+   增强型统计卡片 - 渐变配色方案
+   ========================================== */
+
+.enhanced-stats-grid {
+  display: flex;
+  gap: clamp(16px, 2.5vw, 24px);
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+/* ==========================================
+   统计卡片基础样式
+   ========================================== */
+.enhanced-stat-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+  border-radius: 16px;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 2px solid transparent;
+  flex: 1;
+  min-width: 180px;
+  max-width: 260px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+/* ==========================================
+   配色方案 - 蓝色
+   ========================================== */
+.stat-blue {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-color: #bfdbfe;
+}
+
+.stat-blue:hover {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border-color: #93c5fd;
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 12px 28px rgba(59, 130, 246, 0.15);
+}
+
+.icon-blue {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
+}
+
+/* ==========================================
+   配色方案 - 紫色
+   ========================================== */
+.stat-purple {
+  background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+  border-color: #ddd6fe;
+}
+
+.stat-purple:hover {
+  background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%);
+  border-color: #c4b5fd;
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 12px 28px rgba(139, 92, 246, 0.15);
+}
+
+.icon-purple {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.3);
+}
+
+/* ==========================================
+   配色方案 - 橙色
+   ========================================== */
+.stat-orange {
+  background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+  border-color: #fed7aa;
+}
+
+.stat-orange:hover {
+  background: linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%);
+  border-color: #fdba74;
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 12px 28px rgba(249, 115, 22, 0.15);
+}
+
+.icon-orange {
+  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+  box-shadow: 0 4px 14px rgba(249, 115, 22, 0.3);
+}
+
+/* ==========================================
+   背景装饰
+   ========================================== */
+.stat-bg-decoration {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  overflow: hidden;
+  opacity: 0.4;
+}
+
+.decoration-dot {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.6) 0%, transparent 70%);
+}
+
+.dot-1 {
+  width: 60px;
+  height: 60px;
+  top: -20px;
+  right: -20px;
+  animation: float-dot 6s ease-in-out infinite;
+}
+
+.dot-2 {
+  width: 40px;
+  height: 40px;
+  bottom: -10px;
+  left: 20%;
+  animation: float-dot 8s ease-in-out infinite 1s;
+}
+
+.dot-3 {
+  width: 30px;
+  height: 30px;
+  top: 40%;
+  right: 15%;
+  animation: float-dot 7s ease-in-out infinite 2s;
+}
+
+@keyframes float-dot {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+    opacity: 0.3;
+  }
+  50% {
+    transform: translateY(-10px) scale(1.1);
+    opacity: 0.5;
+  }
+}
+
+/* ==========================================
+   图标样式
+   ========================================== */
+.stat-icon-wrapper {
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.stat-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  color: #ffffff;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.enhanced-stat-card:hover .stat-icon {
+  transform: rotate(8deg) scale(1.1);
+}
+
+.enhanced-stat-card:active .stat-icon {
+  transform: rotate(8deg) scale(0.95);
+}
+
+/* ==========================================
+   内容样式
+   ========================================== */
+.stat-content-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 1;
+}
+
+.stat-value-wrapper {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.stat-value {
+  font-size: 32px;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-trend {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  line-height: 1;
+}
+
+.stat-trend.positive {
+  color: #059669;
+  background: #d1fae5;
+}
+
+.stat-trend.negative {
+  color: #dc2626;
+  background: #fee2e2;
+}
+
+.stat-label {
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* ==========================================
+   光泽效果
+   ========================================== */
+.stat-shine {
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    45deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.3) 50%,
+    transparent 70%
+  );
+  transform: translateX(-100%) translateY(-100%) rotate(45deg);
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.enhanced-stat-card:hover .stat-shine {
+  transform: translateX(100%) translateY(100%) rotate(45deg);
+}
+
+/* ==========================================
+   数字滚动动画（可选）
+   ========================================== */
+@keyframes countUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stat-value {
+  animation: countUp 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* ==========================================
+   响应式设计
+   ========================================== */
+@media (max-width: 768px) {
+  .enhanced-stats-grid {
+    gap: 12px;
+  }
+
+  .enhanced-stat-card {
+    flex: 1;
+    min-width: calc(50% - 6px);
+    max-width: 100%;
+    padding: 16px 18px;
+  }
+
+  .stat-icon {
+    width: 48px;
+    height: 48px;
+    font-size: 22px;
+  }
+
+  .stat-value {
+    font-size: 28px;
+  }
+
+  .stat-label {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .enhanced-stat-card {
+    min-width: 100%;
+  }
+}
+
+/* ==========================================
+   加载骨架屏样式
+   ========================================== */
+.stat-skeleton {
+  background: linear-gradient(
+    90deg,
+    #f1f5f9 25%,
+    #e2e8f0 50%,
+    #f1f5f9 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+

@@ -1,0 +1,33 @@
+# Neo4j 图数据库配置文件
+# 使用方式: java -jar app.jar --spring.profiles.active=neo4j
+
+spring:
+  application:
+    name: novel-creation-system-neo4j
+
+# 图数据库配置
+graph:
+  neo4j:
+    # 是否启用Neo4j（false则使用内存模拟版）
+    enabled: true
+    
+    # 连接配置
+    uri: bolt://localhost:7687
+    username: neo4j
+    password: novel_graph_2025
+    
+    # 连接池配置
+    max-connection-pool-size: 50
+    connection-timeout: 30s
+    max-transaction-retry-time: 30s
+    
+    # 自动初始化
+    auto-initialize: true
+
+# 日志配置
+logging:
+  level:
+    com.novel.agentic.service.graph: DEBUG
+    org.neo4j.driver: INFO
+
+

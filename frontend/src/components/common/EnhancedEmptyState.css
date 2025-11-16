@@ -1,0 +1,283 @@
+/* ==========================================
+   增强型空状态 - 现代美观设计
+   ========================================== */
+
+.enhanced-empty-state {
+  position: relative;
+  min-height: 380px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 40px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border-radius: 20px;
+  border: 2px dashed #e2e8f0;
+  overflow: hidden;
+}
+
+/* ==========================================
+   装饰性背景
+   ========================================== */
+.empty-bg-decoration {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.decoration-circle {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
+  animation: float 8s ease-in-out infinite;
+}
+
+.circle-1 {
+  width: 300px;
+  height: 300px;
+  top: -100px;
+  right: -100px;
+  animation-delay: 0s;
+}
+
+.circle-2 {
+  width: 200px;
+  height: 200px;
+  bottom: -50px;
+  left: -50px;
+  animation-delay: 2s;
+}
+
+.circle-3 {
+  width: 150px;
+  height: 150px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation-delay: 4s;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+    opacity: 0.3;
+  }
+  50% {
+    transform: translateY(-20px) scale(1.05);
+    opacity: 0.5;
+  }
+}
+
+/* ==========================================
+   主要内容
+   ========================================== */
+.empty-content {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+/* ==========================================
+   插图/图标
+   ========================================== */
+.empty-illustration {
+  margin-bottom: 28px;
+  animation: slideDown 0.8s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.book-icon-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100px;
+  height: 100px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border-radius: 24px;
+  box-shadow: 0 8px 32px rgba(59, 130, 246, 0.3);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 8px 32px rgba(59, 130, 246, 0.3);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 12px 40px rgba(59, 130, 246, 0.4);
+  }
+}
+
+.book-icon {
+  font-size: 48px;
+  color: #ffffff;
+  z-index: 1;
+}
+
+.icon-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
+  border-radius: 30px;
+  animation: glow 2s ease-in-out infinite;
+}
+
+@keyframes glow {
+  0%, 100% {
+    opacity: 0.5;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+}
+
+/* ==========================================
+   文案
+   ========================================== */
+.empty-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 12px 0;
+  letter-spacing: -0.02em;
+  animation: none;
+}
+
+.empty-description {
+  font-size: 15px;
+  color: #64748b;
+  line-height: 1.6;
+  margin: 0 0 28px 0;
+  animation: none;
+}
+
+/* ==========================================
+   主要操作按钮
+   ========================================== */
+.empty-primary-action {
+  height: 48px !important;
+  padding: 0 36px !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  border-radius: 12px !important;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+  border: none !important;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  animation: none;
+}
+
+.empty-primary-action:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+  box-shadow: 0 6px 24px rgba(59, 130, 246, 0.4) !important;
+  transform: translateY(-2px) scale(1.02) !important;
+}
+
+.empty-primary-action:active {
+  transform: translateY(0) scale(0.98) !important;
+}
+
+/* ==========================================
+   提示信息
+   ========================================== */
+.empty-tip {
+  margin-top: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-radius: 10px;
+  font-size: 13px;
+  color: #92400e;
+  animation: fadeIn 0.8s ease-out 0.8s both;
+}
+
+.tip-icon {
+  font-size: 18px;
+}
+
+.tip-text {
+  font-weight: 500;
+}
+
+.tip-text kbd {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #ffffff;
+  border: 1px solid #d4d4d8;
+  border-radius: 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  font-weight: 600;
+  color: #3f3f46;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  margin: 0 2px;
+}
+
+/* ==========================================
+   响应式设计
+   ========================================== */
+@media (max-width: 768px) {
+  .enhanced-empty-state {
+    min-height: auto;
+    padding: 40px 24px;
+  }
+
+  .empty-title {
+    font-size: 24px;
+  }
+
+  .empty-description {
+    font-size: 14px;
+  }
+
+  .book-icon-wrapper {
+    width: 88px;
+    height: 88px;
+    border-radius: 20px;
+  }
+
+  .book-icon {
+    font-size: 42px;
+  }
+
+  .empty-primary-action {
+    height: 44px !important;
+    padding: 0 28px !important;
+    font-size: 14px !important;
+  }
+
+  .empty-tip {
+    font-size: 12px;
+    padding: 8px 14px;
+  }
+
+  .decoration-circle {
+    opacity: 0.3;
+  }
+}
+

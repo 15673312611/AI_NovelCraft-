@@ -1,0 +1,1574 @@
+import React, { useEffect, useState, useRef, useCallback } from 'react'
+import { message, Modal, Input, Button, Spin } from 'antd'
+import { SearchOutlined, EditOutlined, FormOutlined, HighlightOutlined, BarChartOutlined, BulbOutlined, FileTextOutlined } from '@ant-design/icons'
+import type { NovelDocument } from '@/services/documentService'
+import aiService from '@/services/aiService'
+import api from '@/services/api'
+import { checkAIConfig, AI_CONFIG_ERROR_MESSAGE, withAIConfig } from '@/utils/aiRequest'
+import './EditorPanel.css'
+
+
+export interface EditorPanelProps {
+  document?: NovelDocument | null
+  loading?: boolean
+  onChangeContent: (content: string) => void
+  onSave?: (document: NovelDocument) => Promise<void>
+  onTitleChange?: (title: string) => void
+  onShowOutline?: () => void
+  onShowVolumeOutline?: () => void
+  onReviewManuscript?: () => void
+  onRemoveAITrace?: () => void
+  lastSaveTime?: string
+  isSaving?: boolean
+  onSearchReplace?: () => void
+}
+
+const EditorPanel: React.FC<EditorPanelProps> = ({
+  document,
+  loading = false,
+  onChangeContent,
+  onSave: _onSave,
+  onShowOutline,
+  onShowVolumeOutline,
+  onReviewManuscript,
+  onRemoveAITrace,
+  lastSaveTime,
+  isSaving = false,
+}) => {
+  const [content, setContent] = useState('')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const overlayRef = useRef<HTMLDivElement>(null)
+  const searchButtonRef = useRef<HTMLButtonElement>(null)
+  const [selectionInfo, setSelectionInfo] = useState<{ start: number; end: number; text: string } | null>(null)
+  const [showPolishButton, setShowPolishButton] = useState(false)
+  const isProgrammaticSelection = useRef(false) // 标记是否为程序自动选择
+  const [polishModalVisible, setPolishModalVisible] = useState(false)
+  const [polishInstructions, setPolishInstructions] = useState('')
+  const [polishResult, setPolishResult] = useState<string | null>(null)
+  const [isPolishing, setIsPolishing] = useState(false)
+
+  // 章节取名相关状态
+  const [nameModalVisible, setNameModalVisible] = useState(false)
+  const [isGeneratingName, setIsGeneratingName] = useState(false)
+  const [generatedNames, setGeneratedNames] = useState<string[]>([])
+
+  // 搜索替换相关状态
+  const [searchReplaceVisible, setSearchReplaceVisible] = useState(false)
+  const [searchText, setSearchText] = useState('')
+  const [replaceText, setReplaceText] = useState('')
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0)
+  const [matches, setMatches] = useState<Array<{ start: number; end: number }>>([])
+  const [caseSensitive, setCaseSensitive] = useState(false)
+  const [searchPanelPosition, setSearchPanelPosition] = useState({ top: 0, left: 0 })
+
+  // AI纠错相关状态
+  const [proofreadModalVisible, setProofreadModalVisible] = useState(false)
+  const [isProofreading, setIsProofreading] = useState(false)
+  const [proofreadErrors, setProofreadErrors] = useState<Array<{
+    type: string
+    original: string
+    corrected: string
+    position: number
+    context: string
+    reason: string
+    applied?: boolean
+  }>>([])
+  const [selectedErrorIndices, setSelectedErrorIndices] = useState<Set<number>>(new Set())
+
+  useEffect(() => {
+    if (document) {
+      setContent(document.content || '')
+    } else {
+      setContent('')
+    }
+    setSelectionInfo(null)
+    setShowPolishButton(false)
+    setPolishModalVisible(false)
+    setPolishInstructions('')
+    setPolishResult(null)
+  }, [document])
+
+  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newContent = e.target.value
+    setContent(newContent)
+    onChangeContent(newContent)
+    setSelectionInfo(null)
+    setShowPolishButton(false)
+  }
+
+  const updateSelection = useCallback(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+
+    const start = textarea.selectionStart ?? 0
+    const end = textarea.selectionEnd ?? 0
+
+    if (start === end) {
+      setSelectionInfo(null)
+      setShowPolishButton(false)
+      return
+    }
+
+    const rawSelection = textarea.value.substring(start, end)
+    if (!rawSelection || !rawSelection.trim()) {
+      setSelectionInfo(null)
+      setShowPolishButton(false)
+      return
+    }
+
+    setSelectionInfo({ start, end, text: rawSelection })
+    setShowPolishButton(true)
+  }, [])
+
+  // 同步滚动 - 使用 transform
+  useEffect(() => {
+    const textarea = textareaRef.current
+    const overlay = overlayRef.current
+    if (!textarea || !overlay) return
+
+    const handleScroll = () => {
+      const scrollTop = textarea.scrollTop
+      const scrollLeft = textarea.scrollLeft
+
+      // 使用 transform 移动 overlay 内容
+      const overlayContent = overlay.firstChild as HTMLElement
+      if (overlayContent) {
+        overlayContent.style.transform = `translate(-${scrollLeft}px, -${scrollTop}px)`
+      }
+    }
+
+    // 初始同步
+    handleScroll()
+
+    textarea.addEventListener('scroll', handleScroll)
+    return () => {
+      textarea.removeEventListener('scroll', handleScroll)
+    }
+  }, [selectionInfo, showPolishButton])
+
+  const handleMouseUp = () => {
+    // 如果是程序自动选择（如搜索），不处理
+    if (isProgrammaticSelection.current) {
+      return
+    }
+    updateSelection()
+  }
+
+  const handleKeyUp = () => {
+    // 如果是程序自动选择（如搜索），不处理
+    if (isProgrammaticSelection.current) {
+      return
+    }
+    updateSelection()
+  }
+
+  const handleSelect = () => {
+    // 如果是程序自动选择（如搜索），不处理
+    if (isProgrammaticSelection.current) {
+      return
+    }
+    updateSelection()
+  }
+
+  const handlePolishSubmit = async () => {
+    if (!selectionInfo) {
+      message.warning('请重新选中需要润色的内容')
+      return
+    }
+
+    if (!checkAIConfig()) {
+      message.error(AI_CONFIG_ERROR_MESSAGE)
+      return
+    }
+
+    try {
+      setIsPolishing(true)
+      const response = await aiService.polishSelection({
+        fullContent: content,
+        selection: selectionInfo.text,
+        instructions: polishInstructions.trim() || undefined,
+        chapterTitle: document?.title,
+      })
+      if (!response || response.code !== 200) {
+        throw new Error(response?.message || 'AI润色请求失败')
+      }
+      const polishedText = response.data?.polishedContent || response.polishedContent
+      if (!polishedText || !polishedText.trim()) {
+        throw new Error('AI未返回润色结果')
+      }
+      setPolishResult(polishedText.trim())
+      message.success('润色完成，请确认修改效果')
+    } catch (error: any) {
+      console.error('AI润色失败:', error)
+      message.error(error?.message || '润色失败，请稍后重试')
+    } finally {
+      setIsPolishing(false)
+    }
+  }
+
+  const handleApplyPolish = () => {
+    if (!selectionInfo || !polishResult) {
+      message.warning('暂无可替换的润色结果')
+      return
+    }
+
+    const textarea = textareaRef.current
+    const savedScrollTop = textarea?.scrollTop || 0
+
+    const { start, end } = selectionInfo
+    const replaced = content.substring(0, start) + polishResult + content.substring(end)
+    setContent(replaced)
+    onChangeContent(replaced)
+
+    const newEnd = start + polishResult.length
+    setSelectionInfo({ start, end: newEnd, text: polishResult })
+    setShowPolishButton(false)
+    setPolishModalVisible(false)
+    setPolishResult(null)
+    setPolishInstructions('')
+
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus()
+        textareaRef.current.setSelectionRange(start, newEnd)
+        textareaRef.current.scrollTop = savedScrollTop
+      }
+    }, 0)
+
+    message.success('已替换润色内容')
+  }
+
+  if (loading) {
+    return (
+      <div className="editor-panel" style={{ alignItems: 'center', justifyContent: 'center' }}>
+        <Spin size="large" />
+      </div>
+    )
+  }
+
+  const openPolishModal = () => {
+    if (!selectionInfo) {
+      message.info('请先选中文本内容')
+      return
+    }
+    setShowPolishButton(false)
+    setPolishResult(null)
+    setPolishModalVisible(true)
+  }
+
+  const closePolishModal = () => {
+    setPolishModalVisible(false)
+    setIsPolishing(false)
+    setPolishResult(null)
+  }
+
+  // AI纠错相关函数
+  const openProofreadModal = () => {
+    if (!content || content.trim().length < 10) {
+      message.warning('内容太少，无需纠错')
+      return
+    }
+    setProofreadErrors([])
+    setSelectedErrorIndices(new Set())
+    setProofreadModalVisible(true)
+  }
+
+  const closeProofreadModal = () => {
+    setProofreadModalVisible(false)
+    setIsProofreading(false)
+  }
+
+  const handleProofread = async () => {
+    if (!checkAIConfig()) {
+      message.error(AI_CONFIG_ERROR_MESSAGE)
+      return
+    }
+
+    try {
+      setIsProofreading(true)
+      const response = await aiService.proofread({
+        content,
+        characterNames: [], // TODO: 可以从小说信息中获取角色名称
+      })
+
+      if (!response || response.code !== 200) {
+        throw new Error(response?.message || 'AI纠错请求失败')
+      }
+
+      const errors = response.data?.errors || []
+      setProofreadErrors(errors.map((err: any) => ({ ...err, applied: false })))
+
+      if (errors.length === 0) {
+        message.success('未发现错误，文本质量良好！')
+      } else {
+        message.success(`发现 ${errors.length} 个可能的错误`)
+      }
+    } catch (error: any) {
+      console.error('AI纠错失败:', error)
+      message.error(error?.message || '纠错失败，请稍后重试')
+    } finally {
+      setIsProofreading(false)
+    }
+  }
+
+  const handleApplySingleError = (index: number) => {
+    const error = proofreadErrors[index]
+    if (!error || error.applied) return
+
+    const { position, original, corrected } = error
+
+    // 查找原始文本的位置
+    const actualPosition = content.indexOf(original, Math.max(0, position - 50))
+
+    if (actualPosition === -1) {
+      message.warning('未找到错误文本，可能已被修改')
+      return
+    }
+
+    // 替换文本
+    const newContent =
+      content.substring(0, actualPosition) +
+      corrected +
+      content.substring(actualPosition + original.length)
+
+    setContent(newContent)
+    onChangeContent(newContent)
+
+    // 标记为已应用
+    const newErrors = [...proofreadErrors]
+    newErrors[index] = { ...error, applied: true }
+    setProofreadErrors(newErrors)
+
+    message.success('已应用修改')
+  }
+
+  const handleApplyAllErrors = () => {
+    if (proofreadErrors.length === 0) return
+
+    let newContent = content
+    let appliedCount = 0
+
+    // 从后往前应用，避免位置偏移
+    const sortedErrors = proofreadErrors
+      .map((err, index) => ({ ...err, index }))
+      .filter(err => !err.applied)
+      .sort((a, b) => {
+        const posA = newContent.indexOf(a.original, Math.max(0, a.position - 50))
+        const posB = newContent.indexOf(b.original, Math.max(0, b.position - 50))
+        return posB - posA
+      })
+
+    for (const error of sortedErrors) {
+      const actualPosition = newContent.indexOf(error.original, Math.max(0, error.position - 50))
+
+      if (actualPosition !== -1) {
+        newContent =
+          newContent.substring(0, actualPosition) +
+          error.corrected +
+          newContent.substring(actualPosition + error.original.length)
+        appliedCount++
+      }
+    }
+
+    if (appliedCount > 0) {
+      setContent(newContent)
+      onChangeContent(newContent)
+
+      // 标记所有为已应用
+      const newErrors = proofreadErrors.map(err => ({ ...err, applied: true }))
+      setProofreadErrors(newErrors)
+
+      message.success(`已应用 ${appliedCount} 处修改`)
+    } else {
+      message.warning('没有可应用的修改')
+    }
+  }
+
+  // 打开章节取名弹窗
+  const openNameModal = () => {
+    if (!content || content.trim().length < 100) {
+      message.warning('章节内容太少，请先写一些内容再取名')
+      return
+    }
+    setGeneratedNames([])
+    setNameModalVisible(true)
+  }
+
+  // 生成章节名
+  const handleGenerateNames = async () => {
+    if (!checkAIConfig()) {
+      message.error(AI_CONFIG_ERROR_MESSAGE)
+      return
+    }
+
+    if (!content || content.trim().length < 100) {
+      message.warning('章节内容太少，无法生成合适的章节名')
+      return
+    }
+
+    try {
+      setIsGeneratingName(true)
+
+      // 取章节开头和主要内容用于分析
+      const contentPreview = content.slice(0, 1500)
+
+      const prompt = `# 任务
+
+你是一位专业的章节标题生成器。请根据章节内容，生成5个精准、简洁、有吸引力的章节标题。
+
+# 章节内容
+
+${contentPreview}${content.length > 1500 ? '\n...(内容较长，已截取前1500字)' : ''}
+
+# 核心要求
+
+1. **精准概括**：标题必须准确反映本章的核心内容和主要事件
+2. **简洁自然**：标题长度根据内容自然确定，既不要过短失去信息，也不要过长冗余
+3. **自然流畅**：语言要自然，不要过度夸张或刻意制造噱头
+4. **贴合内容**：从章节实际内容中提取关键信息，不要脱离原文
+
+# 标题生成策略
+
+**策略一：核心事件提炼**
+- 直接概括本章发生的最重要事件
+- 示例：初入宗门、突破筑基、夜探藏书阁
+
+**策略二：关键对话/台词**
+- 提取本章最有冲击力的一句对话
+- 示例："你不配！"、师父的遗言
+
+**策略三：情节转折点**
+- 突出本章的关键转折或意外
+- 示例：真相大白、意外的访客、计划败露
+
+**策略四：人物关系/状态变化**
+- 强调人物关系或状态的重要变化
+- 示例：师徒决裂、重伤垂危、结盟
+
+**策略五：场景+核心动作**
+- 场景+主角的关键行动
+- 示例：血战擂台、深夜逃亡、拍卖会上的较量
+
+# 禁止事项
+
+❌ 不要使用过度夸张的网文套路（如"震惊全场""跪地求饶""打脸反转"等）
+❌ 不要脱离章节实际内容编造情节
+❌ 不要添加书名号《》，直接输出标题文字
+❌ 不要使用过多的问号、感叹号等标点（除非是对话引用）
+
+# 输出格式
+
+直接输出5个标题，每个标题独立成行，不要编号，不要添加任何说明文字。
+
+示例输出：
+初入宗门
+神秘的师父
+藏书阁奇遇
+突破筑基
+师兄的挑战
+`
+
+      // 使用通用AI调用（复用polishSelection接口）
+      const requestBody = withAIConfig({
+        chapterContent: contentPreview,
+        selection: '生成章节标题',
+        instructions: prompt,
+        chapterTitle: document?.title || '章节'
+      })
+      const response = await api.post('/ai/polish-selection', requestBody)
+
+      if (!response || response.code !== 200) {
+        throw new Error(response?.message || 'AI生成失败')
+      }
+
+      const aiResponse = response.data?.polishedContent || ''
+      const names = aiResponse
+        .split('\n')
+        .map((line: string) => line.trim())
+        .filter((line: string) => line && line.length > 0 && !line.match(/^[\d\.、]+/))
+        .slice(0, 5)
+
+      if (names.length === 0) {
+        throw new Error('未能生成有效的章节标题')
+      }
+
+      setGeneratedNames(names)
+      message.success(`成功生成${names.length}个章节标题`)
+    } catch (error: any) {
+      console.error('生成章节名失败:', error)
+      message.error(error?.message || '生成失败，请稍后重试')
+    } finally {
+      setIsGeneratingName(false)
+    }
+  }
+
+  const closeNameModal = () => {
+    setNameModalVisible(false)
+    setGeneratedNames([])
+  }
+
+  // 键盘快捷键
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.ctrlKey || e.metaKey) {
+      switch (e.key.toLowerCase()) {
+        case 'f':
+          e.preventDefault()
+          {
+            const next = !searchReplaceVisible
+            setSearchReplaceVisible(next)
+            if (next) {
+              // [31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m[31m[1m[0m[39m[22m[0m // 打开搜索时，隐藏AI润色
+              setShowPolishButton(false)
+              setSelectionInfo(null)
+            }
+          }
+          break
+        case 'b':
+          e.preventDefault()
+          handleFormat('bold')
+          break
+        case 'i':
+          e.preventDefault()
+          handleFormat('italic')
+          break
+        case 'k':
+          e.preventDefault()
+          handleFormat('link')
+          break
+        default:
+          break
+      }
+    }
+  }
+
+  // 插入 Markdown 格式
+  const insertMarkdown = (before: string, after: string = '') => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const selectedText = content.substring(start, end)
+    const newText = content.substring(0, start) + before + selectedText + after + content.substring(end)
+
+    setContent(newText)
+    onChangeContent(newText)
+
+    // 恢复光标位置
+    setTimeout(() => {
+      textarea.focus()
+      const newCursorPos = start + before.length + selectedText.length
+      textarea.setSelectionRange(newCursorPos, newCursorPos)
+    }, 0)
+  }
+
+  const handleFormat = (format: string) => {
+    switch (format) {
+      case 'bold':
+        insertMarkdown('**', '**')
+        break
+      case 'italic':
+        insertMarkdown('*', '*')
+        break
+      case 'strikethrough':
+        insertMarkdown('~~', '~~')
+        break
+      case 'code':
+        insertMarkdown('`', '`')
+        break
+      case 'link':
+        insertMarkdown('[', '](url)')
+        break
+      case 'h1':
+        insertMarkdown('# ')
+        break
+      case 'h2':
+        insertMarkdown('## ')
+        break
+      case 'h3':
+        insertMarkdown('### ')
+        break
+      case 'quote':
+        insertMarkdown('> ')
+        break
+      case 'list':
+        insertMarkdown('- ')
+        break
+      case 'ordered-list':
+        insertMarkdown('1. ')
+        break
+      default:
+        break
+    }
+  }
+
+  const wordCount = content.replace(/\s+/g, '').length
+
+  // 格式化工具函数
+  const handleIndent = () => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const selectedText = content.substring(start, end)
+
+    if (selectedText) {
+      // 为选中文本添加段落缩进
+      const indentedText = selectedText.split('\n').map(line =>
+        line.trim() ? '　　' + line.replace(/^　　/, '') : line
+      ).join('\n')
+
+      const newContent = content.substring(0, start) + indentedText + content.substring(end)
+      setContent(newContent)
+      onChangeContent(newContent)
+    } else {
+      // 在光标位置插入段落缩进
+      const newContent = content.substring(0, start) + '　　' + content.substring(start)
+      setContent(newContent)
+      onChangeContent(newContent)
+      // 设置光标位置
+      setTimeout(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + 2
+        textarea.focus()
+      }, 0)
+    }
+  }
+
+  const handleDialogQuote = () => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const selectedText = content.substring(start, end)
+
+    if (selectedText) {
+      const dialogText = `"${selectedText}"`
+      const newContent = content.substring(0, start) + dialogText + content.substring(end)
+      setContent(newContent)
+      onChangeContent(newContent)
+      setTimeout(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + dialogText.length
+        textarea.focus()
+      }, 0)
+    } else {
+      const dialogText = '""'
+      const newContent = content.substring(0, start) + dialogText + content.substring(start)
+      setContent(newContent)
+      onChangeContent(newContent)
+      setTimeout(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + 1
+        textarea.focus()
+      }, 0)
+    }
+  }
+
+  const handleNewParagraph = () => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+
+    const start = textarea.selectionStart
+    const newContent = content.substring(0, start) + '\n\n　　' + content.substring(start)
+    setContent(newContent)
+    onChangeContent(newContent)
+    setTimeout(() => {
+      textarea.selectionStart = textarea.selectionEnd = start + 3
+      textarea.focus()
+    }, 0)
+  }
+
+  const handleOneKeyFormat = () => {
+    if (!content || content.trim() === '') {
+      message.warning('请先输入或生成内容')
+      return
+    }
+    const textarea = textareaRef.current
+    const source = content
+    if (textarea) {
+      const start = textarea.selectionStart
+      const end = textarea.selectionEnd
+      if (start !== end) {
+        const selected = source.substring(start, end)
+        const formatted = formatChineseSentences(selected)
+        const newContent = source.substring(0, start) + formatted + source.substring(end)
+        setContent(newContent)
+        onChangeContent(newContent)
+        setTimeout(() => {
+          textarea.selectionStart = start
+          textarea.selectionEnd = start + formatted.length
+          textarea.focus()
+        }, 0)
+      } else {
+        const formatted = formatChineseSentences(source)
+        setContent(formatted)
+        onChangeContent(formatted)
+        setTimeout(() => {
+          textarea.focus()
+        }, 0)
+      }
+    } else {
+      const formatted = formatChineseSentences(source)
+      setContent(formatted)
+      onChangeContent(formatted)
+    }
+    message.success('格式化完成')
+  }
+
+  // 一键格式化函数（和WritingStudioPage中的一致）
+  const formatChineseSentences = (input: string): string => {
+    if (!input) return ''
+    let text = input.replace(/\r\n?/g, '\n')
+    // 优先处理：标点簇 + 右引号/右括号 + 左引号 -> 在右引号/右括号后空一行，再开始下一段
+    text = text.replace(/([。？！]+)\s*([”’"'」』】])\s*([“‘"'「『])/g, '$1$2\n\n$3')
+    // 其次：标点簇 + 右引号/右括号（后面不是左引号）-> 在右引号/右括号后换行
+    text = text.replace(/([。？！]+)\s*([”’"'」』】])(?!\s*[“‘"'「『])\s*/g, '$1$2\n')
+    // 再者：标点簇后直接换行（后面没有右引号/右括号）
+    text = text.replace(/([。？！]+)(?!\s*[”’"'」』】])\s*/g, '$1\n')
+    // 行级清理：去除每行首部的空白（含全角空格），以及行尾空白
+    text = text
+      .split('\n')
+      .map(line => line.replace(/^[\t \u3000]+/g, '').replace(/\s+$/g, ''))
+      .join('\n')
+    return text
+  }
+
+  // 搜索替换功能
+  const handleSearch = useCallback(() => {
+    if (!searchText) {
+      setMatches([])
+      setCurrentMatchIndex(0)
+      return
+    }
+
+    const searchStr = caseSensitive ? searchText : searchText.toLowerCase()
+    const contentStr = caseSensitive ? content : content.toLowerCase()
+    const foundMatches: Array<{ start: number; end: number }> = []
+
+    let index = contentStr.indexOf(searchStr)
+    while (index !== -1) {
+      foundMatches.push({ start: index, end: index + searchText.length })
+      index = contentStr.indexOf(searchStr, index + 1)
+    }
+
+    setMatches(foundMatches)
+    setCurrentMatchIndex(0)
+
+    if (foundMatches.length > 0 && textareaRef.current) {
+      const first = foundMatches[0]
+      isProgrammaticSelection.current = true // 标记为程序自动选择
+      // 搜索定位时不显示AI润色按钮，也清空选区信息
+      setShowPolishButton(false)
+      setSelectionInfo(null)
+      textareaRef.current.focus()
+      textareaRef.current.setSelectionRange(first.start, first.end)
+      textareaRef.current.scrollTop = textareaRef.current.scrollHeight * (first.start / content.length)
+
+      // 延迟重置标记，确保所有事件处理完成
+      setTimeout(() => {
+        isProgrammaticSelection.current = false
+      }, 100)
+    }
+  }, [searchText, caseSensitive, content])
+
+  // 自动搜索
+  useEffect(() => {
+    if (searchReplaceVisible) {
+      handleSearch()
+    }
+  }, [searchText, caseSensitive, searchReplaceVisible, handleSearch])
+
+  const handleNextMatch = () => {
+    if (matches.length === 0) return
+    const nextIndex = (currentMatchIndex + 1) % matches.length
+    setCurrentMatchIndex(nextIndex)
+
+    if (textareaRef.current) {
+      const match = matches[nextIndex]
+      isProgrammaticSelection.current = true // 标记为程序自动选择
+      // 搜索定位时不显示AI润色按钮，并清空选区
+      setShowPolishButton(false)
+      setSelectionInfo(null)
+      textareaRef.current.focus()
+      textareaRef.current.setSelectionRange(match.start, match.end)
+
+      // 延迟重置标记
+      setTimeout(() => {
+        isProgrammaticSelection.current = false
+      }, 100)
+    }
+  }
+
+  const handlePrevMatch = () => {
+    if (matches.length === 0) return
+    const prevIndex = currentMatchIndex === 0 ? matches.length - 1 : currentMatchIndex - 1
+    setCurrentMatchIndex(prevIndex)
+
+    if (textareaRef.current) {
+      const match = matches[prevIndex]
+      isProgrammaticSelection.current = true // 标记为程序自动选择
+      // 搜索定位时不显示AI润色按钮，并清空选区
+      setShowPolishButton(false)
+      setSelectionInfo(null)
+      textareaRef.current.focus()
+      textareaRef.current.setSelectionRange(match.start, match.end)
+
+      // 延迟重置标记
+      setTimeout(() => {
+        isProgrammaticSelection.current = false
+      }, 100)
+    }
+  }
+
+  const handleReplace = () => {
+    if (matches.length === 0) return
+    const match = matches[currentMatchIndex]
+    const newContent = content.substring(0, match.start) + replaceText + content.substring(match.end)
+    setContent(newContent)
+    onChangeContent(newContent)
+
+    // 重新搜索
+    setTimeout(() => handleSearch(), 100)
+  }
+
+  const handleReplaceAll = () => {
+    if (!searchText || matches.length === 0) return
+
+    // 从后往前替换，避免索引偏移
+    let newContent = content
+    for (let i = matches.length - 1; i >= 0; i--) {
+      const match = matches[i]
+      newContent = newContent.substring(0, match.start) + replaceText + newContent.substring(match.end)
+    }
+
+    setContent(newContent)
+    onChangeContent(newContent)
+    setMatches([])
+    setCurrentMatchIndex(0)
+    message.success(`已替换 ${matches.length} 处`)
+  }
+
+  const openSearchReplace = () => {
+    setSearchReplaceVisible(true)
+    setSearchText('')
+    setReplaceText('')
+    setMatches([])
+    setCurrentMatchIndex(0)
+
+    // 计算搜索面板位置
+    setTimeout(() => {
+      if (searchButtonRef.current) {
+        const rect = searchButtonRef.current.getBoundingClientRect()
+        setSearchPanelPosition({
+          top: rect.bottom,
+          left: rect.left
+        })
+      }
+    }, 0)
+  }
+
+  const closeSearchReplace = () => {
+    setSearchReplaceVisible(false)
+    setSearchText('')
+    setReplaceText('')
+    setMatches([])
+    setCurrentMatchIndex(0)
+  }
+
+  // 更新搜索面板位置
+  useEffect(() => {
+    if (searchReplaceVisible) {
+      const updatePosition = () => {
+        if (searchButtonRef.current) {
+          const rect = searchButtonRef.current.getBoundingClientRect()
+          setSearchPanelPosition({
+            top: rect.bottom,
+            left: rect.left
+          })
+        }
+      }
+
+      updatePosition()
+      window.addEventListener('resize', updatePosition)
+      window.addEventListener('scroll', updatePosition, true)
+
+      return () => {
+        window.removeEventListener('resize', updatePosition)
+        window.removeEventListener('scroll', updatePosition, true)
+      }
+    }
+  }, [searchReplaceVisible])
+
+  return (
+    <div className="editor-panel">
+      {document ? (
+        <div className="editor-container">
+          {/* 标题栏 */}
+          <div className="editor-header">
+            <div className="editor-header-top">
+              <h1 className="editor-title">{document.title}</h1>
+              <div className="editor-header-right">
+                <div className="editor-actions">
+                  <span className="word-count">字数: {wordCount}</span>
+                  <button className="action-btn ai-action-btn" onClick={openNameModal} title="AI生成章节标题">
+                    <span className="action-icon">
+                      <EditOutlined />
+                    </span>
+                    <span>章节取名</span>
+                  </button>
+                  <button className="action-btn ai-action-btn" onClick={onReviewManuscript}>AI审稿</button>
+                  <button className="action-btn ai-action-btn" onClick={onRemoveAITrace}>AI消痕</button>
+                </div>
+                <div className="outline-buttons">
+                  <button className="outline-btn" onClick={onShowOutline}>大纲</button>
+                  <button className="outline-btn" onClick={onShowVolumeOutline}>卷大纲</button>
+                </div>
+                {lastSaveTime && (
+                  <div className="save-time-display">
+                    {isSaving ? '保存中...' : `最后保存: ${lastSaveTime}`}
+                  </div>
+                )}
+              </div>
+            </div>
+
+          </div>
+
+          {/* 格式化工具栏 */}
+          <div className="editor-format-toolbar">
+            <div className="toolbar-label">
+              <FormOutlined style={{ marginRight: 6 }} />
+              格式工具
+            </div>
+            <button className="format-btn" onClick={handleIndent}>段落缩进</button>
+            <button className="format-btn" onClick={handleDialogQuote}>对话引号</button>
+            <button className="format-btn" onClick={handleNewParagraph}>新段落</button>
+            <button className="format-btn format-btn-primary" onClick={handleOneKeyFormat}>一键格式化</button>
+            <button
+              className="format-btn"
+              onClick={openProofreadModal}
+              title="AI智能纠错"
+            >
+              <SearchOutlined style={{ marginRight: 6 }} />
+              智能纠错
+            </button>
+            <button
+              ref={searchButtonRef}
+              className={`format-btn ${searchReplaceVisible ? 'format-btn-active' : ''}`}
+              onClick={() => {
+                const next = !searchReplaceVisible
+                setSearchReplaceVisible(next)
+                if (next) {
+                  // 打开搜索时，隐藏AI润色按钮并清空选区信息
+                  setShowPolishButton(false)
+                  setSelectionInfo(null)
+                }
+              }}
+              title="搜索替换 (Ctrl+F)"
+            >
+              <SearchOutlined />
+            </button>
+          </div>
+
+          {/* 搜索替换浮动框 - 独立浮动层 */}
+          {searchReplaceVisible && (
+            <div
+              className="search-replace-panel"
+              style={{
+                top: `${searchPanelPosition.top}px`,
+                left: `${searchPanelPosition.left}px`
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="search-panel-header">
+                <span className="search-panel-title">查找替换</span>
+                <button className="search-close-btn" onClick={closeSearchReplace}>×</button>
+              </div>
+              <div className="search-panel-body">
+                <div className="search-input-group">
+                  <Input
+                    size="small"
+                    value={searchText}
+
+
+                    onChange={(e) => setSearchText(e.target.value)}
+                    onPressEnter={handleSearch}
+                    placeholder="查找"
+                    autoFocus
+                  />
+                  <div className="search-controls">
+                    <Button size="small" onClick={handlePrevMatch} disabled={matches.length === 0} title="上一个">
+                      ↑
+                    </Button>
+                    <Button size="small" onClick={handleNextMatch} disabled={matches.length === 0} title="下一个">
+                      ↓
+                    </Button>
+                    <span className="search-count">
+                      {matches.length > 0 ? `${currentMatchIndex + 1}/${matches.length}` : '0/0'}
+                    </span>
+                  </div>
+                </div>
+                <div className="search-input-group">
+                  <Input
+                    size="small"
+                    value={replaceText}
+                    onChange={(e) => setReplaceText(e.target.value)}
+                    placeholder="替换为"
+                  />
+                  <div className="search-controls">
+                    <Button size="small" onClick={handleReplace} disabled={matches.length === 0}>
+                      替换
+                    </Button>
+                    <Button size="small" onClick={handleReplaceAll} disabled={matches.length === 0}>
+                      全部
+                    </Button>
+                  </div>
+                </div>
+                <div className="search-options">
+                  <label className="search-option-label">
+                    <input
+                      type="checkbox"
+                      checked={caseSensitive}
+                      onChange={(e) => setCaseSensitive(e.target.checked)}
+                    />
+                    <span>区分大小写</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 编辑区域 */}
+          <div className="editor-content-wrapper">
+
+
+            <textarea
+              ref={textareaRef}
+              className="editor-textarea"
+              value={content}
+              onChange={handleContentChange}
+              onKeyDown={handleKeyDown}
+              onKeyUp={handleKeyUp}
+              onMouseUp={handleMouseUp}
+              onSelect={handleSelect}
+              placeholder="在此输入内容，支持 Markdown 格式...&#10;&#10;例如：&#10;# 标题&#10;**粗体** *斜体*&#10;- 列表项&#10;&#10;快捷键：Ctrl+B 粗体，Ctrl+I 斜体，Ctrl+K 链接"
+              spellCheck={false}
+            />
+            {/* 文本覆盖层 - 显示选中文本和按钮 */}
+            <div ref={overlayRef} className="editor-overlay">
+              {selectionInfo && showPolishButton && (
+                <div className="editor-overlay-content">
+
+
+
+                  {content.slice(0, selectionInfo.start)}
+                  <span className="selection-highlight">
+                    {selectionInfo.text}
+                  </span>
+                  <span className="selection-toolbar-inline">
+                    <span className="selection-word-count">已选 {selectionInfo.text.replace(/\s/g, '').length} 字</span>
+                    <button
+                      type="button"
+                      className="selection-polish-button"
+                      onClick={openPolishModal}
+                    >
+                      AI润色
+                    </button>
+                  </span>
+                  {content.slice(selectionInfo.end)}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="editor-empty-state">
+          <div className="empty-placeholder">
+            <svg className="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <p>请选择左侧的文档开始编辑</p>
+          </div>
+        </div>
+      )}
+      <Modal
+        open={polishModalVisible}
+        title={
+          <div style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <HighlightOutlined style={{ fontSize: 20, color: '#7c3aed' }} />
+            <span>AI润色助手</span>
+          </div>
+        }
+        width={880}
+        onCancel={closePolishModal}
+        footer={[
+          <Button key="cancel" onClick={closePolishModal} size="large" style={{ borderRadius: '8px' }}>
+            取消
+          </Button>,
+          <Button
+            key="polish"
+            type="primary"
+            loading={isPolishing}
+            onClick={handlePolishSubmit}
+            size="large"
+            style={{
+              borderRadius: '8px',
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              border: 'none',
+              fontWeight: 600
+            }}
+          >
+            生成润色
+          </Button>,
+          <Button
+            key="apply"
+            type="primary"
+            disabled={!polishResult || isPolishing}
+            onClick={handleApplyPolish}
+            size="large"
+            style={{
+              borderRadius: '8px',
+              background: polishResult && !isPolishing ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' : undefined,
+              border: 'none',
+              fontWeight: 600
+            }}
+          >
+            应用到正文
+          </Button>,
+        ]}
+        destroyOnClose
+        centered
+        maskClosable={false}
+        styles={{
+          body: { paddingTop: '24px', paddingBottom: '24px' },
+          header: { paddingBottom: '20px', borderBottom: '2px solid #e2e8f0' }
+        }}
+      >
+        <div className="polish-modal-body">
+          <div className="polish-instruction">
+            <div className="polish-section-title">润色要求</div>
+            <Input.TextArea
+              autoSize={{ minRows: 3, maxRows: 6 }}
+              placeholder="例如：保持第一人称视角，加强紧张感，减少重复用词，优化语言表达..."
+              value={polishInstructions}
+              onChange={(e) => setPolishInstructions(e.target.value)}
+              style={{
+                borderRadius: '10px',
+                fontSize: '14px',
+                padding: '12px 14px',
+                border: '2px solid #e2e8f0',
+                transition: 'all 0.25s ease'
+              }}
+            />
+          </div>
+          <div className="polish-result-columns">
+            <div className="polish-column">
+              <div className="polish-column-title">原文片段</div>
+              <div className="polish-text-preview">{selectionInfo?.text || '（当前未选中文本）'}</div>
+            </div>
+            <div className="polish-column">
+              <div className="polish-column-title">AI润色结果</div>
+              <div className="polish-text-preview polish-result">
+                {isPolishing ? (
+                  <div className="polish-loading">
+                    <Spin />
+                    <span>AI正在润色...</span>
+                  </div>
+                ) : polishResult ? (
+                  polishResult
+                ) : (
+                  '点击“生成润色”后展示结果'
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 章节取名弹窗 */}
+      <Modal
+        open={nameModalVisible}
+        title={
+          <div style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <FileTextOutlined style={{ fontSize: 20, color: '#2563eb' }} />
+            <span>AI章节取名</span>
+          </div>
+        }
+        width={680}
+        onCancel={closeNameModal}
+        footer={[
+          <Button key="cancel" onClick={closeNameModal} size="large" style={{ borderRadius: '8px' }}>
+            取消
+          </Button>,
+          <Button
+            key="generate"
+            type="primary"
+            loading={isGeneratingName}
+            onClick={handleGenerateNames}
+            size="large"
+            style={{
+              borderRadius: '8px',
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              border: 'none',
+              fontWeight: 600
+            }}
+          >
+            生成标题
+          </Button>,
+        ]}
+        destroyOnClose
+        centered
+        maskClosable={false}
+      >
+        <div style={{ padding: '16px 0' }}>
+          <div style={{ marginBottom: '24px' }}>
+            <div style={{
+              fontSize: '14px',
+              color: '#64748b',
+              marginBottom: '12px',
+              lineHeight: '1.6'
+            }}>
+              AI 将根据章节内容，为您生成 5 个简洁有力的标题建议。<br/>
+              标题将突出核心情节，符合网文风格。
+            </div>
+            <div style={{
+              padding: '12px 16px',
+              background: '#f8fafc',
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0',
+              fontSize: '13px',
+              color: '#475569'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <BarChartOutlined style={{ color: '#2563eb' }} />
+                <span>章节字数：<strong>{content.length}</strong> 字</span>
+              </div>
+            </div>
+          </div>
+
+          {isGeneratingName && (
+            <div style={{
+              textAlign: 'center',
+              padding: '40px 20px',
+              color: '#64748b'
+            }}>
+              <Spin size="large" />
+              <div style={{ marginTop: '16px', fontSize: '14px' }}>AI 正在分析章节内容...</div>
+            </div>
+          )}
+
+          {!isGeneratingName && generatedNames.length > 0 && (
+            <div>
+              <div style={{
+                fontSize: '14px',
+                fontWeight: 600,
+                color: '#1e293b',
+                marginBottom: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <BulbOutlined style={{ color: '#f97316' }} />
+                <span>生成的标题建议</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {generatedNames.map((name, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      padding: '14px 16px',
+                      background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                      border: '2px solid #bae6fd',
+                      borderRadius: '10px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      fontSize: '15px',
+                      fontWeight: 500,
+                      color: '#0c4a6e',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateX(4px)'
+                      e.currentTarget.style.borderColor = '#0ea5e9'
+                      e.currentTarget.style.background = 'linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateX(0)'
+                      e.currentTarget.style.borderColor = '#bae6fd'
+                      e.currentTarget.style.background = 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)'
+                    }}
+                    onClick={() => {
+                      navigator.clipboard.writeText(name)
+                      message.success(`已复制标题：${name}`)
+                    }}
+                  >
+                    <span>{name}</span>
+                    <span style={{ fontSize: '12px', color: '#0891b2' }}>点击复制</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{
+                marginTop: '16px',
+                fontSize: '13px',
+                color: '#64748b',
+                textAlign: 'center'
+              }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+                  <BulbOutlined />
+                  <span>点击任意标题即可复制</span>
+                </span>
+              </div>
+            </div>
+          )}
+
+          {!isGeneratingName && generatedNames.length === 0 && (
+            <div style={{
+              textAlign: 'center',
+              padding: '40px 20px',
+              color: '#94a3b8'
+            }}>
+              <div style={{ fontSize: '48px', marginBottom: '16px' }}><FileTextOutlined /></div>
+              <div style={{ fontSize: '14px' }}>点击"生成标题"按钮开始</div>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* AI纠错弹窗 */}
+      <Modal
+        title={
+          <div style={{
+            fontSize: '18px',
+            fontWeight: 600,
+            color: '#1e293b',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <SearchOutlined style={{ color: '#0f172a' }} />
+            <span>AI智能纠错</span>
+          </div>
+        }
+        open={proofreadModalVisible}
+        width={900}
+        onCancel={closeProofreadModal}
+        footer={[
+          <Button key="cancel" onClick={closeProofreadModal} size="large" style={{ borderRadius: '8px' }}>
+            关闭
+          </Button>,
+          <Button
+            key="check"
+            type="primary"
+            loading={isProofreading}
+            onClick={handleProofread}
+            size="large"
+            disabled={proofreadErrors.length > 0}
+            style={{
+              borderRadius: '8px',
+              background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+              border: 'none',
+              fontWeight: 600
+            }}
+          >
+            开始检查
+          </Button>,
+          <Button
+            key="applyAll"
+            type="primary"
+            disabled={proofreadErrors.length === 0 || proofreadErrors.every(e => e.applied)}
+            onClick={handleApplyAllErrors}
+            size="large"
+            style={{
+              borderRadius: '8px',
+              background: proofreadErrors.length > 0 && !proofreadErrors.every(e => e.applied)
+                ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                : undefined,
+              border: 'none',
+              fontWeight: 600
+            }}
+          >
+            ✅ 应用全部
+          </Button>,
+        ]}
+        centered
+        maskClosable={false}
+        styles={{
+          body: { padding: '24px', maxHeight: '600px', overflowY: 'auto' }
+        }}
+      >
+        <div>
+          {isProofreading && (
+            <div style={{
+              textAlign: 'center',
+              padding: '60px 20px',
+              color: '#64748b'
+            }}>
+              <Spin size="large" />
+              <div style={{ marginTop: '20px', fontSize: '15px' }}>
+                AI正在检查文本，请稍候...
+              </div>
+            </div>
+          )}
+
+          {!isProofreading && proofreadErrors.length > 0 && (
+            <div>
+              <div style={{
+                fontSize: '14px',
+                fontWeight: 600,
+                color: '#1e293b',
+                marginBottom: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
+                <span>发现 {proofreadErrors.filter(e => !e.applied).length} 个可能的错误</span>
+                <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 400 }}>
+                  已修复 {proofreadErrors.filter(e => e.applied).length} 个
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {proofreadErrors.map((error, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      padding: '16px',
+                      background: error.applied ? '#f0fdf4' : '#fef2f2',
+                      border: `2px solid ${error.applied ? '#86efac' : '#fecaca'}`,
+                      borderRadius: '10px',
+                      opacity: error.applied ? 0.6 : 1,
+                      transition: 'all 0.3s ease'
+                    }}
+                  >
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      justifyContent: 'space-between',
+                      marginBottom: '12px'
+                    }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{
+                          fontSize: '12px',
+                          color: '#64748b',
+                          marginBottom: '8px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}>
+                          <span style={{
+                            padding: '2px 8px',
+                            background: error.type === 'typo' ? '#dbeafe' :
+                                       error.type === 'name' ? '#fce7f3' :
+                                       error.type === 'garbled' ? '#fee2e2' :
+                                       error.type === 'punctuation' ? '#fef3c7' : '#e0e7ff',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 600
+                          }}>
+                            {error.type === 'typo' ? '错别字' :
+                             error.type === 'name' ? '名称错误' :
+                             error.type === 'garbled' ? '乱码' :
+                             error.type === 'punctuation' ? '标点' : '其他'}
+                          </span>
+                          {error.applied && (
+                            <span style={{ color: '#10b981', fontSize: '12px' }}>✓ 已修复</span>
+                          )}
+                        </div>
+
+                        <div style={{ marginBottom: '8px' }}>
+                          <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>
+                            原文：
+                          </div>
+                          <div style={{
+                            padding: '8px 12px',
+                            background: '#fff',
+                            borderRadius: '6px',
+                            fontSize: '14px',
+                            color: '#dc2626',
+                            textDecoration: 'line-through'
+                          }}>
+                            {error.original}
+                          </div>
+                        </div>
+
+                        <div style={{ marginBottom: '8px' }}>
+                          <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>
+                            建议修改为：
+                          </div>
+                          <div style={{
+                            padding: '8px 12px',
+                            background: '#fff',
+                            borderRadius: '6px',
+                            fontSize: '14px',
+                            color: '#059669',
+                            fontWeight: 500
+                          }}>
+                            {error.corrected}
+                          </div>
+                        </div>
+
+                        <div style={{ marginBottom: '8px' }}>
+                          <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>
+                            上下文：
+                          </div>
+                          <div style={{
+                            padding: '8px 12px',
+                            background: '#f8fafc',
+                            borderRadius: '6px',
+                            fontSize: '13px',
+                            color: '#475569',
+                            lineHeight: '1.6'
+                          }}>
+                            {error.context}
+                          </div>
+                        </div>
+
+                        {error.reason && (
+                          <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>
+                            <BulbOutlined /> {error.reason}
+                          </div>
+                        )}
+                      </div>
+
+                      <Button
+                        type="primary"
+                        size="small"
+                        disabled={error.applied}
+                        onClick={() => handleApplySingleError(index)}
+                        style={{
+                          marginLeft: '12px',
+                          borderRadius: '6px',
+                          background: error.applied ? undefined : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                          border: 'none'
+                        }}
+                      >
+                        {error.applied ? '已应用' : '应用'}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!isProofreading && proofreadErrors.length === 0 && (
+            <div style={{
+              textAlign: 'center',
+              padding: '60px 20px',
+              color: '#94a3b8'
+            }}>
+              <div style={{ fontSize: '48px', marginBottom: '16px' }}><SearchOutlined /></div>
+              <div style={{ fontSize: '15px', marginBottom: '8px' }}>点击"开始检查"按钮</div>
+              <div style={{ fontSize: '13px', color: '#cbd5e1' }}>
+                AI将检查错别字、名称错误、乱码等问题
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
+    </div>
+  )
+}
+
+export default EditorPanel

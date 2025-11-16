@@ -1,0 +1,606 @@
+.file-tree-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #ffffff;
+}
+
+/* 返回按钮区域 */
+.file-tree-header {
+  padding: 12px;
+  border-bottom: 1px solid #e8e8e8;
+  background: #ffffff;
+}
+
+.back-to-list-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 36px;
+  padding: 0 16px;
+  background: #ffffff;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  color: #262626;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.back-to-list-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(24, 144, 255, 0.08), transparent);
+  transition: left 0.5s ease;
+}
+
+.back-to-list-btn:hover::before {
+  left: 100%;
+}
+
+.back-to-list-btn .icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.back-to-list-btn:hover {
+  background: #f0f7ff;
+  border-color: #91caff;
+  color: #1890ff;
+  transform: translateY(-1px);
+}
+
+.back-to-list-btn:active {
+  transform: translateY(0);
+}
+
+.file-tree-toolbar {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f8fafc;
+}
+
+/* 章节拆解设置面板 */
+.analysis-config-panel {
+  padding: 8px 8px 0 8px;
+}
+
+.analysis-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.analysis-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.analysis-note {
+  background: #fff7e6;
+  border: 1px solid #ffe58f;
+  color: #ad6800;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.analysis-note .note-title {
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.analysis-note .note-sub {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.chapter-range {
+  background: #ffffff;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.chapter-range .range-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+.range-inputs {
+  display: grid;
+  grid-template-columns: 64px 1fr 64px;
+  gap: 10px;
+  align-items: center;
+}
+
+.range-slider {
+  padding: 0 6px;
+}
+
+.range-summary {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.analysis-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-top: 10px;
+  flex-wrap: wrap;
+}
+.analysis-hint {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.file-tree-search-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.file-tree-search-input {
+  flex: 1;
+}
+
+.file-tree-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  justify-content: flex-start;
+}
+.file-tree-root-title {
+  font-weight: 700;
+  font-size: 16px;
+  color: #0f172a;
+}
+
+.file-tree {
+  flex: 1;
+  overflow: auto;
+  padding: 12px 8px;
+}
+
+.file-tree .ant-tree-treenode {
+  padding: 4px 0;
+}
+
+/* 确保图标在文字左边，扩大可点击和右键区域 */
+.file-tree .ant-tree-node-content-wrapper {
+  display: flex !important;
+  align-items: center !important;
+  flex: 1 !important;
+  min-width: 0 !important;
+  padding: 4px 8px !important; /* 增加内边距，扩大可点击区域 */
+  width: 100% !important;
+  cursor: pointer !important;
+}
+
+.file-tree .ant-tree-iconEle {
+  display: inline-flex !important;
+  align-items: center !important;
+  margin: 0 !important; /* 完全去除外边距 */
+  padding: 0 !important;
+  flex-shrink: 0 !important;
+}
+
+/* 强制图标容器紧贴 - 使用多层选择器确保优先级 */
+.file-tree .ant-tree .ant-tree-treenode .ant-tree-node-content-wrapper .ant-tree-iconEle {
+  margin: 0 2px 0 0 !important; /* 只保留右侧2px间距 */
+  padding: 0 !important;
+}
+
+/* 强制所有可能的图标元素都紧贴 */
+.file-tree .ant-tree-node-content-wrapper .ant-tree-iconEle,
+.file-tree .ant-tree-iconEle,
+.file-tree .anticon {
+  margin-left: 0 !important;
+  margin-right: 2px !important;
+  padding: 0 !important;
+}
+
+/* 强制标题容器紧贴图标，完全去除左侧间距 */
+.file-tree .ant-tree-node-content-wrapper .ant-tree-title {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* 使用负边距强制靠近（如果上面还不行） */
+.file-tree .ant-tree-treenode .ant-tree-title {
+  margin-left: -8px !important; /* 负边距拉近距离 */
+  padding-left: 0 !important;
+}
+
+.file-tree .ant-tree-title {
+  flex: 1 !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1.5 !important;
+}
+
+.file-tree-node {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  padding: 2px 0 !important; /* 左右不加padding，保持紧贴 */
+  border-radius: 4px !important;
+  cursor: context-menu !important; /* 右键光标 */
+  user-select: none !important;
+  gap: 0 !important; /* 去除gap，使用负边距控制间距 */
+  position: relative !important;
+  min-height: 28px !important; /* 确保有足够高度 */
+}
+
+.file-tree-node:hover {
+  background: #f8fafc !important;
+}
+
+/* 图标直接在file-tree-node内部 */
+.file-tree-node > .anticon,
+.file-tree-node > svg {
+  margin: 0 !important;
+  padding: 0 !important;
+  flex-shrink: 0 !important;
+}
+
+.file-tree-node-title {
+  font-size: 14px;
+  color: #1f2937;
+  flex: 1;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1.5;
+}
+
+.file-tree-node-actions {
+  display: flex !important; /* 始终显示，避免抖动 */
+  align-items: center;
+  gap: 4px;
+  margin-left: auto; /* 推到右侧 */
+  padding-left: 8px;
+  opacity: 0; /* 默认透明 */
+  pointer-events: none; /* 默认不可点击 */
+  transition: opacity 0.2s ease; /* 平滑过渡 */
+}
+
+.file-tree-node:hover .file-tree-node-actions {
+  opacity: 1; /* 悬停时显示 */
+  pointer-events: auto; /* 悬停时可点击 */
+}
+
+.file-tree-node-actions .ant-btn {
+  padding: 2px 4px;
+  height: 24px;
+  min-width: 24px;
+  color: #3b82f6;
+  font-size: 16px;
+}
+
+.file-tree-node-actions .ant-btn:hover {
+  color: #2563eb;
+  background-color: #eff6ff;
+}
+
+.file-tree-empty {
+  padding: 32px 16px;
+  text-align: center;
+}
+
+.file-tree-empty-actions {
+  margin-top: 12px;
+}
+
+.file-tree-search-results {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.search-empty {
+  text-align: center;
+  color: #94a3b8;
+  padding: 32px 16px;
+  font-size: 14px;
+}
+
+.search-result-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.search-result-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.search-result-item:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+
+.search-result-icon {
+  font-size: 18px;
+  color: #3b82f6;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.search-result-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-result-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1f2937;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-result-meta {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* 分析类型列表 */
+.analysis-types-list {
+  padding: 8px 8px 12px 8px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.analysis-type-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  background: #ffffff;
+  border: 1px solid #eaeaea;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.analysis-type-card:hover,
+.analysis-type-card.selected {
+  background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+  border-color: #dbe7ff;
+  transform: translateX(4px);
+}
+
+/* 左侧高亮条（替代图标，更加优雅克制） */
+.analysis-type-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 18%;
+  width: 3px;
+  height: 64%;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #1677ff, #36cfc9);
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+.analysis-type-card:hover::before,
+.analysis-type-card.selected::before {
+  opacity: 1;
+}
+
+.analysis-type-card:hover .analysis-type-icon,
+.analysis-type-card.selected .analysis-type-icon {
+  background: linear-gradient(135deg, #1677ff 0%, #36cfc9 100%);
+}
+
+.analysis-type-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.analysis-type-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 4px;
+}
+
+.analysis-type-desc {
+  font-size: 12px;
+  color: #86909c;
+  line-height: 1.5;
+}
+
+.analysis-type-arrow {
+  font-size: 18px;
+  color: #c0c6d0;
+  flex-shrink: 0;
+  transition: all 0.25s;
+}
+
+.analysis-type-card:hover .analysis-type-arrow,
+.analysis-type-card.selected .analysis-type-arrow {
+  color: #1890ff;
+  transform: translateX(4px);
+}
+
+/* Checkbox 与文本间距更舒适 */
+.analysis-type-card .ant-checkbox {
+  margin-right: 6px;
+}
+
+/* 自定义右键菜单 */
+.custom-context-menu {
+  position: fixed;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 4px 0;
+  min-width: 160px;
+  z-index: 10000;
+  animation: contextMenuFadeIn 0.1s ease-out;
+}
+
+@keyframes contextMenuFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: #1f2937;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.context-menu-item:hover {
+  background: #f8fafc;
+}
+
+.context-menu-item-danger {
+  color: #ef4444;
+}
+
+.context-menu-item-danger:hover {
+  background: #fef2f2;
+}
+
+.context-menu-icon {
+  margin-right: 8px;
+  font-size: 14px;
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: #f1f5f9;
+  margin: 4px 0;
+}
+
+/* 内联编辑输入框 */
+.file-tree-inline-input {
+  flex: 1;
+  padding: 2px 6px;
+  border: 1px solid #3b82f6;
+  border-radius: 3px;
+  outline: none;
+  font-size: 14px;
+  color: #1f2937;
+  background: #ffffff;
+  width: 100%;
+  min-width: 80px;
+}
+
+.file-tree-inline-input:focus {
+  border-color: #2563eb;
+}
+
+/* 优化多层嵌套文件夹显示 - 强制缩进 */
+.file-tree .ant-tree-treenode {
+  padding: 2px 0 !important;
+}
+
+/* 强制设置缩进宽度 */
+.file-tree .ant-tree .ant-tree-treenode .ant-tree-indent {
+  width: 40px !important;
+  min-width: 40px !important;
+}
+
+.file-tree .ant-tree .ant-tree-treenode .ant-tree-indent-unit {
+  width: 40px !important;
+  min-width: 40px !important;
+  display: inline-block !important;
+}
+
+/* 每个缩进单元强制宽度 */
+.file-tree .ant-tree-indent-unit::before {
+  content: '' !important;
+  display: inline-block !important;
+  width: 40px !important;
+}
+
+.file-tree .ant-tree-switcher {
+  width: 24px !important;
+  min-width: 24px !important;
+  line-height: 28px !important;
+}
+
+/* 确保子节点有足够的左边距 */
+.file-tree .ant-tree-treenode[aria-level="2"] {
+  padding-left: 40px !important;
+}
+
+.file-tree .ant-tree-treenode[aria-level="3"] {
+  padding-left: 80px !important;
+}
+
+.file-tree .ant-tree-treenode[aria-level="4"] {
+  padding-left: 120px !important;
+}
+
+/* 滚动条优化 */
+.file-tree::-webkit-scrollbar {
+  width: 6px;
+}
+
+.file-tree::-webkit-scrollbar-track {
+  background: #f8fafc;
+  border-radius: 3px;
+}
+
+.file-tree::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.file-tree::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
