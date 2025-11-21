@@ -213,7 +213,7 @@ public class NovelCraftController {
 
 
     /**
-     * 流式章节写作
+     * 流式章节写作(弃用 改为 /agentic/generate-chapters-stream)
      * POST /novel-craft/{novelId}/write-chapter-stream
      */
     @PostMapping(value = "/{novelId}/write-chapter-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: jdbc:mysql://45.192.98.207:3306/ai_novel?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&useUnicode=true&characterEncoding=utf8
+    url: jdbc:mysql://localhost:3306/ai_novel?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&useUnicode=true&characterEncoding=utf8
     username: ai_novel
     password: GWRd3MCyBCWNCrWD
 

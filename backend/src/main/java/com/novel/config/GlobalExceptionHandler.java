@@ -99,6 +99,17 @@ public class GlobalExceptionHandler {
     /**
      * 处理其他未捕获的异常
      */
+    @ExceptionHandler(SecurityException.class)
+    public ResponseEntity<Map<String, Object>> handleSecurityException(SecurityException e) {
+        logger.warn("权限异常: {}", e.getMessage());
+
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("error", "权限错误");
+        errorResponse.put("message", e.getMessage());
+
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneralException(Exception e) {
         logger.error("系统异常: {}", e.getMessage(), e);

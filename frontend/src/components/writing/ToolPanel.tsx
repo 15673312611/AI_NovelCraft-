@@ -98,6 +98,8 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
   folders = [],
   documentsMap = {},
   onShowChapterOutline,
+  aiHistory = [],
+  onClearAIHistory,
 }) => {
   const [isLinkedModalVisible, setIsLinkedModalVisible] = useState(false)
   const [isWritingStyleModalVisible, setIsWritingStyleModalVisible] = useState(false)
@@ -172,114 +174,78 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
 
       {/* AI 对话区域 */}
       <div className="ai-chat-area">
-        <div className="ai-chat-history">
-          {/* 生成阶段动画（正文出现前） */}
-          {isGenerating && !hasContentStarted ? (
-            <div
-              style={{
-                padding: '20px',
-                background: '#fafafa',
-                borderRadius: '8px',
-                border: '1px solid #e8e8e8',
-              }}
-            >
-              {/* 加载动画 */}
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  marginBottom: generationPhases.length > 0 ? '16px' : 0,
+        {/* 历史生成入口 */}
+        {aiHistory.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 8,
+            }}
+          >
+            <div style={{ fontSize: 13, color: '#595959' }}>
+              历史生成（{aiHistory.length}）
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button
+                type="link"
+                size="small"
+                onClick={() => {
+                  if (aiHistory.length === 0) return
+                  const latest = aiHistory[0]
+                  navigator.clipboard.writeText(latest.content)
+                  message.success('已复制最新一次生成内容')
                 }}
               >
-                <div
-                  style={{
-                    width: '20px',
-                    height: '20px',
-                    position: 'relative',
-                  }}
-                >
-                  <div
-                    style={{
-                      position: 'absolute',
-                      width: '100%',
-                      height: '100%',
-                      border: '3px solid #e8e8e8',
-                      borderTop: '3px solid #1890ff',
-                      borderRadius: '50%',
-                      animation: 'spin 0.8s linear infinite',
-                    }}
-                  ></div>
-                </div>
-                <span
-                  style={{
-                    fontSize: '15px',
-                    fontWeight: 500,
-                    color: '#1890ff',
-                  }}
-                >
-                  AI 正在生成内容...
+                复制最新
+              </Button>
+              {onClearAIHistory && (
+                <Button type="link" size="small" danger onClick={onClearAIHistory}>
+                  清空历史
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="ai-chat-history">
+          {/* AI生成中动画（仅在未开始内容时显示） */}
+          {isGenerating && !hasContentStarted ? (
+            <div className="ai-generating-box">
+              <div className="generating-spinner">
+                <div className="spinner-outer"></div>
+                <div className="spinner-middle"></div>
+                <div className="spinner-inner"></div>
+              </div>
+              <div className="generating-message">
+                <span className="message-text">AI 生成中</span>
+                <span className="message-dots">
+                  <i></i><i></i><i></i>
                 </span>
               </div>
-
-              {/* 阶段列表 */}
-              {generationPhases.length > 0 && (
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '8px',
-                    paddingLeft: '32px',
-                  }}
-                >
-                  {generationPhases.map((phase, index) => (
-                    <div
-                      key={index}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px',
-                        fontSize: '14px',
-                        color: '#595959',
-                        opacity: index === generationPhases.length - 1 ? 1 : 0.6,
-                        transition: 'opacity 0.3s ease',
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: '6px',
-                          height: '6px',
-                          borderRadius: '50%',
-                          background: index === generationPhases.length - 1 ? '#52c41a' : '#d9d9d9',
-                          flexShrink: 0,
-                        }}
-                      ></div>
-                      <span>{phase}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <style
-                dangerouslySetInnerHTML={{
-                  __html: `
-                    @keyframes spin {
-                      from { transform: rotate(0deg); }
-                      to { transform: rotate(360deg); }
-                    }
-                  `,
-                }}
-              ></style>
             </div>
           ) : null}
 
           {/* AI 生成内容 */}
-          {hasContentStarted && aiOutput ? (
+          {hasContentStarted ? (
             <div className="ai-response-box">
               <div className="ai-response-header">
                 <div className="ai-response-info">
-                  <span className="ai-label">生成结果</span>
-                  <span className="ai-word-count">{wordCount} 字</span>
+                  <span className="ai-label" style={{
+                    color: isGenerating ? '#595959' : '#262626',
+                    fontWeight: 600,
+                  }}>
+                    {isGenerating ? 'AI 生成中...' : '生成结果'}
+                  </span>
+                  <span className="ai-word-count" style={{
+                    background: '#f0f2f5',
+                    padding: '4px 12px',
+                    borderRadius: '12px',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    color: '#595959',
+                  }}>{wordCount} 字</span>
                 </div>
                 <div className="ai-response-actions">
                   <Button
@@ -288,6 +254,10 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
                     icon={<CopyOutlined />}
                     onClick={onCopyAIOutput}
                     disabled={isGenerating}
+                    style={{
+                      borderRadius: '8px',
+                      fontWeight: 500,
+                    }}
                   >
                     复制
                   </Button>
@@ -297,37 +267,68 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
                     icon={<SwapOutlined />}
                     onClick={onReplaceWithAIOutput}
                     disabled={isGenerating}
+                    style={{
+                      borderRadius: '8px',
+                      fontWeight: 500,
+                    }}
                   >
                     替换正文
                   </Button>
                 </div>
               </div>
               <div className="ai-response-content">
-                <div className="ai-text-display">{aiOutput}</div>
+                <div className="ai-text-display" style={{
+                  lineHeight: '1.8',
+                  fontSize: '14px',
+                }}>{aiOutput || '正在接收内容...'}</div>
               </div>
             </div>
           ) : !isGenerating && !aiOutput ? (
-            <div className="ai-chat-empty">
-              <div className="empty-visual-container">
-                <div className="floating-orb orb-1"></div>
-                <div className="floating-orb orb-2"></div>
-                <div className="floating-orb orb-3"></div>
-                <div className="floating-orb orb-4"></div>
-                <div className="central-icon">
-                  <svg viewBox="0 0 100 100" className="ai-icon-svg">
-                    <defs>
-                      <linearGradient id="iconGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" style={{ stopColor: '#1890ff', stopOpacity: 1 }} />
-                        <stop offset="100%" style={{ stopColor: '#52c41a', stopOpacity: 1 }} />
-                      </linearGradient>
-                    </defs>
-                    <circle cx="50" cy="50" r="35" className="icon-circle" />
-                    <path d="M35 40 L50 25 L65 40" className="icon-arrow" />
-                    <path d="M35 60 L50 75 L65 60" className="icon-arrow" />
-                  </svg>
-                </div>
+            <div className="ai-chat-empty" style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: '300px',
+              padding: '40px 20px',
+            }}>
+              <div style={{
+                width: '80px',
+                height: '80px',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                borderRadius: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '24px',
+                boxShadow: '0 8px 24px rgba(102, 126, 234, 0.25)',
+              }}>
+                <svg viewBox="0 0 100 100" style={{ width: '50px', height: '50px' }}>
+                  <defs>
+                    <linearGradient id="iconGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" style={{ stopColor: '#ffffff', stopOpacity: 1 }} />
+                      <stop offset="100%" style={{ stopColor: '#ffffff', stopOpacity: 0.8 }} />
+                    </linearGradient>
+                  </defs>
+                  <circle cx="50" cy="50" r="35" fill="none" stroke="url(#iconGradient)" strokeWidth="3" />
+                  <path d="M35 40 L50 25 L65 40" fill="none" stroke="url(#iconGradient)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M35 60 L50 75 L65 60" fill="none" stroke="url(#iconGradient)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               </div>
-              <div className="empty-title">在这里输入提示，让助手帮你写作</div>
+              <div style={{
+                fontSize: '18px',
+                fontWeight: 600,
+                color: '#262626',
+                marginBottom: '8px',
+              }}>AI 写作助手</div>
+              <div style={{
+                fontSize: '14px',
+                color: '#8c8c8c',
+                textAlign: 'center',
+                lineHeight: '1.6',
+              }}>
+                输入你的构思，让 AI 帮你创作精彩内容
+              </div>
             </div>
           ) : null}
         </div>
@@ -367,7 +368,7 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
           <TextArea
             value={aiInputValue}
             onChange={(e: any) => onChangeAIInput(e.target.value)}
-            placeholder="请输入你的写作需求，例如续写本章、重写一段对话等"
+            placeholder="请输入你的构思或提示，例如：根据本章大纲继续生成故事"
             autoSize={{ minRows: 2, maxRows: 4 }}
             className="ai-input-textarea"
           />
@@ -397,8 +398,19 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
               onClick={onSendAIRequest}
               loading={isGenerating}
               className="send-button"
+              style={{
+                background: isGenerating ? '#d9d9d9' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                border: 'none',
+                borderRadius: '8px',
+                height: '40px',
+                padding: '0 24px',
+                fontSize: '15px',
+                fontWeight: 600,
+                boxShadow: isGenerating ? 'none' : '0 4px 12px rgba(102, 126, 234, 0.3)',
+                transition: 'all 0.3s ease',
+              }}
             >
-              生成
+              {isGenerating ? 'AI 生成中...' : '生成'}
             </Button>
           </div>
         </div>
@@ -631,4 +643,3 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
 }
 
 export default ToolPanel
-

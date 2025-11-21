@@ -70,11 +70,18 @@ public class VolumeChapterOutlineService {
             throw new RuntimeException("缺少已确认的全书大纲(plotStructure)");
         }
 
+        NovelVolume nextVolume = null;
+        Integer currentVolumeNumber = volume.getVolumeNumber();
+        if (currentVolumeNumber != null) {
+            nextVolume = volumeMapper.selectByVolumeNumber(volume.getNovelId(), currentVolumeNumber + 1);
+        }
+
         // 历史未回收伏笔池（ACTIVE）
         List<NovelForeshadowing> unresolved = foreshadowingRepository.findByNovelIdAndStatus(
                 volume.getNovelId(), "ACTIVE");
 
-        String prompt = buildPrompt(novel, volume, superOutline, unresolved, count);
+        //章纲提示词
+        String prompt = buildPrompt(novel, volume, nextVolume, superOutline, unresolved, count);
         List<Map<String, String>> messages = buildMessages(prompt);
 
         logger.info("🤖 调用AI批量生成卷章纲，volumeId={}, count={}, promptLen={}", volumeId, count, prompt.length());
@@ -131,9 +138,137 @@ public class VolumeChapterOutlineService {
         return result;
     }
 
+    @Transactional
+    public VolumeChapterOutline generateOutlineFromChapterContent(Chapter chapter, AIConfigRequest aiConfig) {
+        if (chapter == null) {
+            return null;
+        }
+        if (aiConfig == null || !aiConfig.isValid()) {
+            throw new RuntimeException("AI配置无效，请先在设置页面配置AI服务");
+        }
+        if (chapter.getContent() == null || chapter.getContent().trim().isEmpty()) {
+            logger.warn("章节内容为空，跳过章纲生成: novelId={}, chapter={}", chapter.getNovelId(), chapter.getChapterNumber());
+            return null;
+        }
+
+        Long novelId = chapter.getNovelId();
+        Integer chapterNumber = chapter.getChapterNumber();
+
+        com.novel.domain.entity.NovelVolume volume = volumeMapper.selectByChapterNumber(novelId, chapterNumber);
+        if (volume == null) {
+            logger.warn("未找到章节所属卷，跳过章纲生成: novelId={}, chapter={}", novelId, chapterNumber);
+            return null;
+        }
+
+        Novel novel = novelRepository.selectById(volume.getNovelId());
+        if (novel == null) {
+            logger.warn("小说不存在，跳过章纲生成: novelId={}", volume.getNovelId());
+            return null;
+        }
+
+        NovelOutline superOutline = outlineRepository.findByNovelIdAndStatus(
+                volume.getNovelId(), NovelOutline.OutlineStatus.CONFIRMED).orElse(null);
+        if (superOutline == null || isBlank(superOutline.getPlotStructure())) {
+            logger.warn("缺少已确认的全书大纲，跳过章纲生成: novelId={}", volume.getNovelId());
+            return null;
+        }
+
+        NovelVolume nextVolume = null;
+        Integer currentVolumeNumber = volume.getVolumeNumber();
+        if (currentVolumeNumber != null) {
+            nextVolume = volumeMapper.selectByVolumeNumber(volume.getNovelId(), currentVolumeNumber + 1);
+        }
+
+        List<NovelForeshadowing> unresolved = foreshadowingRepository.findByNovelIdAndStatus(
+                volume.getNovelId(), "ACTIVE");
+
+        String basePrompt = buildPrompt(novel, volume, nextVolume, superOutline, unresolved, 1);
+
+        String chapterContent = chapter.getContent();
+        if (chapterContent.length() > 4000) {
+            chapterContent = chapterContent.substring(0, 4000) + "...";
+        }
+
+        StringBuilder promptBuilder = new StringBuilder();
+        promptBuilder.append(basePrompt);
+        promptBuilder.append("\n\n");
+        promptBuilder.append("# 已有章节正文（用于校准本章章纲）\n");
+        promptBuilder.append("下面是卷内本章的实际小说内容，请根据正文调整本章的方向、关键剧情点和情绪，使章纲与已写内容严格对齐：\n");
+        promptBuilder.append("【全局章节号：").append(chapterNumber).append("】\n");
+        promptBuilder.append("【章节标题：").append(s(chapter.getTitle())).append("】\n");
+        promptBuilder.append("【章节正文节选】\n");
+        promptBuilder.append(chapterContent).append("\n\n");
+        promptBuilder.append("请仍然只输出一个JSON数组，长度为1，对应该章的章纲。");
+
+        List<Map<String, String>> messages = buildMessages(promptBuilder.toString());
+
+        String raw;
+        try {
+            raw = aiWritingService.generateContentWithMessages(messages, "chapter_outline_from_content", aiConfig);
+        } catch (Exception e) {
+            logger.error("AI按正文生成章纲失败: novelId={}, chapter={}, 错误={}", novelId, chapterNumber, e.getMessage(), e);
+            throw new RuntimeException("AI服务调用失败: " + e.getMessage());
+        }
+
+        String json = extractPureJson(raw);
+        List<Map<String, Object>> outlines;
+        try {
+            outlines = mapper.readValue(json, new TypeReference<List<Map<String, Object>>>(){});
+        } catch (Exception e) {
+            logger.error("解析按正文生成的章纲失败: novelId={}, chapter={}, 错误={}", novelId, chapterNumber, e.getMessage(), e);
+            throw new RuntimeException("解析章纲失败，请检查AI返回格式: " + e.getMessage());
+        }
+
+        if (outlines == null || outlines.isEmpty()) {
+            logger.error("AI返回空章纲，跳过: novelId={}, chapter={}", novelId, chapterNumber);
+            return null;
+        }
+
+        Map<String, Object> outline = outlines.get(0);
+
+        VolumeChapterOutline entity = outlineRepo.findByNovelAndGlobalChapter(novelId, chapterNumber);
+        if (entity == null) {
+            entity = new VolumeChapterOutline();
+            entity.setNovelId(volume.getNovelId());
+            entity.setVolumeId(volume.getId());
+            entity.setVolumeNumber(volume.getVolumeNumber());
+        }
+
+        Integer chapterInVolume = null;
+        if (volume.getChapterStart() != null) {
+            chapterInVolume = chapterNumber - volume.getChapterStart() + 1;
+        }
+        if (chapterInVolume == null || chapterInVolume <= 0) {
+            Object civ = outline.get("chapterInVolume");
+            if (civ instanceof Number) {
+                chapterInVolume = ((Number) civ).intValue();
+            } else {
+                chapterInVolume = chapterNumber;
+            }
+        }
+
+        entity.setChapterInVolume(chapterInVolume);
+        entity.setGlobalChapterNumber(chapterNumber);
+        entity.setDirection(getString(outline, "direction"));
+        entity.setKeyPlotPoints(toJson(outline.get("keyPlotPoints")));
+        entity.setEmotionalTone(getString(outline, "emotionalTone"));
+        entity.setForeshadowAction(getString(outline, "foreshadowAction"));
+        entity.setForeshadowDetail(toJson(outline.get("foreshadowDetail")));
+        entity.setSubplot(getString(outline, "subplot"));
+        entity.setAntagonism(toJson(outline.get("antagonism")));
+        entity.setStatus("WRITTEN");
+
+        if (entity.getId() == null) {
+            outlineRepo.insert(entity);
+        } else {
+            outlineRepo.updateById(entity);
+        }
+
+        return entity;
+    }
+
     private List<Map<String, String>> buildMessages(String prompt) {
         List<Map<String, String>> msgs = new ArrayList<>();
-        msgs.add(msg("system", "你是资深长篇小说/网文的编剧与结构设计专家，擅长节奏控制、反预期设计与伏笔管理。严格输出纯净JSON，不包含任何多余说明；遵守知识边界与世界规则；任何揭露必须有前文锚点支撑，否则降级为加深。"));
         msgs.add(msg("user", prompt));
         return msgs;
     }
@@ -145,27 +280,42 @@ public class VolumeChapterOutlineService {
         return m;
     }
 
-    private String buildPrompt(Novel novel, NovelVolume volume, NovelOutline superOutline,
+    private String buildPrompt(Novel novel, NovelVolume volume, NovelVolume nextVolume, NovelOutline superOutline,
                                List<NovelForeshadowing> unresolved, int count) {
         StringBuilder sb = new StringBuilder();
+
         sb.append("# 角色\n")
-          .append("你是一名拥有十年创作经验、精通市场分析的网文金牌编辑兼爆款作家,你的笔名是“墨染江湖”。你深谙爽点设计、黄金三章、人物弧光、节奏把控等核心技巧，同时对玄幻、都市、科幻、仙侠、女频、悬疑等主流题材了如指掌 剧情要有意思不能太按部就班。。你的目标：为当前卷一次性生成").append(count)
-          .append("个章纲，保证跌宕起伏、反套路、人设立体，并合理地“埋/提/加深/回收”伏笔。\n\n");
+          .append("你是一名长期观察各类畅销作品数据的网文总策划兼金牌编辑。你不预设具体题材，也不套用单一类型的固定公式，只根据【全书大纲】和【本卷蓝图】来判断何时该提速、何时该蓄势。\n");
+        sb.append("你的任务是：为当前这一卷一次性规划出").append(count)
+          .append("个章节的【章纲】。章纲只负责说明每章要发生什么、为什么重要，以及大致情绪走向，不负责具体场景、对话或文风设计，这些交给后续写作AI自由发挥。\n\n");
 
         sb.append("# 小说信息\n")
           .append("- 标题：").append(s(novel.getTitle())).append("\n")
           .append("- 简介/构思：").append(s(novel.getDescription())).append("\n\n");
 
-        sb.append("# 全书大纲（精华）\n").append(s(limit(superOutline.getPlotStructure(), 6000))).append("\n\n");
+        sb.append("# 全书大纲\n").append(s(limit(superOutline.getPlotStructure(), 12000))).append("\n\n");
 
         sb.append("# 本卷信息\n")
-          .append("- 卷序：第").append(nz(volume.getVolumeNumber(), "?"))
-          .append("卷\n")
+          .append("- 卷序：第").append(nz(volume.getVolumeNumber(), "?")).append("卷\n")
           .append("- 卷名：").append(s(volume.getTitle())).append("\n")
           .append("- 主题：").append(s(volume.getTheme())).append("\n")
-          .append("- 卷蓝图（contentOutline）：\n").append(s(limit(volume.getContentOutline(), 4000))).append("\n")
-          .append("- 章节范围：").append(volume.getChapterStart() != null && volume.getChapterEnd() != null
-                    ? ("第" + volume.getChapterStart() + "-" + volume.getChapterEnd() + "章") : "未指定").append("\n\n");
+          .append("- 卷蓝图（contentOutline）：\n").append(s(limit(volume.getContentOutline(), 8000))).append("\n")
+          .append("- 章节范围：")
+          .append(volume.getChapterStart() != null && volume.getChapterEnd() != null
+                    ? ("第" + volume.getChapterStart() + "-" + volume.getChapterEnd() + "章") : "未指定")
+          .append("\n\n");
+
+        if (nextVolume != null) {
+            sb.append("# 下一卷信息（供节奏规划参考）\n")
+              .append("- 下一卷序：第").append(nz(nextVolume.getVolumeNumber(), "?")).append("卷\n")
+              .append("- 下一卷卷名：").append(s(nextVolume.getTitle())).append("\n")
+              .append("- 下一卷主题：").append(s(nextVolume.getTheme())).append("\n")
+              .append("- 下一卷蓝图（contentOutline）：\n").append(s(limit(nextVolume.getContentOutline(), 4000))).append("\n")
+              .append("- 下一卷章节范围：")
+              .append(nextVolume.getChapterStart() != null && nextVolume.getChapterEnd() != null
+                        ? ("第" + nextVolume.getChapterStart() + "-" + nextVolume.getChapterEnd() + "章") : "未指定")
+              .append("\n\n");
+        }
 
         sb.append("# 历史未回收伏笔池（供决策）\n");
         if (unresolved != null && !unresolved.isEmpty()) {
@@ -182,52 +332,45 @@ public class VolumeChapterOutlineService {
         sb.append("\n");
 
         sb.append("# 章纲生成目标\n")
-          .append("- 数量：恰好").append(count).append("章（不可多也不可少）\n")
-          .append("- 节奏：必须有起承转合与波峰，至少30%章节含反转/意外；高潮与翻盘要穿插。\n")
-          .append("- 人设：强化人物动机与内在冲突，兼顾支线与成长弧。\n")
-          .append("- 反套路：避免“读者一眼看穿”的直线发展，注意因果闭环。\n")
-          .append("- 通用性：适用于都市/奇幻/科幻/历史/仙侠/言情/玄幻等多类型长篇叙事，避免类型专属套路的绑定。\n")
-          .append("- 知识边界与世界规则：不得让角色知道其不应知道的信息；不得临时创造关键世界规则。若存在不确定性，用PLANT/DEEPEN而非RESOLVE。\n")
-          .append("- 伏笔管理：允许四类动作——PLANT(埋)、REFERENCE(提及提醒)、DEEPEN(加深推进)、RESOLVE(回收)。\n")
-          .append("  - 若本卷伏笔已过多，可减少PLANT，多用REFERENCE/DEEPEN；只有剧情节点成熟时才RESOLVE。\n")
-          .append("  - 新埋长期伏笔请提供建议回收窗口（如minVol/maxVol），避免一卷内全收。\n")
-          .append("- 揭露(RESOLVE)的硬约束（gating）：\n")
-          .append("  1) 必须引用前文已存在的证据锚点(anchors)≥2；\n")
-          .append("  2) 锚点时间先于揭露章节；\n")
-          .append("  3) 知识边界合法：揭露的信息来源与知情人合理；\n")
-          .append("  4) 因果闭环与代价成立（揭露带来明确后果/成本）。\n")
-          .append("  若不满足上述条件，则自动降级为DEEPEN，并安排1-2个新的anchors以备后续回收。\n\n");
+          .append("- 数量：恰好").append(count).append("章（不可多也不可少）。\n")
+          .append("- 黄金三章：本卷最前面的若干章（至少前三个章纲）必须承担“拉读者入坑”的职责：从打破平静或打破惯性的位置切入，而不是平铺日常介绍；让主角在早期就面对清晰的欲望或目标，并被迫做出难以轻易撤回的选择；这些选择要带来实际代价或风险（例如失去某种资源、关系矛盾被抬高、局势明显恶化等）；每一章结尾都要留下尚未解决的问题、危险或情绪张力，形成继续阅读的动力。在不破坏全书大方向的前提下，黄金三章可以适度偏离原始规划，以换取更强的吸引力，后续章节再逐步校正走向。\n")
+          .append("- 节奏波浪：整卷必须存在明显的起伏，而不是匀速推进。要有高压推进的章节，也要有短暂缓冲或蓄势的章节，还要有阶段性的翻盘/崩盘节点；同一条主线可以经历多轮起落，而不是一次性解决。在每章的 direction 和 keyPlotPoints 中，用自然语言体现这一章大致处于“加压推进”“短暂缓和”还是“阶段翻盘/崩塌”，但不要输出专门的标签或编号。\n")
+          .append("- 人物与动机：每一章的关键事件尽量由人物的欲望、恐惧或立场推动，而不是纯粹的外部巧合。章纲里要点出人物在本章“想要什么/害怕什么”，以便后续写作时围绕人物驱动剧情。\n")
+          .append("- 反直线发展：在不牺牲逻辑自洽的前提下，优先考虑比“最直接解法”略微出乎意料的推进方式，如绕行、延迟、误判后反噬等，但不要为了“反转而反转”。\n")
+          .append("- 适配任意题材：不要假定具体世界观或题材，只基于输入的大纲和蓝图来判断冲突强度与节奏位置，使设计对任何题材都成立。\n")
+          .append("- 世界与知识边界：不得让角色掌握其不应知道的信息，不得临时创造改变世界规则走向的关键设定。存在不确定性时，更倾向于通过PLANT/DEEPEN埋伏笔或加深，而不是直接RESOLVE完全解释。\n")
+          .append("- 伏笔管理：允许PLANT(埋)、REFERENCE(提及/提醒)、DEEPEN(加深/升级)、RESOLVE(回收)四类动作。若本卷已存在大量未回收伏笔，应收敛新增PLANT，多用REFERENCE/DEEPEN；只有当剧情节点成熟、证据和铺垫充足时才考虑RESOLVE。\n")
+          .append("  - 新埋长期伏笔时，请在 foreshadowDetail 中给出大致回收窗口（如最早/最晚大致卷或章节区间），避免在一卷内全部解决。\n")
+          .append("- 角色命名规则：若在【小说信息】【全书大纲】【本卷信息】中已经出现了明确的人名（主角、重要配角等），本卷章纲中继续使用这些姓名，不得为同一角色改名或另起新名；对于仅以关系/身份存在而未命名的角色（如“继母”“父亲”等），章纲中只使用这类称谓指代，不要新起具体姓名。\n\n");
 
         sb.append("# 逻辑自洽（章内）\n")
-          .append("- 因果闭环：本章关键事件需具备‘触发→行动→结果→后果’，禁止无因果跳跃或‘天降资源’、作者喂饭。\n")
-          .append("- 知识边界：角色只能基于其已知信息行动，情报来源可自洽解释；不得预知未来或读者视角。\n")
-          .append("- 能力边界：人物能力与限制前后一致；若突破，必须给出铺垫与代价（风险/副作用/牺牲）。\n")
-          .append("- 反派不降智：其行动与资源、信息边界相匹配，避免为推动剧情而犯低级错误。\n")
-          .append("- 时间承接：承接上一章/上一卷状态，避免状态跳变；必要时用一句话说明状态变化原因。\n")
-          .append("- 剧情不平淡：每章必须产生‘推进’（目标/冲突/发现/代价其一），严禁纯过场或流水账。\n\n");
+          .append("- 因果闭环：本章关键事件需具备“触发→行动→结果→后果”的链条，避免无因果跳跃或凭空获得关键资源。\n")
+          .append("- 知识边界：角色只能基于其已知或合理可获得的信息行动，必要时在章纲中简要说明信息来源，不使用上帝视角。\n")
+          .append("- 能力边界：人物能力与限制前后一致；如需突破，章纲中要体现相应的铺垫或代价（例如资源消耗、负面后果等）。\n")
+          .append("- 对手不降智：对立方的策略与其资源、性格和信息边界相匹配，避免为了推动剧情而做明显不合逻辑的决定。\n")
+          .append("- 时间承接：注意承接上一卷/上一章的状态，如有较大跳变，需在章纲中用一句话说明发生了什么过渡。\n")
+          .append("- 剧情不平淡：每章至少应在目标推进、冲突升级、重要发现或付出代价四者之一上有实质进展，避免纯过场或流水账。\n\n");
 
-        sb.append("# 反套路与亮点设计\n")
-          .append("- 亮点/记忆点：每章至少1个‘记忆点’（高能场面/狠台词/高智博弈/极限选择/价值观冲突）。\n")
-          .append("- 非直线推进：避免‘冲突→碾压→结束’的直线流程，提倡多阶段博弈、以退为进、声东击西、误导与反噬。\n")
-          .append("- 人设深化：通过行动与选择刷新角色标签，在关键节点呈现【人物高光】。\n")
-          .append("- 钩子：章末尽量给出情绪/信息钩子（悬念/危机/选择/反常信号），提升续读欲。\n\n");
+        sb.append("# 节奏提示\n")
+          .append("- 避免“一碰就赢”或“一味挨打”的直线节奏，多考虑拉锯、反复试探和阶段性停顿，让读者能感到波动而不是匀速。\n")
+          .append("- 如需设置某章为节奏缓和段，章纲里仍应保留至少一个信息点、情绪转折点或人物关系变化点，避免成为完全可删章节。\n")
+          .append("- 章末尽量安排情绪或信息上的“未完待续”（未解决的问题、悬而未决的选择、隐隐加重的危机等），增强续读意愿。\n\n");
 
         sb.append("# 输出格式（严格JSON数组，不含任何多余文本）\n")
           .append("数组长度必须为").append(count).append("。每个元素是一个对象，字段如下：\n")
           .append("- chapterInVolume: number（1..N）\n")
           .append("- globalChapterNumber: number|null（若已知卷起始章节则给出全局章节号，否则null）\n")
-          .append("- direction: string（本章剧情方向，简练有力）\n")
-          .append("- keyPlotPoints: string[]（3-6条，使用标签标注关键性：如【亮点】/【人物高光】/【反转】；强调冲突、抉择、代价、后果）\n")
-          .append("- emotionalTone: string（如：危机/逆转/悬疑/温情/黑暗/希望/燃）\n")
+          .append("- direction: string（本章剧情方向，用简短语句概括本章的主要推进）\n")
+          .append("- keyPlotPoints: string[]（3-6条，按顺序概括本章关键事件或抉择，每条一句话，不写具体文案）\n")
+          .append("- emotionalTone: string（用少数词语概括本章整体情绪氛围）\n")
           .append("- foreshadowAction: string（NONE|PLANT|REFERENCE|DEEPEN|RESOLVE）\n")
           .append("- foreshadowDetail: object|null（{refId?:number, content?:string, targetResolveVolume?:number, resolveWindow?:{min?:number,max?:number}, anchorsUsed?:Array<{vol?:number, ch?:number, hint:string}>, futureAnchorPlan?:string, cost?:string}）\n")
-          .append("  - 当 foreshadowAction=RESOLVE 时：必须提供 anchorsUsed，且长度≥2；否则请自动降级为 DEEPEN。\n")
-          .append("  - 当 foreshadowAction=PLANT 或 DEEPEN 时：应提供 futureAnchorPlan（简述后续锚点计划）。\n")
-          .append("- subplot: string（可选，支线/人设刻画/世界观探索等）\n")
+          .append("  - 当 foreshadowAction=RESOLVE 时：应优先提供 anchorsUsed，且不少于2个清晰可识别的前文锚点；若难以满足，请自动降级为 DEEPEN。\n")
+          .append("  - 当 foreshadowAction=PLANT 或 DEEPEN 时：可在 futureAnchorPlan 中简要描述后续将如何逐步增加锚点或制造记忆点。\n")
+          .append("- subplot: string（可选，用一两句话说明本章若涉及的支线或人物刻画要点）\n")
           .append("- antagonism: object（可选，对手/阻力与赌注，如{opponent:string, stakes:string}）\n\n")
           .append("只输出一个纯净的JSON数组，不要markdown，不要代码块，不要解释。\n\n");
 
-        // 为AI计算全局章节号提供提示
         Integer start = volume.getChapterStart();
         if (start != null) {
             sb.append("# 章节编号提示\n")
@@ -416,4 +559,3 @@ public class VolumeChapterOutlineService {
     private static String nz(Object v, Object def) { return String.valueOf(v == null ? def : v); }
     private static String limit(String v, int max) { if (v == null) return ""; return v.length() > max ? v.substring(0, max) + "..." : v; }
 }
-

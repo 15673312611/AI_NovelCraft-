@@ -749,6 +749,11 @@ const VolumeManagementPage: React.FC = () => {
             updateData.totalWordTarget = values.targetWords;
             console.log('[handleGenerateVolumes] 保存目标总字数到小说:', values.targetWords);
           }
+          // 同步保存每章字数到小说配置，供后续写作阶段使用
+          if (values.wordsPerChapter) {
+            updateData.wordsPerChapter = values.wordsPerChapter;
+            console.log('[handleGenerateVolumes] 保存每章字数到小说:', values.wordsPerChapter);
+          }
           
           if (Object.keys(updateData).length > 0) {
             await api.put(`/novels/${novelId}`, {

@@ -4,6 +4,7 @@ import com.novel.domain.entity.NovelOutline;
 import com.novel.domain.entity.Novel;
 import com.novel.repository.NovelOutlineRepository;
 import com.novel.repository.NovelRepository;
+import com.novel.common.security.AuthUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,6 +54,10 @@ public class NovelOutlineService {
      */
     @Transactional
     public NovelOutline generateInitialOutline(Long novelId, String basicIdea, Integer targetWordCount, Integer targetChapterCount) {
+        Long currentUserId = AuthUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new SecurityException("用户未登录，无法生成大纲");
+        }
         // 检查小说是否存在
         Novel novel = novelRepository.selectById(novelId);
         if (novel == null) {

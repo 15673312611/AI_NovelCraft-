@@ -74,14 +74,14 @@ public interface NovelDocumentMapper {
     @Select("SELECT id, novel_id, folder_id, title, content, document_type, word_count, sort_order, created_at, updated_at " +
             "FROM (" +
             "  SELECT id, novel_id, NULL as folder_id, title, content, 'chapter' as document_type, " +
-            "         word_count, sort_order, created_at, updated_at " +
+            "         word_count, order_num AS sort_order, created_at, updated_at " +
             "  FROM chapters " +
             "  WHERE novel_id = #{novelId} AND (title LIKE CONCAT('%', #{keyword}, '%') OR content LIKE CONCAT('%', #{keyword}, '%')) " +
             "  UNION ALL " +
-            "  SELECT id, novel_id, folder_id, title, content, document_type, " +
-            "         word_count, sort_order, created_at, updated_at " +
-            "  FROM novel_document " +
-            "  WHERE novel_id = #{novelId} AND (title LIKE CONCAT('%', #{keyword}, '%') OR content LIKE CONCAT('%', #{keyword}, '%')) " +
+            "  SELECT NULL AS id, NULL AS novel_id, NULL AS folder_id, NULL AS title, NULL AS content, " +
+            "         NULL AS document_type, NULL AS word_count, NULL AS sort_order, " +
+            "         NULL AS created_at, NULL AS updated_at " +
+            "  FROM DUAL WHERE 1 = 0 " +
             ") AS combined_results " +
             "ORDER BY updated_at DESC")
     List<NovelDocument> searchDocuments(@Param("novelId") Long novelId, @Param("keyword") String keyword);

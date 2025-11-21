@@ -4,6 +4,7 @@ import com.novel.common.Result;
 import com.novel.dto.AIConfigRequest;
 import com.novel.service.AIPolishService;
 import com.novel.service.AITraceRemovalService;
+import com.novel.service.AIProofreadService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,16 +26,22 @@ public class AIController {
     private final AITraceRemovalService aiTraceRemovalService;
     private final com.novel.service.AIManuscriptReviewService manuscriptReviewService;
     private final AIPolishService aiPolishService;
+    private final com.novel.service.AIStreamlineService streamlineService;
+    private final AIProofreadService aiProofreadService;
 
     @Autowired
     public AIController(
             AITraceRemovalService aiTraceRemovalService,
             com.novel.service.AIManuscriptReviewService manuscriptReviewService,
-            AIPolishService aiPolishService
+            AIPolishService aiPolishService,
+            com.novel.service.AIStreamlineService streamlineService,
+            AIProofreadService aiProofreadService
     ) {
         this.aiTraceRemovalService = aiTraceRemovalService;
         this.manuscriptReviewService = manuscriptReviewService;
         this.aiPolishService = aiPolishService;
+        this.streamlineService = streamlineService;
+        this.aiProofreadService = aiProofreadService;
     }
 
     @PostMapping("/polish-selection")
@@ -83,6 +90,65 @@ public class AIController {
         } catch (Exception e) {
             logger.error("AI润色片段失败", e);
             return Result.error("AI润色失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * AI智能纠错接口
+     * 前端通过 /ai/proofread 调用，返回检测到的错误列表
+     */
+    @PostMapping("/proofread")
+    public Result<Map<String, Object>> proofread(@RequestBody Map<String, Object> request) {
+        try {
+            String content = (String) request.get("content");
+
+            if (content == null || content.trim().isEmpty()) {
+                return Result.error("内容不能为空");
+            }
+
+            // 角色名称列表（可选）
+            java.util.List<String> characterNames = new java.util.ArrayList<>();
+            Object namesObj = request.get("characterNames");
+            if (namesObj instanceof java.util.List) {
+                for (Object o : (java.util.List<?>) namesObj) {
+                    if (o != null) {
+                        characterNames.add(o.toString());
+                    }
+                }
+            }
+
+            // 解析AI配置（前端withAIConfig是扁平化的，直接从根级别读取；同时兼容嵌套aiConfig）
+            AIConfigRequest aiConfig = new AIConfigRequest();
+            if (request.containsKey("provider")) {
+                aiConfig.setProvider((String) request.get("provider"));
+                aiConfig.setApiKey((String) request.get("apiKey"));
+                aiConfig.setModel((String) request.get("model"));
+                aiConfig.setBaseUrl((String) request.get("baseUrl"));
+            } else if (request.get("aiConfig") instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
+                aiConfig.setProvider(aiConfigMap.get("provider"));
+                aiConfig.setApiKey(aiConfigMap.get("apiKey"));
+                aiConfig.setModel(aiConfigMap.get("model"));
+                aiConfig.setBaseUrl(aiConfigMap.get("baseUrl"));
+            }
+
+            if (!aiConfig.isValid()) {
+                logger.error("❌ AI纠错 - AI配置无效: request={}", request);
+                return Result.error("AI配置无效，请先在设置页面配置AI服务");
+            }
+
+            java.util.List<AIProofreadService.ProofreadError> errors =
+                    aiProofreadService.proofread(content, characterNames, aiConfig);
+
+            Map<String, Object> data = new java.util.HashMap<>();
+            data.put("errors", errors);
+            data.put("errorCount", errors != null ? errors.size() : 0);
+            return Result.success(data);
+
+        } catch (Exception e) {
+            logger.error("AI纠错失败", e);
+            return Result.error("AI纠错失败: " + e.getMessage());
         }
     }
 
@@ -297,6 +363,81 @@ public class AIController {
         
         return emitter;
     }
+    
+    /**
+     * AI精简接口（流式）
+     * 对章节内容进行精简优化，去除冗余片段，加快剧情节奏，使用SSE流式输出
+     */
+    @PostMapping(value = "/streamline-content-stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter streamlineContentStream(@RequestBody Map<String, Object> request) {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter = new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(300000L);
+        
+        try {
+            String content = (String) request.get("content");
+            
+            if (content == null || content.trim().isEmpty()) {
+                emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                    .name("error").data("内容不能为空"));
+                emitter.completeWithError(new Exception("内容不能为空"));
+                return emitter;
+            }
+            
+            // 解析AI配置
+            AIConfigRequest aiConfig = new AIConfigRequest();
+            if (request.containsKey("provider")) {
+                aiConfig.setProvider((String) request.get("provider"));
+                aiConfig.setApiKey((String) request.get("apiKey"));
+                aiConfig.setModel((String) request.get("model"));
+                aiConfig.setBaseUrl((String) request.get("baseUrl"));
+                
+                logger.info("✅ AI精简流式 - 收到AI配置: provider={}, model={}", 
+                    aiConfig.getProvider(), aiConfig.getModel());
+            } else if (request.get("aiConfig") instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
+                aiConfig.setProvider(aiConfigMap.get("provider"));
+                aiConfig.setApiKey(aiConfigMap.get("apiKey"));
+                aiConfig.setModel(aiConfigMap.get("model"));
+                aiConfig.setBaseUrl(aiConfigMap.get("baseUrl"));
+            }
+            
+            if (!aiConfig.isValid()) {
+                logger.error("❌ AI精简流式 - AI配置无效: request={}", request);
+                emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                    .name("error").data("AI配置无效，请先在设置页面配置AI服务"));
+                emitter.completeWithError(new Exception("AI配置无效"));
+                return emitter;
+            }
+            
+            logger.info("✂️ 开始AI精简流式处理，内容长度: {}, 使用模型: {}", content.length(), aiConfig.getModel());
+            
+            // 异步执行AI精简
+            java.util.concurrent.CompletableFuture.runAsync(() -> {
+                try {
+                    streamlineService.streamlineContentStream(content, aiConfig, emitter);
+                } catch (Exception e) {
+                    logger.error("AI精简流式处理失败", e);
+                    try {
+                        emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                            .name("error").data("精简失败: " + e.getMessage()));
+                        emitter.completeWithError(e);
+                    } catch (Exception ex) {
+                        logger.error("发送错误事件失败", ex);
+                    }
+                }
+            });
+            
+        } catch (Exception e) {
+            logger.error("AI精简初始化失败", e);
+            try {
+                emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                    .name("error").data("初始化失败: " + e.getMessage()));
+                emitter.completeWithError(e);
+            } catch (Exception ex) {
+                logger.error("发送错误事件失败", ex);
+            }
+        }
+        
+        return emitter;
+    }
 }
-
-

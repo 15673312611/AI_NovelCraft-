@@ -1009,16 +1009,34 @@ public class Neo4jGraphService implements IGraphService {
 
     @Override
     public void upsertCharacterState(Long novelId, String characterName, String location, String realm, Boolean alive, Integer chapterNumber) {
-        String cypher =
-            "MERGE (s:CharacterState {novelId: $novelId, characterName: $characterName}) " +
-            "SET s.location = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN coalesce($location, s.location) ELSE s.location END, " +
-            "    s.realm = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN coalesce($realm, s.realm) ELSE s.realm END, " +
-            "    s.alive = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN coalesce($alive, s.alive) ELSE s.alive END, " +
-            "    s.lastUpdatedChapter = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN $chapterNumber ELSE s.lastUpdatedChapter END, " +
-            "    s.updatedAt = datetime() " +
-            "RETURN s";
-
         try (Session session = driver.session()) {
+            // 🆕 步骤1：保存当前状态到历史快照（如果存在）
+            String saveHistoryQuery =
+                "MATCH (s:CharacterState {novelId: $novelId, characterName: $characterName}) " +
+                "WHERE s.lastUpdatedChapter IS NOT NULL " +
+                "CREATE (h:CharacterStateHistory {" +
+                "  novelId: $novelId, " +
+                "  characterName: $characterName, " +
+                "  location: s.location, " +
+                "  realm: s.realm, " +
+                "  alive: s.alive, " +
+                "  inventory: s.inventory, " +
+                "  chapterNumber: s.lastUpdatedChapter, " +
+                "  createdAt: datetime()" +
+                "})";
+            
+            session.run(saveHistoryQuery, Map.of("novelId", novelId, "characterName", characterName));
+            
+            // 步骤2：更新当前状态
+            String cypher =
+                "MERGE (s:CharacterState {novelId: $novelId, characterName: $characterName}) " +
+                "SET s.location = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN coalesce($location, s.location) ELSE s.location END, " +
+                "    s.realm = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN coalesce($realm, s.realm) ELSE s.realm END, " +
+                "    s.alive = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN coalesce($alive, s.alive) ELSE s.alive END, " +
+                "    s.lastUpdatedChapter = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN $chapterNumber ELSE s.lastUpdatedChapter END, " +
+                "    s.updatedAt = datetime() " +
+                "RETURN s";
+
             Map<String, Object> params = new HashMap<>();
             params.put("novelId", novelId);
             params.put("characterName", characterName);
@@ -1067,15 +1085,37 @@ public class Neo4jGraphService implements IGraphService {
 
     @Override
     public void upsertRelationshipState(Long novelId, String characterA, String characterB, String type, Double strength, Integer chapterNumber) {
-        String cypher =
-            "WITH CASE WHEN $a < $b THEN $a ELSE $b END AS a, CASE WHEN $a < $b THEN $b ELSE $a END AS b " +
-            "MERGE (r:RelationshipState {novelId: $novelId, a: a, b: b}) " +
-            "SET r.type = coalesce($type, r.type), " +
-            "    r.strength = coalesce($strength, r.strength, 0.5), " +
-            "    r.lastUpdatedChapter = CASE WHEN $chapterNumber >= coalesce(r.lastUpdatedChapter,-1) THEN $chapterNumber ELSE r.lastUpdatedChapter END, " +
-            "    r.updatedAt = datetime()";
-
         try (Session session = driver.session()) {
+            // 🆕 步骤1：保存当前状态到历史快照（如果存在）
+            String saveHistoryQuery =
+                "WITH CASE WHEN $a < $b THEN $a ELSE $b END AS a, CASE WHEN $a < $b THEN $b ELSE $a END AS b " +
+                "MATCH (r:RelationshipState {novelId: $novelId, a: a, b: b}) " +
+                "WHERE r.lastUpdatedChapter IS NOT NULL " +
+                "CREATE (h:RelationshipStateHistory {" +
+                "  novelId: $novelId, " +
+                "  a: a, " +
+                "  b: b, " +
+                "  type: r.type, " +
+                "  strength: r.strength, " +
+                "  chapterNumber: r.lastUpdatedChapter, " +
+                "  createdAt: datetime()" +
+                "})"; 
+            
+            Map<String, Object> historyParams = new HashMap<>();
+            historyParams.put("novelId", novelId);
+            historyParams.put("a", characterA);
+            historyParams.put("b", characterB);
+            session.run(saveHistoryQuery, historyParams);
+            
+            // 步骤2：更新当前状态
+            String cypher =
+                "WITH CASE WHEN $a < $b THEN $a ELSE $b END AS a, CASE WHEN $a < $b THEN $b ELSE $a END AS b " +
+                "MERGE (r:RelationshipState {novelId: $novelId, a: a, b: b}) " +
+                "SET r.type = coalesce($type, r.type), " +
+                "    r.strength = coalesce($strength, r.strength, 0.5), " +
+                "    r.lastUpdatedChapter = CASE WHEN $chapterNumber >= coalesce(r.lastUpdatedChapter,-1) THEN $chapterNumber ELSE r.lastUpdatedChapter END, " +
+                "    r.updatedAt = datetime()";
+
             Map<String, Object> params = new HashMap<>();
             params.put("novelId", novelId);
             params.put("a", characterA);
@@ -1093,16 +1133,35 @@ public class Neo4jGraphService implements IGraphService {
     @Override
     public void upsertOpenQuest(Long novelId, String questId, String description, String status, Integer introducedChapter, Integer dueByChapter, Integer lastUpdatedChapter) {
         logger.info("📌 upsertOpenQuest: {} status={}", questId, status);
-        String cypher =
-            "MERGE (q:OpenQuest {novelId: $novelId, id: $id}) " +
-            "SET q.description = coalesce($description, q.description), " +
-            "    q.status = coalesce($status, q.status, 'OPEN'), " +
-            "    q.introducedChapter = coalesce(q.introducedChapter, $introducedChapter), " +
-            "    q.dueByChapter = coalesce($dueByChapter, q.dueByChapter), " +
-            "    q.lastUpdatedChapter = CASE WHEN $lastUpdatedChapter >= coalesce(q.lastUpdatedChapter,-1) THEN $lastUpdatedChapter ELSE q.lastUpdatedChapter END, " +
-            "    q.updatedAt = datetime() " +
-            "RETURN q";
         try (Session session = driver.session()) {
+            // 🆕 步骤1：保存当前状态到历史快照（如果存在）
+            String saveHistoryQuery =
+                "MATCH (q:OpenQuest {novelId: $novelId, id: $questId}) " +
+                "WHERE q.lastUpdatedChapter IS NOT NULL " +
+                "CREATE (h:OpenQuestHistory {" +
+                "  novelId: $novelId, " +
+                "  questId: $questId, " +
+                "  description: q.description, " +
+                "  status: q.status, " +
+                "  introducedChapter: q.introducedChapter, " +
+                "  dueByChapter: q.dueByChapter, " +
+                "  chapterNumber: q.lastUpdatedChapter, " +
+                "  createdAt: datetime()" +
+                "})"; 
+            
+            session.run(saveHistoryQuery, Map.of("novelId", novelId, "questId", questId));
+            
+            // 步骤2：更新当前状态
+            String cypher =
+                "MERGE (q:OpenQuest {novelId: $novelId, id: $id}) " +
+                "SET q.description = coalesce($description, q.description), " +
+                "    q.status = coalesce($status, q.status, 'OPEN'), " +
+                "    q.introducedChapter = coalesce(q.introducedChapter, $introducedChapter), " +
+                "    q.dueByChapter = coalesce($dueByChapter, q.dueByChapter), " +
+                "    q.lastUpdatedChapter = CASE WHEN $lastUpdatedChapter >= coalesce(q.lastUpdatedChapter,-1) THEN $lastUpdatedChapter ELSE q.lastUpdatedChapter END, " +
+                "    q.updatedAt = datetime() " +
+                "RETURN q";
+            
             Map<String, Object> params = new HashMap<>();
             params.put("novelId", novelId);
             params.put("id", questId);
@@ -1394,23 +1453,276 @@ public class Neo4jGraphService implements IGraphService {
             logger.info("✅ Neo4j已清空小说{}的图谱", novelId);
         } catch (Exception e) {
             logger.error("❌ Neo4j清空图谱失败", e);
-            throw new RuntimeException("Neo4j清空图谱失败: " + e.getMessage(), e);
         }
     }
     
     /**
-     * 🆕 删除指定章节的所有图谱实体和关系
+     * 🆕 删除指定章节的图谱实体和关系
+     * 注意：由于图谱设计中的状态是跨章节累积的，这里需要特殊处理
+     * 
+     * 策略：
+     * 1. 如果重写的是历史章节（存在更新的后续章节）：
+     *    - 跳过图谱清理，避免破坏后续章节的状态连贯性
+     *    - 记录警告日志，提示用户图谱可能与内容不一致
+     * 
+     * 2. 如果重写的是最新章节或接近最新的章节：
+     *    - 对于在该章节首次引入的节点：直接删除
+     *    - 对于在该章节更新的节点：
+     *      a. 查找该节点在前一章的历史快照
+     *      b. 如果有历史快照，恢复到前一章的状态
+     *      c. 如果没有历史快照，说明是该章节首次引入，直接删除
      */
     @Override
     public void deleteChapterEntities(Long novelId, Integer chapterNumber) {
         logger.info("🗑️ Neo4j删除章节图谱数据: novelId={}, chapterNumber={}", novelId, chapterNumber);
-        String cypher = "MATCH (n {novelId: $novelId, chapterNumber: $chapterNumber}) DETACH DELETE n";
+        
         try (Session session = driver.session()) {
-            Map<String, Object> params = new HashMap<>();
-            params.put("novelId", novelId);
-            params.put("chapterNumber", chapterNumber);
-            Result result = session.run(cypher, params);
-            logger.info("✅ Neo4j已删除第{}章的图谱数据", chapterNumber);
+            // ========== 🔍 步骤0：检查是否是历史章节 ==========
+            // 查询该小说的最大章节号
+            String maxChapterQuery = 
+                "MATCH (s:CharacterState {novelId: $novelId}) " +
+                "RETURN max(s.lastUpdatedChapter) as maxChapter " +
+                "UNION " +
+                "MATCH (r:RelationshipState {novelId: $novelId}) " +
+                "RETURN max(r.lastUpdatedChapter) as maxChapter " +
+                "UNION " +
+                "MATCH (q:OpenQuest {novelId: $novelId}) " +
+                "RETURN max(q.lastUpdatedChapter) as maxChapter";
+            
+            List<Record> maxChapterRecords = session.run(maxChapterQuery, 
+                Map.of("novelId", novelId)).list();
+            
+            Integer maxChapter = null;
+            for (Record record : maxChapterRecords) {
+                Value value = record.get("maxChapter");
+                if (!value.isNull()) {
+                    int chapter = value.asInt();
+                    if (maxChapter == null || chapter > maxChapter) {
+                        maxChapter = chapter;
+                    }
+                }
+            }
+            
+            // 如果是历史章节（后面还有更新的章节），跳过图谱清理
+            if (maxChapter != null && chapterNumber < maxChapter) {
+                logger.warn("⚠️ 检测到重写历史章节: 当前章节={}, 最新图谱章节={}", chapterNumber, maxChapter);
+                logger.warn("⚠️ 为避免破坏后续章节的图谱连贯性，跳过图谱数据清理");
+                logger.warn("⚠️ 注意：重写后的章节内容可能与图谱数据不一致");
+                logger.warn("💡 建议：如需完全重写，请从该章节开始依次重写所有后续章节");
+                return;
+            }
+            
+            logger.info("✅ 确认为最新章节或接近最新章节，开始清理图谱数据");
+            
+            int deletedCount = 0;
+            int restoredCount = 0;
+            
+            // ========== 1. 处理 CharacterState 节点 ==========
+            // 1.1 查询在该章节更新的角色状态
+            String queryCharStatesQuery = 
+                "MATCH (s:CharacterState {novelId: $novelId, lastUpdatedChapter: $chapterNumber}) " +
+                "RETURN s.characterName as name, s.location as location, s.realm as realm, " +
+                "       s.alive as alive, s.inventory as inventory";
+            List<Record> charStates = session.run(queryCharStatesQuery, 
+                Map.of("novelId", novelId, "chapterNumber", chapterNumber)).list();
+            
+            logger.info("  📋 找到 {} 个在第{}章更新的角色状态", charStates.size(), chapterNumber);
+            
+            for (Record record : charStates) {
+                String charName = record.get("name").asString();
+                
+                // 1.2 查询该角色在前一章的历史快照
+                String queryHistoryQuery = 
+                    "MATCH (h:CharacterStateHistory {novelId: $novelId, characterName: $charName}) " +
+                    "WHERE h.chapterNumber < $chapterNumber " +
+                    "RETURN h ORDER BY h.chapterNumber DESC LIMIT 1";
+                List<Record> history = session.run(queryHistoryQuery, 
+                    Map.of("novelId", novelId, "charName", charName, "chapterNumber", chapterNumber)).list();
+                
+                if (!history.isEmpty()) {
+                    // 有历史快照，恢复到前一章的状态
+                    Record historyRecord = history.get(0);
+                    Map<String, Object> historyNode = safeNodeToMap(historyRecord.get("h"));
+                    
+                    String restoreQuery = 
+                        "MATCH (s:CharacterState {novelId: $novelId, characterName: $charName}) " +
+                        "SET s.location = $location, " +
+                        "    s.realm = $realm, " +
+                        "    s.alive = $alive, " +
+                        "    s.inventory = $inventory, " +
+                        "    s.lastUpdatedChapter = $lastUpdatedChapter, " +
+                        "    s.updatedAt = datetime()";
+                    
+                    Map<String, Object> restoreParams = new HashMap<>();
+                    restoreParams.put("novelId", novelId);
+                    restoreParams.put("charName", charName);
+                    restoreParams.put("location", historyNode.get("location"));
+                    restoreParams.put("realm", historyNode.get("realm"));
+                    restoreParams.put("alive", historyNode.get("alive"));
+                    restoreParams.put("inventory", historyNode.get("inventory"));
+                    restoreParams.put("lastUpdatedChapter", historyNode.get("chapterNumber"));
+                    
+                    session.run(restoreQuery, restoreParams);
+                    restoredCount++;
+                    logger.info("    ↩️ 恢复角色 {} 到第{}章的状态", charName, historyNode.get("chapterNumber"));
+                } else {
+                    // 没有历史快照，说明是该章节首次引入，直接删除
+                    String deleteQuery = 
+                        "MATCH (s:CharacterState {novelId: $novelId, characterName: $charName}) " +
+                        "DELETE s";
+                    session.run(deleteQuery, Map.of("novelId", novelId, "charName", charName));
+                    deletedCount++;
+                    logger.info("    🗑️ 删除角色 {} （该章节首次引入）", charName);
+                }
+            }
+            
+            // ========== 2. 处理 RelationshipState 节点 ==========
+            String queryRelStatesQuery = 
+                "MATCH (r:RelationshipState {novelId: $novelId, lastUpdatedChapter: $chapterNumber}) " +
+                "RETURN r.a as a, r.b as b, r.type as type";
+            List<Record> relStates = session.run(queryRelStatesQuery, 
+                Map.of("novelId", novelId, "chapterNumber", chapterNumber)).list();
+            
+            logger.info("  📋 找到 {} 个在第{}章更新的关系状态", relStates.size(), chapterNumber);
+            
+            for (Record record : relStates) {
+                String a = record.get("a").asString();
+                String b = record.get("b").asString();
+                String type = record.get("type").asString();
+                
+                // 查询历史快照
+                String queryRelHistoryQuery = 
+                    "MATCH (h:RelationshipStateHistory {novelId: $novelId, a: $a, b: $b, type: $type}) " +
+                    "WHERE h.chapterNumber < $chapterNumber " +
+                    "RETURN h ORDER BY h.chapterNumber DESC LIMIT 1";
+                List<Record> relHistory = session.run(queryRelHistoryQuery, 
+                    Map.of("novelId", novelId, "a", a, "b", b, "type", type, "chapterNumber", chapterNumber)).list();
+                
+                if (!relHistory.isEmpty()) {
+                    // 恢复到前一章的状态
+                    Record historyRecord = relHistory.get(0);
+                    Map<String, Object> historyNode = safeNodeToMap(historyRecord.get("h"));
+                    
+                    String restoreQuery = 
+                        "MATCH (r:RelationshipState {novelId: $novelId, a: $a, b: $b, type: $type}) " +
+                        "SET r.strength = $strength, " +
+                        "    r.lastUpdatedChapter = $lastUpdatedChapter, " +
+                        "    r.updatedAt = datetime()";
+                    
+                    Map<String, Object> restoreParams = new HashMap<>();
+                    restoreParams.put("novelId", novelId);
+                    restoreParams.put("a", a);
+                    restoreParams.put("b", b);
+                    restoreParams.put("type", type);
+                    restoreParams.put("strength", historyNode.get("strength"));
+                    restoreParams.put("lastUpdatedChapter", historyNode.get("chapterNumber"));
+                    
+                    session.run(restoreQuery, restoreParams);
+                    restoredCount++;
+                    logger.info("    ↩️ 恢复关系 {}-[{}]-{} 到第{}章的状态", a, type, b, historyNode.get("chapterNumber"));
+                } else {
+                    // 直接删除
+                    String deleteQuery = 
+                        "MATCH (r:RelationshipState {novelId: $novelId, a: $a, b: $b, type: $type}) " +
+                        "DELETE r";
+                    session.run(deleteQuery, Map.of("novelId", novelId, "a", a, "b", b, "type", type));
+                    deletedCount++;
+                    logger.info("    🗑️ 删除关系 {}-[{}]-{} （该章节首次引入）", a, type, b);
+                }
+            }
+            
+            // ========== 3. 处理 OpenQuest 节点 ==========
+            String queryQuestsQuery = 
+                "MATCH (q:OpenQuest {novelId: $novelId, lastUpdatedChapter: $chapterNumber}) " +
+                "RETURN q.id as id";
+            List<Record> quests = session.run(queryQuestsQuery, 
+                Map.of("novelId", novelId, "chapterNumber", chapterNumber)).list();
+            
+            logger.info("  📋 找到 {} 个在第{}章更新的任务", quests.size(), chapterNumber);
+            
+            for (Record record : quests) {
+                String questId = record.get("id").asString();
+                
+                // 查询历史快照
+                String queryQuestHistoryQuery = 
+                    "MATCH (h:OpenQuestHistory {novelId: $novelId, questId: $questId}) " +
+                    "WHERE h.chapterNumber < $chapterNumber " +
+                    "RETURN h ORDER BY h.chapterNumber DESC LIMIT 1";
+                List<Record> questHistory = session.run(queryQuestHistoryQuery, 
+                    Map.of("novelId", novelId, "questId", questId, "chapterNumber", chapterNumber)).list();
+                
+                if (!questHistory.isEmpty()) {
+                    // 恢复到前一章的状态
+                    Record historyRecord = questHistory.get(0);
+                    Map<String, Object> historyNode = safeNodeToMap(historyRecord.get("h"));
+                    
+                    String restoreQuery = 
+                        "MATCH (q:OpenQuest {novelId: $novelId, id: $questId}) " +
+                        "SET q.description = $description, " +
+                        "    q.status = $status, " +
+                        "    q.lastUpdatedChapter = $lastUpdatedChapter, " +
+                        "    q.updatedAt = datetime()";
+                    
+                    Map<String, Object> restoreParams = new HashMap<>();
+                    restoreParams.put("novelId", novelId);
+                    restoreParams.put("questId", questId);
+                    restoreParams.put("description", historyNode.get("description"));
+                    restoreParams.put("status", historyNode.get("status"));
+                    restoreParams.put("lastUpdatedChapter", historyNode.get("chapterNumber"));
+                    
+                    session.run(restoreQuery, restoreParams);
+                    restoredCount++;
+                    logger.info("    ↩️ 恢复任务 {} 到第{}章的状态", questId, historyNode.get("chapterNumber"));
+                } else {
+                    // 直接删除
+                    String deleteQuery = 
+                        "MATCH (q:OpenQuest {novelId: $novelId, id: $questId}) " +
+                        "DELETE q";
+                    session.run(deleteQuery, Map.of("novelId", novelId, "questId", questId));
+                    deletedCount++;
+                    logger.info("    🗑️ 删除任务 {} （该章节首次引入）", questId);
+                }
+            }
+            
+            // ========== 4. 删除该章节引入的 OpenQuest 节点（introducedChapter == chapterNumber）==========
+            String deleteIntroducedQuestQuery = 
+                "MATCH (q:OpenQuest {novelId: $novelId, introducedChapter: $chapterNumber}) " +
+                "DELETE q";
+            Result introducedQuestResult = session.run(deleteIntroducedQuestQuery, 
+                Map.of("novelId", novelId, "chapterNumber", chapterNumber));
+            int deletedIntroducedQuests = introducedQuestResult.consume().counters().nodesDeleted();
+            deletedCount += deletedIntroducedQuests;
+            if (deletedIntroducedQuests > 0) {
+                logger.info("  🗑️ 删除了 {} 个在该章节引入的 OpenQuest 节点", deletedIntroducedQuests);
+            }
+            
+            // ========== 5. 删除章节特定的事件节点（Event 是章节特定的，直接删除）==========
+            String deleteEventQuery = 
+                "MATCH (e:Event {novelId: $novelId, chapterNumber: $chapterNumber}) " +
+                "DETACH DELETE e";
+            Result eventResult = session.run(deleteEventQuery, 
+                Map.of("novelId", novelId, "chapterNumber", chapterNumber));
+            int deletedEvents = eventResult.consume().counters().nodesDeleted();
+            deletedCount += deletedEvents;
+            if (deletedEvents > 0) {
+                logger.info("  🗑️ 删除了 {} 个 Event 节点", deletedEvents);
+            }
+            
+            // ========== 6. 删除章节特定的伏笔节点 ==========
+            String deleteForeshadowQuery = 
+                "MATCH (f:Foreshadowing {novelId: $novelId}) " +
+                "WHERE f.introducedChapter = $chapterNumber OR f.resolvedChapter = $chapterNumber " +
+                "DETACH DELETE f";
+            Result foreshadowResult = session.run(deleteForeshadowQuery, 
+                Map.of("novelId", novelId, "chapterNumber", chapterNumber));
+            int deletedForeshadows = foreshadowResult.consume().counters().nodesDeleted();
+            deletedCount += deletedForeshadows;
+            if (deletedForeshadows > 0) {
+                logger.info("  🗑️ 删除了 {} 个 Foreshadowing 节点", deletedForeshadows);
+            }
+            
+            logger.info("✅ Neo4j章节数据清理完成: 删除 {} 个节点, 恢复 {} 个节点到前一章状态", deletedCount, restoredCount);
+            
         } catch (Exception e) {
             logger.error("❌ Neo4j删除章节图谱数据失败", e);
             throw new RuntimeException("Neo4j删除章节图谱数据失败: " + e.getMessage(), e);

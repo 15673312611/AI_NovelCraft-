@@ -31,7 +31,7 @@ export const getAIConfigOrThrow = (): AIConfig => {
 };
 
 /**
- * 为请求体添加AI配置（扁平结构）
+ * 为请求体添加AI配置（嵌套结构）
  * @param body 原始请求体
  * @returns 添加了AI配置字段的请求体
  */
@@ -39,11 +39,26 @@ export const withAIConfig = (body: any = {}): any => {
   const aiConfig = getAIConfigOrThrow();
   return {
     ...body,
-    provider: aiConfig.provider,
-    apiKey: aiConfig.apiKey,
-    model: aiConfig.model,
-    baseUrl: aiConfig.baseUrl
+    aiConfig: {
+      provider: aiConfig.provider,
+      apiKey: aiConfig.apiKey,
+      model: aiConfig.model,
+      baseUrl: aiConfig.baseUrl || getDefaultApiUrl(aiConfig.provider)
+    }
   };
+};
+
+/**
+ * 获取默认API URL
+ */
+const getDefaultApiUrl = (provider: string): string => {
+  const urls: Record<string, string> = {
+    'deepseek': 'https://api.deepseek.com/v1/chat/completions',
+    'qwen': 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+    'kimi': 'https://api.moonshot.cn/v1/chat/completions',
+    'openai': 'https://api.openai.com/v1/chat/completions'
+  };
+  return urls[provider] || 'https://api.openai.com/v1/chat/completions';
 };
 
 /**

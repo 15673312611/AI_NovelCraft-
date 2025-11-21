@@ -27,6 +27,9 @@ public class NovelDocumentService {
     @Autowired
     private NovelFolderService folderService;
 
+    @Autowired
+    private WritingVersionHistoryService writingVersionHistoryService;
+
     /**
      * 获取小说的所有文档
      */
@@ -122,10 +125,25 @@ public class NovelDocumentService {
     @Transactional
     public void autoSaveDocument(Long id, String content) {
         log.info("自动保存文档ID={}", id);
-        NovelDocument document = new NovelDocument();
-        document.setId(id);
-        document.setContent(content);
-        documentMapper.update(document);
+        // 读取旧内容用于版本历史记录
+        NovelDocument existing = documentMapper.findById(id);
+        if (existing == null) {
+            throw new RuntimeException("文档不存在");
+        }
+        String previousContent = existing.getContent() != null ? existing.getContent() : "";
+        existing.setContent(content);
+        documentMapper.update(existing);
+        try {
+            // 辅助文档的版本历史（可选），来源统一标记为 AUTO_SAVE
+            writingVersionHistoryService.recordDocumentVersion(
+                    existing,
+                    previousContent,
+                    content,
+                    "AUTO_SAVE"
+            );
+        } catch (Exception e) {
+            log.warn("记录文档版本历史失败（不影响自动保存）: {}", e.getMessage());
+        }
     }
 
     /**

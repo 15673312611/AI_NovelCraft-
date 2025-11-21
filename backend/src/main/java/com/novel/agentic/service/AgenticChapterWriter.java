@@ -19,6 +19,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -108,8 +111,17 @@ public class AgenticChapterWriter {
         Chapter existingChapter = chapterService.getChapterByNovelAndNumber(novelId, chapterNumber);
         if (existingChapter != null) {
             logger.warn("⚠️ 检测到重写第{}章，先清理旧的图谱数据和概要...", chapterNumber);
-            sendEvent(emitter, "phase", "🗑️ 清理旧数据中...");
-            cleanupChapterMetadata(novelId, chapterNumber);
+            
+            // 检查是否是历史章节
+            boolean isHistoricalChapter = checkIfHistoricalChapter(novelId, chapterNumber);
+            if (isHistoricalChapter) {
+                sendEvent(emitter, "warning", "⚠️ 检测到重写历史章节，图谱数据将保持不变以避免影响后续章节");
+                sendEvent(emitter, "warning", "💡 建议：如需完全重写，请从该章节开始依次重写所有后续章节");
+            } else {
+                sendEvent(emitter, "phase", "🗑️ 清理旧数据中...");
+            }
+            
+            cleanupChapterMetadata(novelId, chapterNumber, emitter);
         }
 
         // 收集上下文
@@ -146,7 +158,7 @@ public class AgenticChapterWriter {
         // 推理与意图
         Map<String, Object> plotIntent = null;
         String reasoningPrompt = null;
-        String mode = "direct_writing";
+        String mode = "intent_writing";
 
         if (preGeneratedOutline != null) {
             // 有章纲：跳过推理，直接用章纲构建 plotIntent
@@ -167,48 +179,63 @@ public class AgenticChapterWriter {
             }
         }
 
-        List<Map<String, String>> messages;
-        if (plotIntent != null && !plotIntent.isEmpty()) {
-            sendEvent(emitter, "phase", "✍️ AI创作中（意图驱动）...");
-            messages = structuredMessageBuilder.buildMessagesFromIntent(
-                    novel, context, plotIntent, chapterNumber, stylePromptFile);
-            if (!mode.equals("outline_writing")) {
-                mode = "intent_writing";
-            }
-        } else {
-            sendEvent(emitter, "phase", "✍️ AI创作中（直接写作）...");
-            messages = structuredMessageBuilder.buildMessagesForDirectWriting(
-                    novel, context, chapterNumber, userAdjustment, stylePromptFile);
-            mode = "direct_writing";
+        sendEvent(emitter, "phase", "✍️ AI创作中（意图驱动）...");
+        Map<String, Object> effectiveIntent = plotIntent;
+        if (effectiveIntent == null || effectiveIntent.isEmpty()) {
+            logger.warn("⚠️ plotIntent 为空，使用最小意图继续写作: novelId={}, chapter={}", novelId, chapterNumber);
+            effectiveIntent = new HashMap<>();
+            effectiveIntent.put("direction", "继续推进主线，保持角色目标一致，并制造新的冲突钩子。");
+        }
+
+        List<Map<String, String>> messages = structuredMessageBuilder.buildMessagesFromIntent(
+                novel, context, effectiveIntent, chapterNumber, stylePromptFile);
+
+        if (mode.equals("intent_writing") && plotIntent == null) {
+            sendEvent(emitter, "intent", "⚠️ 未获取到完整章纲，已按最小意图继续写作");
         }
 
         logger.info("🔍 构建messages后 - 消息总数: {}", messages.size());
 
         String generationContextSnapshot = serializeGenerationContext(context, messages, mode);
 
-        // 非流式生成章节内容
-        sendEvent(emitter, "phase", "🤖 AI生成中，请稍候...");
-        String generatedContent = aiWritingService.generateContentWithMessages(
+        // 流式生成章节内容
+        sendEvent(emitter, "phase", "🤖 AI流式生成中...");
+        StringBuilder contentBuilder = new StringBuilder();
+        
+        aiWritingService.streamGenerateContentWithMessages(
                 messages,
                 "chapter_writing",
-                aiConfig
+                aiConfig,
+                chunk -> {
+                    // 累积内容
+                    contentBuilder.append(chunk);
+                    // 实时发送chunk到前端
+                    sendEvent(emitter, "message", chunk);
+                }
         );
+        
+        String generatedContent = contentBuilder.toString();
 
         if (generatedContent == null || generatedContent.isEmpty()) {
             throw new RuntimeException("AI生成内容为空，请检查AI配置和提示词");
         }
-
-        // 发送完整内容
-        sendEvent(emitter, "content", generatedContent);
 
         // 保存章节
         sendEvent(emitter, "phase", "💾 保存中...");
         String decisionLog = serializeDecisionLog(context, plotIntent, null, reasoningPrompt, messages, mode);
         Chapter chapter = saveChapter(novel, chapterNumber, generatedContent, generationContextSnapshot, decisionLog, aiConfig);
 
+        // 🔐 捕获当前线程的 SecurityContext，以便在异步线程中使用
+        SecurityContext securityContext = SecurityContextHolder.getContext();
+        Authentication authentication = securityContext.getAuthentication();
+
         // 异步抽取核心状态并入图
         if (coreStateExtractor != null) {
             CompletableFuture.runAsync(() -> {
+                // 🔐 在异步线程中设置 SecurityContext
+                SecurityContext asyncContext = SecurityContextHolder.createEmptyContext();
+                asyncContext.setAuthentication(authentication);
+                SecurityContextHolder.setContext(asyncContext);
                 try {
                     sendEvent(emitter, "phase", "🔍 抽取核心状态中...");
                     coreStateExtractor.extractAndSaveCoreState(
@@ -222,12 +249,19 @@ public class AgenticChapterWriter {
                 } catch (Exception e) {
                     logger.error("核心状态抽取失败（不阻塞章节保存）", e);
                     sendEvent(emitter, "extraction", "⚠️ 核心状态抽取失败: " + e.getMessage());
+                } finally {
+                    // 🔐 清理异步线程的 SecurityContext
+                    SecurityContextHolder.clearContext();
                 }
             });
         }
         // 异步抽取结构化实体并入图
         if (entityExtractionService != null) {
             CompletableFuture.runAsync(() -> {
+                // 🔐 在异步线程中设置 SecurityContext
+                SecurityContext asyncContext = SecurityContextHolder.createEmptyContext();
+                asyncContext.setAuthentication(authentication);
+                SecurityContextHolder.setContext(asyncContext);
                 try {
                     sendEvent(emitter, "phase", "🔎 抽取结构化实体中...");
                     entityExtractionService.extractAndSave(
@@ -241,6 +275,9 @@ public class AgenticChapterWriter {
                 } catch (Exception e) {
                     logger.error("实体抽取失败（不阻塞章节保存）", e);
                     sendEvent(emitter, "extraction", "⚠️ 实体抽取失败: " + e.getMessage());
+                } finally {
+                    // 🔐 清理异步线程的 SecurityContext
+                    SecurityContextHolder.clearContext();
                 }
             });
         }
@@ -391,6 +428,7 @@ public class AgenticChapterWriter {
             if (chapterNumber > 1) {
                 Map<String, Object> characterArgs = new HashMap<>();
                 characterArgs.put("novelId", novelId);
+                characterArgs.put("limit", 200);
                 Object characterResult = toolRegistry.executeTool("getCharacterProfiles", characterArgs);
                 if (characterResult instanceof List) {
                     @SuppressWarnings("unchecked")
@@ -438,7 +476,7 @@ public class AgenticChapterWriter {
             java.util.List<java.util.Map<String, Object>> __openQuests = null;
             if (graphService != null) {
                 try {
-                    __charStates = graphService.getCharacterStates(novelId, 5);
+                    __charStates = graphService.getCharacterStates(novelId, 200);
                     if (__charStates != null && !__charStates.isEmpty()) {
                         contextBuilder.characterStates(__charStates);
                         logger.info("✅ 已加载{}个角色状态", __charStates.size());
@@ -447,7 +485,7 @@ public class AgenticChapterWriter {
                     logger.warn("⚠️ 获取角色状态失败: {}", e.getMessage());
                 }
                 try {
-                    __relationships = graphService.getTopRelationships(novelId, 5);
+                    __relationships = graphService.getTopRelationships(novelId, 200);
                     if (__relationships != null && !__relationships.isEmpty()) {
                         contextBuilder.relationshipStates(__relationships);
                         logger.info("✅ 已加载{}条关系状态", __relationships.size());
@@ -568,7 +606,17 @@ public class AgenticChapterWriter {
         }
         try {
             String payload = data == null ? "" : data;
-            payload = payload.replace("\r\n", "\n").replace("\r", "\n");
+            
+            // 🔧 修复 SSE 格式问题：
+            // 对于 message 事件（流式输出），移除换行符避免破坏 SSE 协议
+            // 换行由前端的 applyRealtimeLineBreaks() 函数处理
+            if ("message".equals(eventType)) {
+                payload = payload.replace("\r\n", " ").replace("\r", " ").replace("\n", " ");
+            } else {
+                // 其他事件（phase、outline等）保留换行符
+                payload = payload.replace("\r\n", "\n").replace("\r", "\n");
+            }
+            
             SseEmitter.SseEventBuilder builder = SseEmitter.event()
                     .data(payload, MediaType.TEXT_PLAIN);
             if (StringUtils.hasText(eventType)) {
@@ -836,9 +884,39 @@ public class AgenticChapterWriter {
     }
 
     /**
+     * 检查是否是历史章节（后面还有更新的章节）
+     */
+    private boolean checkIfHistoricalChapter(Long novelId, Integer chapterNumber) {
+        try {
+            // 查询该小说是否有更大章节号的章节
+            Chapter laterChapter = chapterService.getChapterByNovelAndNumber(novelId, chapterNumber + 1);
+            if (laterChapter != null) {
+                logger.info("📊 检测到历史章节: 当前章节={}, 存在后续章节", chapterNumber);
+                return true;
+            }
+            
+            // 也可以通过查询所有章节来确认
+            List<Chapter> allChapters = chapterService.getChaptersByNovelId(novelId);
+            if (allChapters != null) {
+                for (Chapter chapter : allChapters) {
+                    if (chapter.getChapterNumber() != null && chapter.getChapterNumber() > chapterNumber) {
+                        logger.info("📊 检测到历史章节: 当前章节={}, 最大章节>={}", chapterNumber, chapter.getChapterNumber());
+                        return true;
+                    }
+                }
+            }
+            
+            return false;
+        } catch (Exception e) {
+            logger.warn("⚠️ 检查历史章节失败: {}", e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
      * 🆕 清理章节的图谱数据和概要（用于重写章节时）
      */
-    private void cleanupChapterMetadata(Long novelId, Integer chapterNumber) {
+    private void cleanupChapterMetadata(Long novelId, Integer chapterNumber, SseEmitter emitter) {
         try {
             // 1. 删除图谱中该章节的所有实体和关系
             if (graphService != null) {

@@ -170,14 +170,74 @@
 .file-tree-toolbar-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: space-between;
+  gap: 8px;
   width: 100%;
-  justify-content: flex-start;
 }
-.file-tree-root-title {
-  font-weight: 700;
-  font-size: 16px;
-  color: #0f172a;
+
+.file-tree-toolbar-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  width: 100%;
+}
+
+.file-tree-toolbar-secondary-left,
+.file-tree-toolbar-secondary-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 左侧三个纯图标按钮 */
+.file-tree-toolbar-icon.ant-btn-text {
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  color: #64748b;
+}
+
+.file-tree-toolbar-icon.ant-btn-text:hover {
+  color: #1d4ed8;
+  background-color: #e0f2fe;
+}
+
+.file-tree-toolbar-separator {
+  color: #d0d7de;
+  font-size: 12px;
+}
+
+/* 新增章节按钮：小一点，但更醒目一点 */
+.file-tree-new-chapter-btn.ant-btn-text {
+  padding: 0 12px;
+  height: 26px;
+  font-size: 11px;
+  border-radius: 999px;
+  font-weight: 500;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+}
+
+.file-tree-new-chapter-btn.ant-btn-text .anticon {
+  font-size: 12px;
+}
+
+.file-tree-new-chapter-btn.ant-btn-text:hover {
+  background: #dbeafe;
+  border-color: #60a5fa;
+}
+
+.file-tree-new-chapter-btn {
+  font-weight: 500;
+  margin-left: auto;
+  order: 1;
+}
+
+.file-tree-new-chapter-btn .anticon {
+  font-size: 13px;
 }
 
 .file-tree {

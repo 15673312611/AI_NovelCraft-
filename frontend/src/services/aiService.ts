@@ -120,6 +120,40 @@ class AIService {
     });
     return api.post('/ai-adjectives/mine', requestBody);
   }
+
+  /**
+   * AI纠错
+   */
+  async proofread(params: {
+    content: string
+    characterNames?: string[]
+  }): Promise<any> {
+    const requestBody = withAIConfig({
+      content: params.content,
+      characterNames: params.characterNames || []
+    });
+    return api.post('/ai/proofread', requestBody);
+  }
+
+  /**
+   * AI精简 - 流式
+   * 优化章节内容，精简冗余片段，加快剧情节奏
+   */
+  async streamlineContentStream(content: string): Promise<Response> {
+    const token = localStorage.getItem('token');
+    const requestBody = withAIConfig({ content });
+    
+    return fetch('/api/ai/streamline-content-stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify(requestBody)
+    });
+  }
 }
 
 export const aiService = new AIService();

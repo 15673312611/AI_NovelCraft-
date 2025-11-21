@@ -10,6 +10,7 @@ import com.novel.dto.AIConfigRequest;
 import com.novel.repository.NovelRepository;
 import com.novel.repository.NovelOutlineRepository;
 import com.novel.mapper.NovelVolumeMapper;
+import com.novel.common.security.AuthUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -193,11 +194,11 @@ public class VolumeService {
             // 构建提示词
             StringBuilder prompt = new StringBuilder();
             prompt
-                  .append("你是顶级网文总编，专门设计\"让读者欲罢不能\"的卷蓝图。你的任务是规划大方向和关键节点，但绝不锁死具体剧情。\n\n")
+                  .append("你是顶级网文总编，专门设计\"让读者欲罢不能\"的卷蓝图。你的任务是规划大方向和关键节点，但绝不锁死具体剧情，也不平均分配精彩度，而是为整部作品设计有高有低的节奏波浪。\n\n")
                   .append("# 核心理念\n")
                   .append("**蓝图不是剧本**：只给路线图和资源包，不写执行细节。让AI写作时有发挥空间，能根据实际情况灵活调整。\n")
-                  .append("**冲突驱动一切**：每个阶段都要有\"主角想要什么→遇到什么阻碍→付出什么代价→得到什么结果\"的拉扯。\n")
-                  .append("**爽点密度保证**：确保每隔几章就有一个爆点，让读者停不下来。\n\n")
+                  .append("**冲突驱动一切**：围绕\"主角想要什么→遇到什么阻碍→付出什么代价→得到什么结果\"来规划每一阶段，不追求匀速推进，而是通过拉扯和迟到的兑现来制造上瘾感。\n")
+                  .append("**卷间节奏波浪**：不同卷可以承担不同节奏角色（攀升卷/高峰卷/缓冲卷/翻盘卷等），不需要平均分配爆点；重要情节可以有意跨卷铺垫和兑现，只要整体遵守超级大纲。\n\n")
                   .append("# 小说信息\n")
                   .append("**标题**：").append(novel.getTitle()).append("\n");
             if (novel.getDescription() != null && !novel.getDescription().isEmpty()) {
@@ -224,15 +225,15 @@ public class VolumeService {
             prompt.append("\n【对齐约束】\n")
                   .append("- 严格承接超级大纲与本卷信息，保留其中的核心冲突、角色定位、关键线索与设定，不得擅自重置或弱化。\n")
                   .append("- 新增情节需解释其如何放大原有主题与冲突张力，确保因果链自洽。\n")
-                  .append("- 若超级大纲或卷简述已有具体事件/目标，须延续并深化，保持人物动机连续。\n\n")
+                  .append("- 若超级大纲或卷简述已有具体事件/目标，须延续并深化，保持人物动机连续；允许将某些重大事件拆分为跨卷完成的多个阶段（铺垫→爆发→余波），而不是强行在一卷内全部做完。\n\n")
                   .append("【卷内逻辑自洽】\n")
                   .append("- 明确本卷起点状态（角色实力/地位/关系/线索/外部局势），关键事件须具备“触发→动作→结果”的因果链，不允许无因果跳跃或“天降资源”。\n")
                   .append("- 角色动机、能力边界与世界规则前后一致；若有突破，必须给出铺垫与代价。\n")
                   .append("- 本卷内不得出现自相矛盾的设定或前后冲突；反派不降智，行动与其资源和信息边界匹配。\n")
                   .append("- 首尾呼应：开卷起点→关键转折→卷末状态闭环，并自然抛出下一卷钩子；如为第一卷，从初始设定起；否则默认承接上一卷卷末状态。\n\n")
                   .append("【读者体验目标】\n")
-                  .append("- 设计循序渐进的期待—兑现机制，确保爽点频率与强度随卷推进而递增。\n")
-                  .append("- 营造强情绪曲线：紧张与放松相间、危机与逆转呼应，让读者对角色命运保持投入。\n")
+                  .append("- 以整部作品为单位规划期待—兑现节奏：本卷可以是持续拉升、高压爆发或短暂缓冲，但必须在全书曲线中占据清晰位置；不追求每卷、每阶段都平均好看，而是有重点地堆砌记忆点。\n")
+                  .append("- 在本卷内部设计明显的情绪起伏：紧张与放松相间、危机与逆转呼应，让读者在关键节点产生“停不下来”的冲动，尤其是本卷后半程和卷末附近。\n")
                   .append("- 针对目标读者喜好突出市场卖点（成长、情感、爽感、悬念等），打造让人想追更的阅读体验。\n\n")
                   .append("# 输出要求\n\n")
                   
@@ -251,9 +252,9 @@ public class VolumeService {
                   .append("**代价边界**：主角为了达成目标，最多能付出什么代价？什么是绝对不能失去的？\n\n")
                   
                   .append("## 四、爽点体系设计\n")
-                  .append("**基础爽点**（每2-3章）：日常小爽的场景类型与触发条件。列出3-5个典型场景方向。\n")
-                  .append("**进阶爽点**（每5-10章）：中等爆发的事件类型与实现方式。列出2-3个关键节点方向。\n")
-                  .append("**高潮爽点**（卷末或重大转折）：终极爆发的时机与效果。描述1-2个巅峰时刻的设计思路。\n\n")
+                  .append("**基础爽点**：分布在正常推进过程中的“小爆点”类型与触发条件，列出3-5个典型场景方向，不需要严格平均间隔，但要避免长时间完全无爽点。\n")
+                  .append("**进阶爽点**：本卷中等强度爆发的事件类型与大致出现阶段（如前期/中期/后期），列出2-3个关键节点方向，而不是按固定章节间隔平均分布。\n")
+                  .append("**高潮爽点**：本卷的巅峰时刻，可以集中在卷末，也可以在本卷中后段先爆一波，再把更大的后果或揭露压到下一卷；描述1-2个巅峰设计思路，并说明与前后卷的衔接。\n\n")
                   
                   .append("## 五、开放事件池（≥8个）\n")
                   .append("提供一些\"可选事件包\"，每个事件包括：\n")
@@ -265,11 +266,11 @@ public class VolumeService {
                   .append("**注意**：这些事件不规定顺序，AI写作时可以根据剧情需要灵活选用和组合。\n\n")
                   
                   .append("## 六、关键里程碑（3-5个）\n")
-                  .append("本卷必须经过的几个关键节点，每个包括：\n")
+                  .append("本卷必须经过的几个关键节点，其中一部分可以在本卷内完成闭环，另一部分可以只做到“半步”，把最狠的后果或揭露留到下一卷；每个包括：\n")
                   .append("- **里程碑名称**：这个节点叫什么？\n")
                   .append("- **达成条件**：什么情况下算达成？\n")
-                  .append("- **影响范围**：达成后会改变什么？（主角能力、势力格局、剧情走向等）\n")
-                  .append("- **悬念钩子**：这个节点会引出什么新问题或新目标？\n\n")
+                  .append("- **影响范围**：达成后会改变什么？（主角能力、势力格局、剧情走向等），并标明主要影响是落在本卷，还是会强烈延续到后续卷。\n")
+                  .append("- **悬念钩子**：这个节点会引出什么新问题或新目标，是否为后续一整卷提供主线动力？\n\n")
                   
                   .append("## 七、支线与节奏调节\n")
                   .append("**情感线**：本卷有哪些角色关系会发展？（友情/爱情/师徒/仇恨等）大致走向是什么？\n")
@@ -283,9 +284,9 @@ public class VolumeService {
                   
                   .append("## 九、卷末状态与钩子\n")
                   .append("**主角最终状态**：本卷结束时，主角的实力/地位/资源/心态达到什么程度？\n")
-                  .append("**已解决问题**：本卷的核心矛盾解决了吗？怎么解决的？\n")
-                  .append("**新增悬念**：卷末要留什么钩子引出下一卷？（新危机/新目标/新谜团）\n")
-                  .append("**风险结转**：有什么隐患或代价会延续到下一卷？\n\n")
+                  .append("**已解决问题**：本卷打算真正解决哪些矛盾？哪些只是阶段性缓和或“看似解决”？请避免把所有重要问题一次性做完。\n")
+                  .append("**新增悬念**：卷末要留出足够有力的钩子，让读者强烈想看下一卷，可以是新危机/新目标/新谜团，但不能只是轻描淡写的小尾巴。\n")
+                  .append("**风险结转**：明确指出有哪些隐患或代价会延续到下一卷甚至更后面的卷，形成跨卷的持续压力与期待。\n\n")
                   
                   .append("# 写作风格要求\n")
                   .append("1. **人话表达**：别用术语和套话，就像老编辑跟作者聊天一样自然\n")
@@ -451,6 +452,22 @@ public class VolumeService {
      * @param volumeId 卷ID
      */
     public void deleteVolume(Long volumeId) {
+        // 仅允许所属小说的作者删除该卷
+        Long currentUserId = AuthUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new SecurityException("用户未登录，无法删除卷");
+        }
+
+        NovelVolume volume = volumeMapper.selectById(volumeId);
+        if (volume == null) {
+            return;
+        }
+
+        Novel novel = novelRepository.selectById(volume.getNovelId());
+        if (novel == null || novel.getAuthorId() == null || !currentUserId.equals(novel.getAuthorId())) {
+            throw new SecurityException("无权限删除该卷");
+        }
+
         volumeMapper.deleteById(volumeId);
     }
 
@@ -611,8 +628,7 @@ public class VolumeService {
 
         } catch (Exception e) {
             logger.error("❌ 生成卷规划失败: {}", e.getMessage(), e);
-            logger.warn("⚠️ 使用简化卷规划作为备用方案");
-            return generateSimplifiedVolumePlans(novel, outline, volumeCount);
+            throw new RuntimeException("生成卷规划失败: " + e.getMessage(), e);
         }
     }
 

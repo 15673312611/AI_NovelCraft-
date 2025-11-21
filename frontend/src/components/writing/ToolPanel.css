@@ -1,4 +1,4 @@
-﻿.tool-panel-container {
+.tool-panel-container {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -198,6 +198,7 @@
   background-clip: text;
   letter-spacing: 0.5px;
   position: relative;
+  animation: titleGlow 3s ease-in-out infinite;
 }
 
 .ai-chat-empty .empty-title::after {
@@ -210,6 +211,18 @@
   height: 3px;
   background: linear-gradient(90deg, transparent, #1890ff, transparent);
   border-radius: 2px;
+}
+
+@keyframes titleGlow {
+  0%,
+  100% {
+    text-shadow: 0 0 0 rgba(24, 144, 255, 0);
+    transform: translateY(0);
+  }
+  50% {
+    text-shadow: 0 6px 18px rgba(24, 144, 255, 0.45);
+    transform: translateY(-1px);
+  }
 }
 
 /* AI 鍝嶅簲妗?*/
@@ -267,10 +280,11 @@
 }
 
 .ai-response-content {
-  padding: 16px;
+  padding: 20px;
   overflow-y: auto;
   flex: 1;
-  background: #f0fdf4;
+  background: linear-gradient(to bottom, #f8fffe 0%, #f0fdf4 100%);
+  border-radius: 0 0 12px 12px;
 }
 
 .ai-text-display {
@@ -779,7 +793,6 @@
   font-size: 14px;
 }
 
-/* 婊氬姩鏉?*/
 .ai-chat-history::-webkit-scrollbar,
 .linked-content-section::-webkit-scrollbar,
 .ai-response-content::-webkit-scrollbar,
@@ -809,5 +822,235 @@
   background: #bfbfbf;
 }
 
+/* ==================== AI 生成中加载动画 (Premium Minimalist Design) ==================== */
 
+.ai-generating-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  min-height: 360px;
+  background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+  border-radius: 24px;
+  margin: 16px 0;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.04);
+}
 
+/* 背景网格装饰 */
+.ai-generating-box::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    linear-gradient(rgba(0, 0, 0, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.02) 1px, transparent 1px);
+  background-size: 20px 20px;
+  opacity: 0.5;
+  animation: grid-fade 3s ease-in-out infinite;
+}
+
+@keyframes grid-fade {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.5; }
+}
+
+/* 主加载器容器 */
+.generating-spinner {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  margin-bottom: 36px;
+  z-index: 1;
+}
+
+/* 外层光晕 */
+.spinner-outer {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.03) 0%, transparent 70%);
+  animation: pulse-outer 3s ease-in-out infinite;
+}
+
+@keyframes pulse-outer {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.3;
+  }
+}
+
+/* 中层旋转圆环 - 极简线条 */
+.spinner-middle {
+  position: absolute;
+  width: 70px;
+  height: 70px;
+  top: 15px;
+  left: 15px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: #262626;
+  border-right-color: #595959;
+  animation: spin-smooth 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  opacity: 0.8;
+}
+
+@keyframes spin-smooth {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* 内层核心 - 简约黑白 */
+.spinner-inner {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  top: 28px;
+  left: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #262626 0%, #434343 100%);
+  animation: glow-pulse 2.5s ease-in-out infinite;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 
+    0 4px 16px rgba(0, 0, 0, 0.12),
+    0 1px 4px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.spinner-inner::before {
+  content: '';
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #434343 0%, #595959 100%);
+  animation: inner-pulse 2.5s ease-in-out infinite;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.spinner-inner::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);
+  animation: core-pulse 2.5s ease-in-out infinite;
+  box-shadow: 
+    0 2px 8px rgba(255, 255, 255, 0.5),
+    inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 
+      0 4px 16px rgba(0, 0, 0, 0.12),
+      0 1px 4px rgba(0, 0, 0, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 
+      0 6px 24px rgba(0, 0, 0, 0.16),
+      0 2px 8px rgba(0, 0, 0, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  }
+}
+
+@keyframes inner-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.9;
+  }
+}
+
+@keyframes core-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.9);
+    opacity: 0.85;
+  }
+}
+
+/* 文字提示区域 */
+.generating-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  z-index: 1;
+}
+
+.message-text {
+  font-size: 15px;
+  font-weight: 500;
+  color: #262626;
+  letter-spacing: 0.3px;
+  animation: text-fade 2.5s ease-in-out infinite;
+}
+
+@keyframes text-fade {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* 极简加载点 */
+.message-dots {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  height: 16px;
+}
+
+.message-dots i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  background: #262626;
+  border-radius: 50%;
+  animation: dot-wave 1.5s ease-in-out infinite;
+  opacity: 0.4;
+}
+
+.message-dots i:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.message-dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.message-dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dot-wave {
+  0%, 60%, 100% {
+    transform: translateY(0) scale(1);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-8px) scale(1.2);
+    opacity: 1;
+  }
+}

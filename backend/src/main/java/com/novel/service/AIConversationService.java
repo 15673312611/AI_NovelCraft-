@@ -2,6 +2,9 @@ package com.novel.service;
 
 import com.novel.entity.AIConversation;
 import com.novel.mapper.AIConversationMapper;
+import com.novel.repository.NovelRepository;
+import com.novel.domain.entity.Novel;
+import com.novel.common.security.AuthUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -21,6 +24,9 @@ public class AIConversationService {
 
     @Autowired
     private FileParserService fileParserService;
+
+    @Autowired
+    private NovelRepository novelRepository;
 
     /**
      * 获取小说的对话历史
@@ -75,6 +81,22 @@ public class AIConversationService {
     @Transactional
     public void deleteConversation(Long id) {
         log.info("删除对话记录ID={}", id);
+
+        Long currentUserId = AuthUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new SecurityException("用户未登录，无法删除对话记录");
+        }
+
+        AIConversation conversation = conversationMapper.findById(id);
+        if (conversation == null) {
+            throw new RuntimeException("对话记录不存在");
+        }
+
+        Novel novel = novelRepository.selectById(conversation.getNovelId());
+        if (novel == null || novel.getAuthorId() == null || !currentUserId.equals(novel.getAuthorId())) {
+            throw new SecurityException("无权限删除该对话记录");
+        }
+
         int result = conversationMapper.delete(id);
         if (result == 0) {
             throw new RuntimeException("对话记录删除失败");
@@ -89,5 +111,21 @@ public class AIConversationService {
         log.info("清空小说ID={}的对话历史", novelId);
         conversationMapper.deleteByNovelId(novelId);
     }
-}
+    /**
+     * 清空当前用户某本小说的对话历史（带权限校验）
+     */
+    @Transactional
+    public void clearConversationsByNovelIdForCurrentUser(Long novelId) {
+        Long currentUserId = AuthUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new SecurityException("用户未登录，无法清空对话历史");
+        }
 
+        Novel novel = novelRepository.selectById(novelId);
+        if (novel == null || novel.getAuthorId() == null || !currentUserId.equals(novel.getAuthorId())) {
+            throw new SecurityException("无权限清空该小说的对话历史");
+        }
+
+        clearConversationsByNovelId(novelId);
+    }
+}

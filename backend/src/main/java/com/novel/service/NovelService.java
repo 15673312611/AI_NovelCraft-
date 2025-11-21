@@ -7,6 +7,7 @@ import com.novel.domain.entity.Novel;
 import com.novel.domain.entity.User;
 import com.novel.repository.NovelRepository;
 import com.novel.repository.UserRepository;
+import com.novel.common.security.AuthUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -120,6 +121,21 @@ public class NovelService {
      * 删除小说
      */
     public boolean deleteNovel(Long id) {
+        // 仅允许小说作者删除自己的小说
+        Long currentUserId = AuthUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new SecurityException("用户未登录，无法删除小说");
+        }
+
+        Novel novel = novelRepository.selectById(id);
+        if (novel == null) {
+            return false;
+        }
+
+        if (novel.getAuthorId() == null || !currentUserId.equals(novel.getAuthorId())) {
+            throw new SecurityException("无权限删除该小说");
+        }
+
         return novelRepository.deleteById(id) > 0;
     }
 

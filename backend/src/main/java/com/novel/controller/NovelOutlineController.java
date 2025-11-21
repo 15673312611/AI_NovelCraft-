@@ -124,15 +124,29 @@ public class NovelOutlineController {
             @PathVariable Long outlineId,
             @RequestBody(required = false) java.util.Map<String, Object> requestBody) {
         try {
-            // 尝试从请求体中提取AI配置
+            // 尝试从请求体中提取AI配置（兼容扁平字段和嵌套 aiConfig 对象）
             com.novel.dto.AIConfigRequest aiConfig = null;
             if (requestBody != null && !requestBody.isEmpty()) {
                 try {
-                    String provider = (String) requestBody.get("provider");
-                    String apiKey = (String) requestBody.get("apiKey");
-                    String model = (String) requestBody.get("model");
-                    String baseUrl = (String) requestBody.get("baseUrl");
-                    
+                    String provider = null;
+                    String apiKey = null;
+                    String model = null;
+                    String baseUrl = null;
+
+                    if (requestBody.get("aiConfig") instanceof java.util.Map) {
+                        @SuppressWarnings("unchecked")
+                        java.util.Map<String, Object> aiConfigMap = (java.util.Map<String, Object>) requestBody.get("aiConfig");
+                        provider = (String) aiConfigMap.get("provider");
+                        apiKey = (String) aiConfigMap.get("apiKey");
+                        model = (String) aiConfigMap.get("model");
+                        baseUrl = (String) aiConfigMap.get("baseUrl");
+                    } else {
+                        provider = (String) requestBody.get("provider");
+                        apiKey = (String) requestBody.get("apiKey");
+                        model = (String) requestBody.get("model");
+                        baseUrl = (String) requestBody.get("baseUrl");
+                    }
+
                     if (provider != null && apiKey != null && model != null) {
                         aiConfig = new com.novel.dto.AIConfigRequest(provider, apiKey, model, baseUrl);
                         logger.info("确认大纲时接收到AI配置: provider={}, model={}", provider, model);
@@ -141,7 +155,7 @@ public class NovelOutlineController {
                     logger.warn("解析AI配置失败: {}", e.getMessage());
                 }
             }
-            
+
             NovelOutline outline = outlineService.confirmOutline(outlineId, aiConfig);
             return ResponseEntity.ok(outline);
         } catch (Exception e) {
@@ -329,11 +343,14 @@ public class NovelOutlineController {
         private Integer targetWordCount;
         private Integer targetChapterCount;
 
-        // AI配置字段
+        // AI配置字段（兼容两种传参方式：扁平字段或嵌套 aiConfig 对象）
         private String provider;
         private String apiKey;
         private String model;
         private String baseUrl;
+
+        // 嵌套AI配置对象：前端通过 withAIConfig(body) 传入 { aiConfig: { provider, apiKey, model, baseUrl } }
+        private com.novel.dto.AIConfigRequest aiConfig;
 
         // 模板ID（可选，如果提供则使用模板生成大纲）
         private Long templateId;
@@ -443,8 +460,19 @@ public class NovelOutlineController {
             this.volumeCount = volumeCount;
         }
 
-        // 获取AIConfigRequest对象
+        public com.novel.dto.AIConfigRequest getAiConfigObject() {
+            return aiConfig;
+        }
+
+        public void setAiConfig(com.novel.dto.AIConfigRequest aiConfig) {
+            this.aiConfig = aiConfig;
+        }
+
+        // 获取AIConfigRequest对象（优先使用嵌套 aiConfig，其次回退到扁平字段）
         public com.novel.dto.AIConfigRequest getAiConfig() {
+            if (aiConfig != null && aiConfig.isValid()) {
+                return aiConfig;
+            }
             if (provider != null && apiKey != null && model != null) {
                 return new com.novel.dto.AIConfigRequest(provider, apiKey, model, baseUrl);
             }

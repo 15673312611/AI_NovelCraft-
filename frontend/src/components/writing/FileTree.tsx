@@ -1,14 +1,13 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react'
 import { Tree, Button, Input, Tooltip, Checkbox, Slider } from 'antd'
-import { 
-  FolderAddOutlined, 
-  FileAddOutlined, 
-  SearchOutlined, 
-  DeleteOutlined, 
+import {
+  FolderAddOutlined,
+  FileAddOutlined,
+  SearchOutlined,
+  DeleteOutlined,
   EditOutlined,
   FolderOutlined,
   FileTextOutlined,
-  ScissorOutlined
 } from '@ant-design/icons'
 import type { DataNode, TreeProps } from 'antd/es/tree'
 import type { NovelFolder } from '@/services/folderService'
@@ -105,6 +104,16 @@ const FileTree: React.FC<FileTreeProps> = ({
 }) => {
   const [searchKeyword, setSearchKeyword] = useState('')
   const [searchMode, setSearchMode] = useState(false)
+  const isSearchComposingRef = useRef(false)
+
+  const triggerSearch = (value: string) => {
+    const trimmed = value.trim()
+    if (trimmed) {
+      onSearch?.(trimmed)
+    } else {
+      onSearchClear?.()
+    }
+  }
 
   const ANALYSIS_TYPES = [
     { key: 'golden_three', name: '黄金三章', description: '黄金三章分析' },
@@ -643,11 +652,19 @@ const FileTree: React.FC<FileTreeProps> = ({
               onChange={(e) => {
                 const value = e.target.value
                 setSearchKeyword(value)
-                if (value.trim()) {
-                  onSearch?.(value.trim())
-                } else {
-                  onSearchClear?.()
+                if (isSearchComposingRef.current) {
+                  return
                 }
+                triggerSearch(value)
+              }}
+              onCompositionStart={() => {
+                isSearchComposingRef.current = true
+              }}
+              onCompositionEnd={(e) => {
+                isSearchComposingRef.current = false
+                const value = e.currentTarget.value
+                setSearchKeyword(value)
+                triggerSearch(value)
               }}
             />
             <Button
@@ -662,38 +679,53 @@ const FileTree: React.FC<FileTreeProps> = ({
               取消
             </Button>
           </div>
-        ) : (
-          <div className="file-tree-toolbar-actions">
-            <Tooltip title="搜索">
-              <Button
-                type="text"
-                icon={<SearchOutlined />}
-                onClick={() => setSearchMode(true)}
-              />
-            </Tooltip>
-            <Tooltip title="新建文档">
-              <Button
-                type="text"
-                icon={<FileAddOutlined />}
-                onClick={() => onToolbarCreateDocument?.()}
-              />
-            </Tooltip>
-            <Tooltip title="新建文件夹">
-              <Button
-                type="text"
-                icon={<FolderAddOutlined />}
-                onClick={() => onToolbarCreateFolder?.()}
-              />
-            </Tooltip>
-            <Tooltip title="章节拆解">
-              <Button
-                type="text"
-                icon={<ScissorOutlined />}
-                onClick={() => onChapterAnalysis?.()}
-              />
-            </Tooltip>
-          </div>
-        )}
+          ) : (
+            <div className="file-tree-toolbar-actions">
+              <div className="file-tree-toolbar-secondary">
+                <Tooltip title="搜索">
+                  <Button
+                    type="text"
+                    icon={<SearchOutlined />}
+                    onClick={() => setSearchMode(true)}
+                  />
+                </Tooltip>
+                <Button
+                  type="text"
+                  size="small"
+                  className="file-tree-new-chapter-btn"
+                  icon={<FileTextOutlined />}
+                  onClick={() => {
+                    // 针对“主要内容”虚拟文件夹，优先使用 onQuickAddChapter
+                    const mainFolder: NovelFolder = {
+                      id: -999,
+                      novelId: 0,
+                      folderName: '主要内容',
+                      parentId: null,
+                      sortOrder: 0,
+                      isSystem: true,
+                    } as any
+                    onQuickAddChapter?.(mainFolder)
+                  }}
+                >
+                  新增章节
+                </Button>
+                <Tooltip title="新建文档">
+                  <Button
+                    type="text"
+                    icon={<FileAddOutlined />}
+                    onClick={() => onToolbarCreateDocument?.()}
+                  />
+                </Tooltip>
+                <Tooltip title="新建文件夹">
+                  <Button
+                    type="text"
+                    icon={<FolderAddOutlined />}
+                    onClick={() => onToolbarCreateFolder?.()}
+                  />
+                </Tooltip>
+              </div>
+            </div>
+          )}
       </div>
       {!searchMode && !analysisMode && (
         <Tree

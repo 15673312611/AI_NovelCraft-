@@ -1,11 +1,15 @@
 package com.novel.agentic.controller;
 
+import com.novel.agentic.dto.ChapterGenerationRequest;
 import com.novel.agentic.service.AgenticChapterWriter;
 import com.novel.dto.AIConfigRequest;
 import com.novel.service.ChapterService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -50,94 +54,23 @@ public class AgenticWritingController {
      * 返回：SSE流式响应
      */
     @PostMapping("/generate-chapters-stream")
-    public SseEmitter generateChaptersStream(@RequestBody Map<String, Object> request) {
-        
-        Long novelId = ((Number) request.get("novelId")).longValue();
-
-        Integer startChapter = null;
-        if (request.containsKey("startChapter") && request.get("startChapter") != null) {
-            startChapter = ((Number) request.get("startChapter")).intValue();
-        } else {
-            startChapter = chapterService.getNextChapterNumber(novelId);
-            logger.info("📌 未显式指定起始章节，自动从数据库最近一章推算下一章: {}", startChapter);
-        }
-        if (startChapter == null || startChapter < 1) {
-            startChapter = 1;
-        }
-        Integer count = request.containsKey("count") ? 
-            ((Number) request.get("count")).intValue() : 1;
-        String userAdjustment = (String) request.get("userAdjustment");
-        String stylePromptFile = (String) request.get("stylePromptFile");
-        Map<String, String> referenceContents = extractReferenceContents(request);
+    public SseEmitter generateChaptersStream(@RequestBody Map<String, Object> requestMap) {
+        // 解析并验证请求参数
+        ChapterGenerationRequest request = parseAndValidateRequest(requestMap);
         
         logger.info("📝 代理式AI写作请求: novelId={}, 起始章节={}, 数量={}, 风格提示词={}", 
-            novelId, startChapter, count, stylePromptFile != null ? stylePromptFile : "默认");
+            request.getNovelId(), request.getStartChapter(), request.getCount(), 
+            request.getStylePromptFile() != null ? request.getStylePromptFile() : "默认");
         
+        // 创建SSE发射器并设置心跳
         SseEmitter emitter = new SseEmitter(0L);
-        ScheduledExecutorService heartbeat = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "agentic-sse-heartbeat");
-            t.setDaemon(true);
-            return t;
-        });
-
-        Runnable stopHeartbeat = () -> {
-            if (!heartbeat.isShutdown()) {
-                heartbeat.shutdownNow();
-            }
-        };
-
-        heartbeat.scheduleAtFixedRate(() -> safeSend(emitter,
-                SseEmitter.event().name("keepalive").data("💓")),
-            0, 20, TimeUnit.SECONDS);
-
-        emitter.onTimeout(() -> {
-            logger.warn("SSE连接超时: novelId={}", novelId);
-            stopHeartbeat.run();
-            emitter.complete();
-        });
-        emitter.onCompletion(stopHeartbeat);
-        emitter.onError(throwable -> {
-            logger.error("SSE连接错误", throwable);
-            stopHeartbeat.run();
-        });
+        ScheduledExecutorService heartbeat = setupHeartbeat(emitter, request.getNovelId());
         
-        // 提取AI配置
-        AIConfigRequest aiConfig = extractAIConfig(request);
+        // 捕获安全上下文用于异步执行
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         
-        // 创建final副本供lambda使用
-        final Integer finalStartChapter = startChapter;
-        final Integer finalCount = count;
-        final String finalUserAdjustment = userAdjustment;
-        final AIConfigRequest finalAiConfig = aiConfig;
-        final String finalStylePromptFile = stylePromptFile;
-        final Map<String, String> finalReferenceContents = referenceContents;
-        
-        // 异步执行
-        CompletableFuture.runAsync(() -> {
-            try {
-                if (finalCount == 1) {
-                    chapterWriter.generateChapter(novelId, finalStartChapter, finalUserAdjustment, finalAiConfig, finalStylePromptFile, finalReferenceContents, emitter);
-                } else {
-                    chapterWriter.generateMultipleChapters(novelId, finalStartChapter, finalCount, finalAiConfig, finalStylePromptFile, finalReferenceContents, emitter);
-                }
-                
-                stopHeartbeat.run();
-                emitter.complete();
-                
-            } catch (Exception e) {
-                logger.error("代理式AI写作失败", e);
-                try {
-                    safeSend(emitter, SseEmitter.event()
-                        .name("error")
-                        .data("生成失败: " + e.getMessage()));
-                    emitter.completeWithError(e);
-                } catch (Exception ex) {
-                    logger.error("发送错误事件失败", ex);
-                } finally {
-                    stopHeartbeat.run();
-                }
-            }
-        });
+        // 异步执行章节生成
+        executeChapterGenerationAsync(request, emitter, heartbeat, authentication);
         
         return emitter;
     }
@@ -158,6 +91,176 @@ public class AgenticWritingController {
         features.add("批量章节生成");
         status.put("features", features);
         return status;
+    }
+    
+    /**
+     * 解析并验证请求参数
+     */
+    private ChapterGenerationRequest parseAndValidateRequest(Map<String, Object> requestMap) {
+        // 验证必需参数
+        if (!requestMap.containsKey("novelId") || requestMap.get("novelId") == null) {
+            throw new IllegalArgumentException("novelId 不能为空");
+        }
+        
+        ChapterGenerationRequest request = new ChapterGenerationRequest();
+        
+        // 解析 novelId
+        Long novelId = ((Number) requestMap.get("novelId")).longValue();
+        request.setNovelId(novelId);
+        
+        // 解析起始章节号
+        Integer startChapter = extractStartChapter(requestMap, novelId);
+        request.setStartChapter(startChapter);
+        
+        // 解析章节数量，默认为1
+        Integer count = requestMap.containsKey("count") && requestMap.get("count") != null
+            ? ((Number) requestMap.get("count")).intValue() : 1;
+        if (count < 1) {
+            throw new IllegalArgumentException("count 必须大于0");
+        }
+        request.setCount(count);
+        
+        // 解析其他可选参数
+        request.setUserAdjustment((String) requestMap.get("userAdjustment"));
+        request.setStylePromptFile((String) requestMap.get("stylePromptFile"));
+        request.setReferenceContents(extractReferenceContents(requestMap));
+        request.setAiConfig(extractAIConfig(requestMap));
+        
+        return request;
+    }
+    
+    /**
+     * 提取起始章节号
+     */
+    private Integer extractStartChapter(Map<String, Object> requestMap, Long novelId) {
+        Integer startChapter = null;
+        
+        if (requestMap.containsKey("startChapter") && requestMap.get("startChapter") != null) {
+            startChapter = ((Number) requestMap.get("startChapter")).intValue();
+        } else {
+            startChapter = chapterService.getNextChapterNumber(novelId);
+            logger.info("📌 未显式指定起始章节，自动从数据库最近一章推算下一章: {}", startChapter);
+        }
+        
+        if (startChapter == null || startChapter < 1) {
+            startChapter = 1;
+        }
+        
+        return startChapter;
+    }
+    
+    /**
+     * 设置SSE心跳机制
+     */
+    private ScheduledExecutorService setupHeartbeat(SseEmitter emitter, Long novelId) {
+        ScheduledExecutorService heartbeat = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "agentic-sse-heartbeat");
+            t.setDaemon(true);
+            return t;
+        });
+        
+        Runnable stopHeartbeat = () -> {
+            if (!heartbeat.isShutdown()) {
+                heartbeat.shutdownNow();
+            }
+        };
+        
+        // 每20秒发送一次心跳
+        heartbeat.scheduleAtFixedRate(
+            () -> safeSend(emitter, SseEmitter.event().name("keepalive").data("💓")),
+            0, 20, TimeUnit.SECONDS
+        );
+        
+        // 设置SSE事件处理器
+        emitter.onTimeout(() -> {
+            logger.warn("SSE连接超时: novelId={}", novelId);
+            stopHeartbeat.run();
+            emitter.complete();
+        });
+        emitter.onCompletion(stopHeartbeat);
+        emitter.onError(throwable -> {
+            logger.error("SSE连接错误", throwable);
+            stopHeartbeat.run();
+        });
+        
+        return heartbeat;
+    }
+    
+    /**
+     * 异步执行章节生成
+     */
+    private void executeChapterGenerationAsync(
+            ChapterGenerationRequest request,
+            SseEmitter emitter,
+            ScheduledExecutorService heartbeat,
+            Authentication authentication) {
+        
+        CompletableFuture.runAsync(() -> {
+            // 设置异步线程的安全上下文
+            SecurityContext asyncContext = SecurityContextHolder.createEmptyContext();
+            asyncContext.setAuthentication(authentication);
+            SecurityContextHolder.setContext(asyncContext);
+            
+            try {
+                // 根据数量选择生成方法
+                if (request.getCount() == 1) {
+                    chapterWriter.generateChapter(
+                        request.getNovelId(),
+                        request.getStartChapter(),
+                        request.getUserAdjustment(),
+                        request.getAiConfig(),
+                        request.getStylePromptFile(),
+                        request.getReferenceContents(),
+                        emitter
+                    );
+                } else {
+                    chapterWriter.generateMultipleChapters(
+                        request.getNovelId(),
+                        request.getStartChapter(),
+                        request.getCount(),
+                        request.getAiConfig(),
+                        request.getStylePromptFile(),
+                        request.getReferenceContents(),
+                        emitter
+                    );
+                }
+                
+                // 成功完成
+                emitter.complete();
+                
+            } catch (Exception e) {
+                logger.error("代理式AI写作失败: novelId={}, chapter={}", 
+                    request.getNovelId(), request.getStartChapter(), e);
+                handleGenerationError(emitter, e);
+            } finally {
+                // 清理资源
+                shutdownHeartbeat(heartbeat);
+                SecurityContextHolder.clearContext();
+            }
+        });
+    }
+    
+    /**
+     * 处理生成错误
+     */
+    private void handleGenerationError(SseEmitter emitter, Exception e) {
+        try {
+            safeSend(emitter, SseEmitter.event()
+                .name("error")
+                .data("生成失败: " + e.getMessage()));
+            emitter.completeWithError(e);
+        } catch (Exception ex) {
+            logger.error("发送错误事件失败", ex);
+        }
+    }
+    
+    /**
+     * 关闭心跳服务
+     */
+    private void shutdownHeartbeat(ScheduledExecutorService heartbeat) {
+        if (heartbeat != null && !heartbeat.isShutdown()) {
+            heartbeat.shutdownNow();
+        }
     }
     
     /**
@@ -184,15 +287,15 @@ public class AgenticWritingController {
             if (configMap.containsKey("baseUrl")) {
                 config.setBaseUrl((String) configMap.get("baseUrl"));
             }
-            // 注意：AIConfigRequest目前不支持temperature和maxTokens，这些参数会被忽略
-            // 如果需要支持，需要在AIConfigRequest中添加相应字段
-            
             return config;
         }
         
-        return new AIConfigRequest(); // 使用默认配置
+        return new AIConfigRequest();
     }
 
+    /**
+     * 提取参考内容
+     */
     @SuppressWarnings("unchecked")
     private Map<String, String> extractReferenceContents(Map<String, Object> request) {
         Map<String, String> references = new LinkedHashMap<>();
@@ -207,8 +310,8 @@ public class AgenticWritingController {
         } else if (referenceObj instanceof List) {
             List<?> refList = (List<?>) referenceObj;
             for (Object item : refList) {
-                if (item instanceof Map) {
-                    Map<String, Object> refItem = (Map<String, Object>) item;
+                if (item instanceof Map<?, ?>) {
+                    Map<?, ?> refItem = (Map<?, ?>) item;
                     Object title = refItem.get("title");
                     Object content = refItem.get("content");
                     if (title != null && content != null) {
@@ -221,7 +324,10 @@ public class AgenticWritingController {
         }
         return references;
     }
-
+    
+    /**
+     * 安全发送SSE事件
+     */
     private void safeSend(SseEmitter emitter, SseEmitter.SseEventBuilder event) {
         if (emitter == null) {
             return;

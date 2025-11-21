@@ -1,7 +1,11 @@
 package com.novel.service;
 
+import com.novel.agentic.service.graph.IGraphService;
 import com.novel.domain.entity.Chapter;
+import com.novel.domain.entity.Novel;
 import com.novel.repository.ChapterRepository;
+import com.novel.repository.NovelRepository;
+import com.novel.common.security.AuthUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -31,6 +35,9 @@ public class ChapterService {
 
     @Autowired
     private ChapterSummaryService chapterSummaryService;
+
+    @Autowired
+    private NovelRepository novelRepository;
     
     @Autowired
     private com.novel.repository.NovelTemplateProgressRepository templateProgressRepository;
@@ -38,6 +45,12 @@ public class ChapterService {
     @Autowired
     @SuppressWarnings("unused")
     private NovelFolderService folderService;
+
+    @Autowired
+    private WritingVersionHistoryService writingVersionHistoryService;
+
+    @Autowired(required = false)
+    private IGraphService graphService;
 
 
     /**
@@ -158,32 +171,51 @@ public class ChapterService {
      * 更新章节（重写章节时会清理相关旧数据）
      */
     public Chapter updateChapter(Long id, Chapter chapterData) {
+        Long currentUserId = AuthUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new SecurityException("用户未登录，无法更新章节");
+        }
+
         Chapter chapter = chapterRepository.selectById(id);
+        if (chapter == null) {
+            return null;
+        }
+
+        Novel novel = novelRepository.selectById(chapter.getNovelId());
+        if (novel == null || novel.getAuthorId() == null || !currentUserId.equals(novel.getAuthorId())) {
+            throw new SecurityException("无权限修改该章节");
+        }
+
         if (chapter != null) {
+            String oldContentSnapshot = chapter.getContent() != null ? chapter.getContent() : "";
+            String newContentForHistory = null;
             boolean isContentRewrite = false;
             
             if (chapterData.getTitle() != null) {
                 chapter.setTitle(chapterData.getTitle());
             }
-            if (chapterData.getContent() != null) {
-                // 检测是否是内容重写（内容变化超过50%视为重写）
-                String oldContent = chapter.getContent() != null ? chapter.getContent() : "";
-                String newContent = chapterData.getContent();
-                
-                if (!oldContent.isEmpty() && !oldContent.equals(newContent)) {
-                    // 计算内容相似度（简单判断：新内容与旧内容差异大于50%）
-                    double similarity = calculateSimilarity(oldContent, newContent);
-                    if (similarity < 0.5) {
+              if (chapterData.getContent() != null) {
+                  // 检测是否是内容重写（内容变化超过50%视为重写）
+                  String oldContent = chapter.getContent() != null ? chapter.getContent() : "";
+                  String newContent = chapterData.getContent();
+                  
+                  if (!oldContent.isEmpty() && !oldContent.equals(newContent)) {
+                      // 计算内容相似度（简单判断：新内容与旧内容差异大于50%）
+                      double similarity = calculateSimilarity(oldContent, newContent);
+                      if (similarity < 0.5) {
                         isContentRewrite = true;
                         logger.info("检测到章节 {} 内容被重写（相似度：{}%），将清理相关旧数据", 
                             chapter.getChapterNumber(), (int)(similarity * 100));
-                    }
-                }
-                
-                chapter.setContent(newContent);
-                chapter.setWordCount(newContent.length());
-                chapter.calculateReadingTime();
-            }
+                      }
+                  }
+                  
+                  chapter.setContent(newContent);
+                  chapter.setWordCount(newContent.length());
+                  chapter.calculateReadingTime();
+
+                  // 供版本历史记录使用（只在本次请求修改了 content 时才更新）
+                  newContentForHistory = newContent;
+              }
             if (chapterData.getChapterNumber() != null) {
                 chapter.setChapterNumber(chapterData.getChapterNumber());
             }
@@ -194,14 +226,28 @@ public class ChapterService {
                 chapter.setGenerationContext(chapterData.getGenerationContext());
             }
 
-            chapterRepository.updateById(chapter);
-            
-            // 如果是重写，清理相关旧数据
-            if (isContentRewrite && chapter.getNovelId() != null && chapter.getChapterNumber() != null) {
-                cleanupChapterRelatedData(chapter.getNovelId(), chapter.getChapterNumber());
-            }
-            
-            return chapter;
+              chapterRepository.updateById(chapter);
+              
+              // 如果是重写，清理相关旧数据
+              if (isContentRewrite && chapter.getNovelId() != null && chapter.getChapterNumber() != null) {
+                  cleanupChapterRelatedData(chapter.getNovelId(), chapter.getChapterNumber());
+              }
+
+              // 记录正文版本历史（正文只存章节表，这里只针对 content 有变更的情况）
+              if (newContentForHistory != null) {
+                  try {
+                      writingVersionHistoryService.recordChapterVersion(
+                              chapter,
+                              oldContentSnapshot,
+                              newContentForHistory,
+                              "AUTO_SAVE"  // 写作页主要通过自动保存更新正文，这里统一标记为 AUTO_SAVE
+                      );
+                  } catch (Exception e) {
+                      logger.warn("记录章节版本历史失败（不影响章节更新）: {}", e.getMessage());
+                  }
+              }
+              
+              return chapter;
         }
         return null;
     }
@@ -306,6 +352,40 @@ public class ChapterService {
      * 删除章节
      */
     public boolean deleteChapter(Long id) {
+        Long currentUserId = AuthUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new SecurityException("用户未登录，无法删除章节");
+        }
+
+        Chapter chapter = chapterRepository.selectById(id);
+        if (chapter == null) {
+            return false;
+        }
+
+        Novel novel = novelRepository.selectById(chapter.getNovelId());
+        if (novel == null || novel.getAuthorId() == null || !currentUserId.equals(novel.getAuthorId())) {
+            throw new SecurityException("无权限删除该章节");
+        }
+
+        Long novelId = chapter.getNovelId();
+        Integer chapterNumber = chapter.getChapterNumber();
+
+        if (novelId != null && chapterNumber != null) {
+            try {
+                chapterSummaryService.deleteChapterSummary(novelId, chapterNumber);
+            } catch (Exception e) {
+                logger.warn("删除章节时清理章节概括失败: novelId={}, chapterNumber={}, error={}", novelId, chapterNumber, e.getMessage());
+            }
+
+            if (graphService != null) {
+                try {
+                    graphService.deleteChapterEntities(novelId, chapterNumber);
+                } catch (Exception e) {
+                    logger.warn("删除章节时清理图谱数据失败: novelId={}, chapterNumber={}, error={}", novelId, chapterNumber, e.getMessage());
+                }
+            }
+        }
+
         return chapterRepository.deleteById(id) > 0;
     }
 
@@ -341,7 +421,20 @@ public class ChapterService {
      */
     @Deprecated
     public Chapter publishChapter(Long id) {
+        Long currentUserId = AuthUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new SecurityException("用户未登录，无法发布章节");
+        }
+
         Chapter chapter = chapterRepository.selectById(id);
+        if (chapter == null) {
+            return null;
+        }
+
+        Novel novel = novelRepository.selectById(chapter.getNovelId());
+        if (novel == null || novel.getAuthorId() == null || !currentUserId.equals(novel.getAuthorId())) {
+            throw new SecurityException("无权限发布该章节");
+        }
         if (chapter != null) {
             chapter.publish();
             chapterRepository.updateById(chapter);
@@ -369,7 +462,20 @@ public class ChapterService {
      * @return 发布后的章节
      */
     public Chapter publishChapter(Long id, com.novel.dto.AIConfigRequest aiConfig) {
+        Long currentUserId = AuthUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new SecurityException("用户未登录，无法发布章节");
+        }
+
         Chapter chapter = chapterRepository.selectById(id);
+        if (chapter == null) {
+            return null;
+        }
+
+        Novel novel = novelRepository.selectById(chapter.getNovelId());
+        if (novel == null || novel.getAuthorId() == null || !currentUserId.equals(novel.getAuthorId())) {
+            throw new SecurityException("无权限发布该章节");
+        }
         if (chapter != null) {
             chapter.publish();
             chapterRepository.updateById(chapter);
@@ -400,7 +506,20 @@ public class ChapterService {
      * 取消发布章节
      */
     public Chapter unpublishChapter(Long id) {
+        Long currentUserId = AuthUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new SecurityException("用户未登录，无法取消发布章节");
+        }
+
         Chapter chapter = chapterRepository.selectById(id);
+        if (chapter == null) {
+            return null;
+        }
+
+        Novel novel = novelRepository.selectById(chapter.getNovelId());
+        if (novel == null || novel.getAuthorId() == null || !currentUserId.equals(novel.getAuthorId())) {
+            throw new SecurityException("无权限取消发布该章节");
+        }
         if (chapter != null) {
             chapter.unpublish();
             chapterRepository.updateById(chapter);

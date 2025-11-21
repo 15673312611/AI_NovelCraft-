@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { message, Modal, Input, Button, Spin } from 'antd'
-import { SearchOutlined, EditOutlined, FormOutlined, HighlightOutlined, BarChartOutlined, BulbOutlined, FileTextOutlined } from '@ant-design/icons'
+import { SearchOutlined, EditOutlined, FormOutlined, HighlightOutlined, BarChartOutlined, BulbOutlined, FileTextOutlined, HistoryOutlined } from '@ant-design/icons'
 import type { NovelDocument } from '@/services/documentService'
 import aiService from '@/services/aiService'
 import api from '@/services/api'
@@ -16,8 +16,10 @@ export interface EditorPanelProps {
   onTitleChange?: (title: string) => void
   onShowOutline?: () => void
   onShowVolumeOutline?: () => void
+  onShowHistory?: () => void
   onReviewManuscript?: () => void
   onRemoveAITrace?: () => void
+  onStreamlineContent?: () => void
   lastSaveTime?: string
   isSaving?: boolean
   onSearchReplace?: () => void
@@ -29,9 +31,11 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   onChangeContent,
   onSave: _onSave,
   onShowOutline,
+  onShowHistory,
   onShowVolumeOutline,
   onReviewManuscript,
   onRemoveAITrace,
+  onStreamlineContent,
   lastSaveTime,
   isSaving = false,
 }) => {
@@ -414,59 +418,40 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
 
       const prompt = `# 任务
 
-你是一位专业的章节标题生成器。请根据章节内容，生成5个精准、简洁、有吸引力的章节标题。
+请为下面这一章节内容创作5个爆款中文标题，用风格混搭的方式制造惊喜与吸引力。
 
-# 章节内容
+# 输入章节内容
 
 ${contentPreview}${content.length > 1500 ? '\n...(内容较长，已截取前1500字)' : ''}
 
-# 核心要求
+# 创作人设
 
-1. **精准概括**：标题必须准确反映本章的核心内容和主要事件
-2. **简洁自然**：标题长度根据内容自然确定，既不要过短失去信息，也不要过长冗余
-3. **自然流畅**：语言要自然，不要过度夸张或刻意制造噱头
-4. **贴合内容**：从章节实际内容中提取关键信息，不要脱离原文
+你是一个“多风格标题工坊”主理人：既懂番茄小说的爽文打法，也能随手调动悬疑、仙侠、都市、科幻、脑洞等不同美学。每个标题都像开盲盒，给读者新鲜冲击。
 
-# 标题生成策略
+# 写作流程
 
-**策略一：核心事件提炼**
-- 直接概括本章发生的最重要事件
-- 示例：初入宗门、突破筑基、夜探藏书阁
+1. **洞察剧情**：提炼本章的爽点、冲突、反转、情感峰值。
+2. **锁定钩子**：从人物身份、关系撕裂、神秘线索、情绪爆点里挑选最能吊胃口的元素。
+3. **随机混风格**：每个标题需从“番茄爽感 / 都市悬疑 / 古风仙侠 / 赛博科幻 / 脑洞黑色幽默 / 热血成长”中随机挑选不同的组合或标签，保证至少3种不同风格出现。
+4. **压缩能量**：字数控制在4-15个字，语言短促有画面，禁止平铺直叙。
 
-**策略二：关键对话/台词**
-- 提取本章最有冲击力的一句对话
-- 示例："你不配！"、师父的遗言
+# 强制要求
 
-**策略三：情节转折点**
-- 突出本章的关键转折或意外
-- 示例：真相大白、意外的访客、计划败露
-
-**策略四：人物关系/状态变化**
-- 强调人物关系或状态的重要变化
-- 示例：师徒决裂、重伤垂危、结盟
-
-**策略五：场景+核心动作**
-- 场景+主角的关键行动
-- 示例：血战擂台、深夜逃亡、拍卖会上的较量
-
-# 禁止事项
-
-❌ 不要使用过度夸张的网文套路（如"震惊全场""跪地求饶""打脸反转"等）
-❌ 不要脱离章节实际内容编造情节
-❌ 不要添加书名号《》，直接输出标题文字
-❌ 不要使用过多的问号、感叹号等标点（除非是对话引用）
+- 5 个标题全部不同，且整体风格分布要“番茄爽感+随机混搭”。
+- 每个标题都要钩住读者：可用热词（真千金、疯批、修罗场）、意象（霜刃、星港）、问题或命令句。
+- 不能剧透全部剧情，但必须与本章核心内容高度贴合。
+- 禁用“新的开始、第一次见面”这类空洞措辞，不要使用序号或说明文字。
 
 # 输出格式
 
-直接输出5个标题，每个标题独立成行，不要编号，不要添加任何说明文字。
+只输出5行标题，不要编号，不要解释，不要多余符号。
 
-示例输出：
-初入宗门
-神秘的师父
-藏书阁奇遇
-突破筑基
-师兄的挑战
-`
+# 示例（仅示例风格，不可照搬）
+疯批质子闯后宫
+月下请君入局
+星港黑名单解封
+她把修罗场写成诗
+断案系统说我赢了`
 
       // 使用通用AI调用（复用polishSelection接口）
       const requestBody = withAIConfig({
@@ -715,22 +700,118 @@ ${contentPreview}${content.length > 1500 ? '\n...(内容较长，已截取前150
     message.success('格式化完成')
   }
 
-  // 一键格式化函数（和WritingStudioPage中的一致）
+  // 一键格式化函数（优化版：对话内容不换行）
   const formatChineseSentences = (input: string): string => {
     if (!input) return ''
+    
     let text = input.replace(/\r\n?/g, '\n')
-    // 优先处理：标点簇 + 右引号/右括号 + 左引号 -> 在右引号/右括号后空一行，再开始下一段
-    text = text.replace(/([。？！]+)\s*([”’"'」』】])\s*([“‘"'「『])/g, '$1$2\n\n$3')
-    // 其次：标点簇 + 右引号/右括号（后面不是左引号）-> 在右引号/右括号后换行
-    text = text.replace(/([。？！]+)\s*([”’"'」』】])(?!\s*[“‘"'「『])\s*/g, '$1$2\n')
-    // 再者：标点簇后直接换行（后面没有右引号/右括号）
-    text = text.replace(/([。？！]+)(?!\s*[”’"'」』】])\s*/g, '$1\n')
-    // 行级清理：去除每行首部的空白（含全角空格），以及行尾空白
-    text = text
-      .split('\n')
-      .map(line => line.replace(/^[\t \u3000]+/g, '').replace(/\s+$/g, ''))
-      .join('\n')
-    return text
+    let result = ''
+    let inQuote = false // 是否在引号内
+    let currentLine = ''
+    
+    // 左引号字符集（只包括双引号和书名号）
+    const leftQuotes = '\u201c\u2018\u300c\u300e'  // “‘「『
+    // 右引号字符集  
+    const rightQuotes = '\u201d\u2019\u300d\u300f' // ”’」』
+    // 句子结尾标点
+    const endMarks = '。？！'
+    // 所有中文标点符号（用于检查引号后是否跟标点）
+    const allPunctuation = '。？！，、；：…—'
+    
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i]
+      currentLine += char
+      
+      // 检测左引号（进入引号）
+      if (leftQuotes.includes(char)) {
+        inQuote = true
+      }
+      // 检测右引号（离开引号）
+      else if (rightQuotes.includes(char)) {
+        inQuote = false
+        // 检查右引号后是否紧跟任何标点符号
+        const nextChar = i + 1 < text.length ? text[i + 1] : ''
+        if (allPunctuation.includes(nextChar)) {
+          // 如果后面是任何标点，不换行，继续累积
+          // 例如：“降维打击”。 或 “你好”，
+        } else {
+          // 右引号后没有标点，才换行（独立对话）
+          result += currentLine.trim() + '\n'
+          currentLine = ''
+        }
+      }
+      // 检测句子结尾标点
+      else if (endMarks.includes(char)) {
+        // 只有在引号外才换行
+        if (!inQuote) {
+          // 检查后面（跳过换行符和空格）是否有引号
+          let j = i + 1
+          while (j < text.length && (text[j] === '\n' || text[j] === ' ' || text[j] === '\r')) {
+            j++
+          }
+          const nextNonWhitespace = j < text.length ? text[j] : ''
+          
+          // 如果后面紧跟引号，不换行，继续累积
+          if (rightQuotes.includes(nextNonWhitespace)) {
+            // 例如：这一档了吧？\n"
+          } else {
+            // 后面没有引号，正常换行
+            result += currentLine.trim() + '\n'
+            currentLine = ''
+          }
+        }
+        // 引号内不换行，继续累积
+      }
+      // 检测省略号
+      else if (char === '…') {
+        // 检查是否是连续的省略号
+        if (i + 1 < text.length && text[i + 1] === '…') {
+          currentLine += text[i + 1]
+          i++ // 跳过下一个省略号
+        }
+        // 只有在引号外才换行
+        if (!inQuote) {
+          // 检查后面（跳过换行符和空格）是否有引号
+          let j = i + 1
+          while (j < text.length && (text[j] === '\n' || text[j] === ' ' || text[j] === '\r')) {
+            j++
+          }
+          const nextNonWhitespace = j < text.length ? text[j] : ''
+          
+          // 如果后面紧跟引号，不换行，继续累积
+          if (rightQuotes.includes(nextNonWhitespace)) {
+            // 例如：天啊…\n"
+          } else {
+            // 后面没有引号，正常换行
+            result += currentLine.trim() + '\n'
+            currentLine = ''
+          }
+        }
+      }
+      // 已有的换行符
+      else if (char === '\n') {
+        // 如果在引号内，将换行符替换为空格，不换行
+        if (inQuote) {
+          currentLine = currentLine.slice(0, -1) + ' ' // 移除换行符，添加空格
+        } else {
+          // 引号外，保留换行
+          if (currentLine.trim().length > 1) { // 排除只有换行符的情况
+            result += currentLine.trim() + '\n'
+          }
+          currentLine = ''
+        }
+      }
+    }
+    
+    // 添加剩余内容
+    if (currentLine.trim()) {
+      result += currentLine.trim()
+    }
+    
+    // 清理：移除多余的连续换行（超过2个）
+    result = result.replace(/\n{3,}/g, '\n\n')
+    
+    return result.trim()
   }
 
   // 搜索替换功能
@@ -911,17 +992,28 @@ ${contentPreview}${content.length > 1500 ? '\n...(内容较长，已截取前150
                 <div className="editor-actions">
                   <span className="word-count">字数: {wordCount}</span>
                   <button className="action-btn ai-action-btn" onClick={openNameModal} title="AI生成章节标题">
-                    <span className="action-icon">
-                      <EditOutlined />
-                    </span>
+
                     <span>章节取名</span>
                   </button>
+                  <button className="action-btn ai-action-btn" onClick={onStreamlineContent}>AI精简</button>
                   <button className="action-btn ai-action-btn" onClick={onReviewManuscript}>AI审稿</button>
                   <button className="action-btn ai-action-btn" onClick={onRemoveAITrace}>AI消痕</button>
                 </div>
-                <div className="outline-buttons">
-                  <button className="outline-btn" onClick={onShowOutline}>大纲</button>
-                  <button className="outline-btn" onClick={onShowVolumeOutline}>卷大纲</button>
+                <div className="outline-buttons"> 
+                  <button className="outline-btn" onClick={onShowOutline}>
+                    <FileTextOutlined style={{ marginRight: 4, fontSize: 14 }} />
+                    <span>大纲</span>
+                  </button>
+                  <button className="outline-btn" onClick={onShowVolumeOutline}>
+                    <BarChartOutlined style={{ marginRight: 4, fontSize: 14 }} />
+                    <span>卷大纲</span>
+                  </button>
+                  {onShowHistory && (
+                    <button className="outline-btn" onClick={onShowHistory}>
+                      <HistoryOutlined style={{ marginRight: 4, fontSize: 14 }} />
+                      <span>历史</span>
+                    </button>
+                  )}
                 </div>
                 {lastSaveTime && (
                   <div className="save-time-display">

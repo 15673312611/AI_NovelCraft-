@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import { Layout, Spin, message, Modal } from 'antd'
+import { Layout, Spin, message, Modal, List, Button, Tag, Drawer } from 'antd'
 import FileTree from '@/components/writing/FileTree'
 import EditorPanel from '@/components/writing/EditorPanel'
 import ToolPanel from '@/components/writing/ToolPanel'
@@ -39,29 +39,382 @@ import {
 import type { AIConversation } from '@/services/aiConversationService'
 import { getAllGenerators, AiGenerator } from '@/services/aiGeneratorService'
 import novelService from '@/services/novelService'
-import novelVolumeService from '@/services/novelVolumeService'
+import novelVolumeService, { NovelVolume } from '@/services/novelVolumeService'
+import {
+  getChapterOutline,
+  getChapterOutlinesByVolume,
+  updateChapterOutline as updateVolumeChapterOutline,
+  type VolumeChapterOutlineSummary,
+  type VolumeChapterOutline,
+} from '@/services/volumeChapterOutlineService'
+import { getChapterHistory, getDocumentHistory, type WritingVersionHistory } from '@/services/writingHistoryService'
 import api from '@/services/api'
 import { withAIConfig, checkAIConfig, AI_CONFIG_ERROR_MESSAGE } from '@/utils/aiRequest'
 import './WritingStudioPage.css'
 
 const { Sider, Content } = Layout
 
-// 一键格式化函数
+/**
+ * 智能排版系统 - 一键格式化
+ * 
+ * 功能：
+ * 1. 段落智能识别（对话、叙述、心理描写）
+ * 2. 自动空行（对话段落、场景切换）
+ * 3. 标点优化（修复常见错误）
+ * 4. 段首缩进（可选）
+ * 5. 特殊格式处理（章节标题、分隔线）
+ */
 const formatChineseSentences = (input: string): string => {
   if (!input) return '';
+  
   let text = input.replace(/\r\n?/g, '\n');
-  // 优先处理：标点簇 + 右引号/右括号 + 左引号 -> 在右引号/右括号后空一行，再开始下一段
-  text = text.replace(/([。？！]+)\s*([”’"'」』】])\s*([“‘"'「『])/g, '$1$2\n\n$3');
-  // 其次：标点簇 + 右引号/右括号（后面不是左引号）-> 在右引号/右括号后换行
-  text = text.replace(/([。？！]+)\s*([”’"'」』】])(?!\s*[“‘"'「『])\s*/g, '$1$2\n');
-  // 再者：标点簇后直接换行（后面没有右引号/右括号）
-  text = text.replace(/([。？！]+)(?!\s*[”’"'」』】])\s*/g, '$1\n');
-  // 行级清理：去除每行首部的空白（含全角空格），以及行尾空白
-  text = text
-    .split('\n')
-    .map(line => line.replace(/^[\t \u3000]+/g, '').replace(/\s+$/g, ''))
-    .join('\n');
-  return text;
+  let result = '';
+  let inQuote = false; // 是否在引号内
+  let currentLine = '';
+  
+  // 左引号字符集（只包括双引号和书名号）
+  const leftQuotes = '\u201c\u2018\u300c\u300e';  // "'「『
+  // 右引号字符集  
+  const rightQuotes = '\u201d\u2019\u300d\u300f'; // "'」』
+  // 句子结尾标点
+  const endMarks = '。？！';
+  // 所有中文标点符号（用于检查引号后是否跟标点）
+  const allPunctuation = '。？！，、；：…—';
+  
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    currentLine += char;
+    
+    // 检测左引号（进入引号）
+    if (leftQuotes.includes(char)) {
+      inQuote = true;
+    }
+    // 检测右引号（离开引号）
+    else if (rightQuotes.includes(char)) {
+      inQuote = false;
+      // 检查右引号后是否紧跟任何标点符号
+      const nextChar = i + 1 < text.length ? text[i + 1] : '';
+      if (allPunctuation.includes(nextChar)) {
+        // 如果后面是任何标点，不换行，继续累积
+        // 例如：“降维打击”。 或 “你好”，
+      } else {
+        // 右引号后没有标点，才换行（独立对话）
+        result += currentLine.trim() + '\n';
+        currentLine = '';
+      }
+    }
+    // 检测句子结尾标点
+    else if (endMarks.includes(char)) {
+      // 只有在引号外才换行
+      if (!inQuote) {
+        // 检查后面（跳过换行符和空格）是否有引号
+        let j = i + 1;
+        while (j < text.length && (text[j] === '\n' || text[j] === ' ' || text[j] === '\r')) {
+          j++;
+        }
+        const nextNonWhitespace = j < text.length ? text[j] : '';
+        
+        // 如果后面紧跟引号，不换行，继续累积
+        if (rightQuotes.includes(nextNonWhitespace)) {
+          // 例如：这一档了吧？\n”
+        } else {
+          // 后面没有引号，正常换行
+          result += currentLine.trim() + '\n';
+          currentLine = '';
+        }
+      }
+      // 引号内不换行，继续累积
+    }
+    // 检测省略号
+    else if (char === '…') {
+      // 检查是否是连续的省略号
+      if (i + 1 < text.length && text[i + 1] === '…') {
+        currentLine += text[i + 1];
+        i++; // 跳过下一个省略号
+      }
+      // 只有在引号外才换行
+      if (!inQuote) {
+        // 检查后面（跳过换行符和空格）是否有引号
+        let j = i + 1;
+        while (j < text.length && (text[j] === '\n' || text[j] === ' ' || text[j] === '\r')) {
+          j++;
+        }
+        const nextNonWhitespace = j < text.length ? text[j] : '';
+        
+        // 如果后面紧跟引号，不换行，继续累积
+        if (rightQuotes.includes(nextNonWhitespace)) {
+          // 例如：天啊…\n”
+        } else {
+          // 后面没有引号，正常换行
+          result += currentLine.trim() + '\n';
+          currentLine = '';
+        }
+      }
+    }
+    // 已有的换行符
+    else if (char === '\n') {
+      // 如果在引号内，将换行符替换为空格，不换行
+      if (inQuote) {
+        currentLine = currentLine.slice(0, -1) + ' ' // 移除换行符，添加空格
+      } else {
+        // 引号外，保留换行
+        if (currentLine.trim().length > 1) { // 排除只有换行符的情况
+          result += currentLine.trim() + '\n'
+        }
+        currentLine = ''
+      }
+    }
+  }
+  
+  // 添加剩余内容
+  if (currentLine.trim()) {
+    result += currentLine.trim();
+  }
+  
+  // 清理：移除多余的连续换行（超过2个）
+  result = result.replace(/\n{3,}/g, '\n\n');
+  
+  return result.trim();
+};
+
+/**
+ * 修复常见标点错误
+ */
+function fixPunctuation(text: string): string {
+  let result = text;
+  
+  // 修复中英文标点混用
+  result = result.replace(/,(?=[^a-zA-Z0-9])/g, '，'); // 逗号
+  result = result.replace(/\.(?=[^a-zA-Z0-9\s])/g, '。'); // 句号（但保留英文句号）
+  result = result.replace(/\?(?=[^a-zA-Z0-9])/g, '？'); // 问号
+  result = result.replace(/!(?=[^a-zA-Z0-9])/g, '！'); // 感叹号
+  result = result.replace(/;(?=[^a-zA-Z0-9])/g, '；'); // 分号
+  result = result.replace(/:(?=[^a-zA-Z0-9])/g, '：'); // 冒号
+  
+  // 修复引号（统一使用中文引号）
+  result = result.replace(/"/g, '\u201c').replace(/"/g, '\u201d'); // 英文双引号 -> 中文双引号
+  result = result.replace(/'/g, '\u2018').replace(/'/g, '\u2019'); // 英文单引号 -> 中文单引号
+  
+  // 修复省略号
+  result = result.replace(/\.{3,}/g, '……'); // ... -> ……
+  result = result.replace(/。{3,}/g, '……'); // 。。。 -> ……
+  
+  // 修复破折号
+  result = result.replace(/--+/g, '——'); // -- -> ——
+  
+  // 移除标点前的空格
+  result = result.replace(/\s+([，。？！；：、])/g, '$1');
+  
+  // 移除标点后的多余空格（但保留一个空格用于英文）
+  result = result.replace(/([，。？！；：、])\s{2,}/g, '$1 ');
+  
+  return result;
+}
+
+/**
+ * 判断是否是句子结尾
+ */
+function isSentenceEnd(text: string, index: number): boolean {
+  const char = text[index];
+  
+  // 句子结尾标点
+  const endMarks = '。？！…';
+  if (!endMarks.includes(char)) {
+    return false;
+  }
+  
+  // 省略号需要连续
+  if (char === '…') {
+    return text[index + 1] !== '…';
+  }
+  
+  return true;
+}
+
+/**
+ * 判断是否是结束标记（引号、括号等）
+ */
+function isClosingMark(char: string): boolean {
+  const closingMarks = '\u201d\u2019\u300d\u300f\u3011)\uff09';
+  return closingMarks.includes(char) || char === ' ';
+}
+
+/**
+ * 检测行类型
+ */
+function detectLineType(line: string): string {
+  if (!line || !line.trim()) return 'empty';
+  
+  const trimmed = line.trim();
+  
+  // 章节标题（第X章、第X节等）
+  if (/^第[一二三四五六七八九十百千万\d]+[章节回]/i.test(trimmed)) {
+    return 'chapter_title';
+  }
+  
+  // 分隔线
+  if (/^[=\-*]{3,}$/.test(trimmed)) {
+    return 'separator';
+  }
+  
+  // 对话（以引号开头）
+  if (/^["'"'「『]/.test(trimmed)) {
+    return 'dialogue';
+  }
+  
+  // 对话（包含引号）
+  if (/["'"'「『].*["'"'」』]/.test(trimmed)) {
+    return 'dialogue';
+  }
+  
+  // 心理描写（常见模式）
+  if (/[想道]：/.test(trimmed) || /心[中里想]/.test(trimmed)) {
+    return 'thought';
+  }
+  
+  // 叙述
+  return 'narrative';
+}
+
+/**
+ * 判断是否应该分段
+ */
+function shouldParagraphBreak(currentType: string, lastType: string, currentLine: string, lastLine: string): boolean {
+  // 第一行不分段
+  if (!lastType) return false;
+  
+  // 章节标题前后必须分段
+  if (currentType === 'chapter_title' || lastType === 'chapter_title') {
+    return true;
+  }
+  
+  // 分隔线前后必须分段
+  if (currentType === 'separator' || lastType === 'separator') {
+    return true;
+  }
+  
+  // 对话之间不分段（连续对话）
+  if (currentType === 'dialogue' && lastType === 'dialogue') {
+    // 但如果是不同人的对话，可能需要分段
+    // 这里简化处理：如果上一句以引号结尾，下一句以引号开头，不分段
+    return false;
+  }
+  
+  // 对话和叙述之间分段
+  if ((currentType === 'dialogue' && lastType === 'narrative') ||
+      (currentType === 'narrative' && lastType === 'dialogue')) {
+    return true;
+  }
+  
+  // 叙述之间：如果上一句很长（超过50字），可能是新段落
+  if (currentType === 'narrative' && lastType === 'narrative') {
+    if (lastLine.length > 50) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * 判断段落之间是否需要空行
+ */
+function shouldAddEmptyLine(currentType: string, nextType: string): boolean {
+  // 章节标题后空行
+  if (currentType === 'chapter_title') {
+    return true;
+  }
+  
+  // 分隔线前后空行
+  if (currentType === 'separator' || nextType === 'separator') {
+    return true;
+  }
+  
+  // 对话段落和叙述段落之间空行
+  if ((currentType === 'dialogue' && nextType === 'narrative') ||
+      (currentType === 'narrative' && nextType === 'dialogue')) {
+    return true;
+  }
+  
+  // 连续对话之间不空行
+  if (currentType === 'dialogue' && nextType === 'dialogue') {
+    return false;
+  }
+  
+  // 连续叙述之间不空行
+  if (currentType === 'narrative' && nextType === 'narrative') {
+    return false;
+  }
+  
+  return false;
+}
+
+/**
+ * 轻量级实时换行函数（用于流式输出）
+ * 
+ * 规则：
+ * 1. 引号内不换行：引号内的句号（。？！）不换行
+ * 2. 引号结束后换行：遇到右引号（"」』）后换行
+ * 3. 引号外换行：引号外的句号直接换行
+ * 
+ * 示例：
+ * "夫人，我是周毅。今天负责您母亲遗产交接的团队已经全部到齐。" -> 不换行，等右引号
+ * "夫人，我是周毅。" -> "夫人，我是周毅。"\n
+ * 他说完就走了。 -> 他说完就走了。\n
+ */
+const applyRealtimeLineBreaks = (input: string): string => {
+  if (!input) return '';
+  
+  let result = '';
+  let inQuote = false; // 是否在引号内
+  
+  // 左引号字符集（只包括双引号和书名号）
+  const leftQuotes = '\u201c\u2018\u300c\u300e';  // "'「『
+  // 右引号字符集  
+  const rightQuotes = '\u201d\u2019\u300d\u300f'; // "'」』
+  // 句子结尾标点
+  const endMarks = '。？！';
+  
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+    result += char;
+    
+    // 检测左引号（进入引号）
+    if (leftQuotes.includes(char)) {
+      inQuote = true;
+    }
+    // 检测右引号（离开引号）
+    else if (rightQuotes.includes(char)) {
+      inQuote = false;
+      // 右引号后换行
+      result += '\n';
+    }
+    // 检测句子结尾标点
+    else if (endMarks.includes(char)) {
+      // 只有在引号外才换行
+      if (!inQuote) {
+        result += '\n';
+      }
+      // 引号内不换行，继续累积
+    }
+    // 检测省略号
+    else if (char === '…') {
+      // 检查是否是连续的省略号
+      if (i + 1 < input.length && input[i + 1] === '…') {
+        // 跳过，等待第二个省略号
+        continue;
+      }
+      // 只有在引号外才换行
+      if (!inQuote) {
+        result += '\n';
+      }
+    }
+  }
+  
+  // 清理：移除多余的连续换行（超过2个）
+  result = result.replace(/\n{3,}/g, '\n\n');
+  
+  return result;
 };
 
 const WritingStudioPage: React.FC = () => {
@@ -95,6 +448,8 @@ const WritingStudioPage: React.FC = () => {
   const [generators, setGenerators] = useState<AiGenerator[]>([])
   const [searchResults, setSearchResults] = useState<NovelDocument[]>([])
   const [isSearching, setIsSearching] = useState(false)
+  const [generationPhases, setGenerationPhases] = useState<string[]>([])
+  const [hasContentStarted, setHasContentStarted] = useState(false)
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null)
   const [selectedTreeKey, setSelectedTreeKey] = useState<string>('root')
   const hasInitialized = useRef<Record<number, boolean>>({})
@@ -103,6 +458,11 @@ const WritingStudioPage: React.FC = () => {
   const autoSaveTimerRef = useRef<number | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [lastSaveTime, setLastSaveTime] = useState<string>('')
+
+  // 正文历史版本相关状态
+  const [historyModalVisible, setHistoryModalVisible] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [versionHistory, setVersionHistory] = useState<WritingVersionHistory[]>([])
   
   // 大纲相关状态
   const [outlineDrawerVisible, setOutlineDrawerVisible] = useState(false)
@@ -110,7 +470,27 @@ const WritingStudioPage: React.FC = () => {
   const [editingOutline, setEditingOutline] = useState<string>('')
   const [editingVolumeOutline, setEditingVolumeOutline] = useState<string>('')
   const [outlineLoading, setOutlineLoading] = useState(false)
-  const [currentVolume, setCurrentVolume] = useState<any>(null)
+  const [currentVolume, setCurrentVolume] = useState<NovelVolume | null>(null)
+  const [volumes, setVolumes] = useState<NovelVolume[]>([])
+
+  // 章纲弹窗相关状态（使用编辑内容/加载状态作为显隐条件）
+  const [chapterOutlineLoading, setChapterOutlineLoading] = useState(false)
+  const [chapterOutlineListLoading, setChapterOutlineListLoading] = useState(false)
+  const [chapterOutlineVolumeId, setChapterOutlineVolumeId] = useState<number | null>(null)
+  const [chapterOutlineList, setChapterOutlineList] = useState<VolumeChapterOutlineSummary[]>([])
+  const [chapterOutlineListVisible, setChapterOutlineListVisible] = useState(false)
+  const [editingChapterOutline, setEditingChapterOutline] = useState<{
+    outlineId?: number
+    globalChapterNumber?: number
+    chapterInVolume?: number
+    volumeNumber?: number
+    direction: string
+    keyPlotPoints: string
+    emotionalTone: string
+    subplot: string
+    antagonism: string
+    status?: string
+  } | null>(null)
   
   // AI审稿相关状态
   const [reviewDrawerVisible, setReviewDrawerVisible] = useState(false)
@@ -121,6 +501,11 @@ const WritingStudioPage: React.FC = () => {
   const [traceRemovalDrawerVisible, setTraceRemovalDrawerVisible] = useState(false)
   const [processedContent, setProcessedContent] = useState<string>('')
   const [isRemovingTrace, setIsRemovingTrace] = useState(false)
+  
+  // AI精简相关状态
+  const [streamlineDrawerVisible, setStreamlineDrawerVisible] = useState(false)
+  const [streamlinedContent, setStreamlinedContent] = useState<string>('')
+  const [isStreamlining, setIsStreamlining] = useState(false)
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -237,9 +622,10 @@ const WritingStudioPage: React.FC = () => {
   const loadVolumeOutline = async () => {
     if (!novelIdNumber) return
     try {
-      const volumes = await novelVolumeService.getVolumesByNovelId(novelIdNumber.toString())
-      if (volumes && volumes.length > 0) {
-        const firstVolume = volumes[0]
+      const volumeList = await novelVolumeService.getVolumesByNovelId(novelIdNumber.toString())
+      if (volumeList && volumeList.length > 0) {
+        setVolumes(volumeList)
+        const firstVolume = volumeList[0]
         setCurrentVolume(firstVolume)
         setEditingVolumeOutline(firstVolume.contentOutline || '暂无卷大纲')
         message.success('卷大纲加载成功')
@@ -269,6 +655,155 @@ const WritingStudioPage: React.FC = () => {
       message.error('保存卷大纲失败')
     } finally {
       setOutlineLoading(false)
+    }
+  }
+
+  const findVolumeForChapter = (chapterNumber: number | null): NovelVolume | null => {
+    if (!chapterNumber || !volumes || volumes.length === 0) {
+      return currentVolume || null
+    }
+    const matched = volumes.find((v) => {
+      const start = Number((v as any).chapterStart)
+      const end = Number((v as any).chapterEnd)
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return false
+      return chapterNumber >= start && chapterNumber <= end
+    })
+    return matched || currentVolume || volumes[0] || null
+  }
+
+  const mapOutlineToEditingForm = (
+    outline: VolumeChapterOutline,
+    fallbackChapterNumber?: number
+  ) => {
+    return {
+      outlineId: outline.id,
+      globalChapterNumber: outline.globalChapterNumber ?? fallbackChapterNumber,
+      chapterInVolume: outline.chapterInVolume ?? undefined,
+      volumeNumber: outline.volumeNumber ?? undefined,
+      direction: outline.direction || '',
+      keyPlotPoints: outline.keyPlotPoints || '',
+      emotionalTone: outline.emotionalTone || '',
+      subplot: outline.subplot || '',
+      antagonism: outline.antagonism || '',
+      status: outline.status || undefined,
+    }
+  }
+
+  const getOutlineStatusText = (status?: string) => {
+    if (!status) return '未设置'
+    switch (status) {
+      case 'PENDING':
+        return '待写'
+      case 'WRITTEN':
+        return '已写'
+      case 'REVISED':
+        return '已修订'
+      default:
+        return status
+    }
+  }
+
+  // 打开章纲弹窗（当前选中章节）
+  const handleShowChapterOutline = async () => {
+    if (!novelIdNumber) return
+    if (editingType !== 'chapter' || !selectedChapter || selectedChapter.chapterNumber == null) {
+      message.warning('请先在左侧选择一个章节')
+      return
+    }
+
+    const chapterNumber = selectedChapter.chapterNumber
+
+    setChapterOutlineLoading(true)
+    try {
+      let volumeList = volumes
+      if (!volumeList || volumeList.length === 0) {
+        volumeList = await novelVolumeService.getVolumesByNovelId(novelIdNumber.toString())
+        setVolumes(volumeList)
+      }
+
+      const volumeForChapter = findVolumeForChapter(chapterNumber)
+      const volumeId = volumeForChapter ? Number(volumeForChapter.id) : null
+      setChapterOutlineVolumeId(volumeId)
+      // 列表数据改为在点击“展开列表”按钮时按需加载，这里只确定所属卷
+
+      // 当前章节章纲详情
+      const res = await getChapterOutline(novelIdNumber, chapterNumber)
+      if (res.hasOutline && res.outline) {
+        setEditingChapterOutline(mapOutlineToEditingForm(res.outline, chapterNumber))
+      } else {
+        const inferredVolume = volumeForChapter
+        const chapterInVolume =
+          inferredVolume && (inferredVolume as any).chapterStart != null
+            ? chapterNumber - Number((inferredVolume as any).chapterStart) + 1
+            : undefined
+        setEditingChapterOutline({
+          outlineId: undefined,
+          globalChapterNumber: chapterNumber,
+          chapterInVolume,
+          volumeNumber: inferredVolume?.volumeNumber,
+          direction: '',
+          keyPlotPoints: '',
+          emotionalTone: '',
+          subplot: '',
+          antagonism: '',
+          status: undefined,
+        })
+      }
+
+      // 此处不再单独维护显隐状态，由 editingChapterOutline / loading 状态驱动
+    } catch (error: any) {
+      console.error('加载章节章纲失败:', error)
+      message.error(error?.message || '加载章节章纲失败')
+    } finally {
+      setChapterOutlineLoading(false)
+    }
+  }
+
+  const handleSelectOutlineChapter = async (globalChapterNumber: number | undefined) => {
+    if (!novelIdNumber || !globalChapterNumber) return
+
+    setChapterOutlineLoading(true)
+    try {
+      const res = await getChapterOutline(novelIdNumber, globalChapterNumber)
+      if (res.hasOutline && res.outline) {
+        setEditingChapterOutline(mapOutlineToEditingForm(res.outline, globalChapterNumber))
+      } else {
+        message.info('该章节暂未生成章纲')
+      }
+    } catch (error: any) {
+      console.error('切换章纲失败:', error)
+      message.error(error?.message || '切换章纲失败')
+    } finally {
+      setChapterOutlineLoading(false)
+    }
+  }
+
+  const handleSaveChapterOutline = async () => {
+    if (!editingChapterOutline || !editingChapterOutline.outlineId) {
+      message.warning('当前章节暂无可保存的章纲，请先生成')
+      return
+    }
+
+    setChapterOutlineLoading(true)
+    try {
+      const payload = {
+        direction: editingChapterOutline.direction,
+        keyPlotPoints: editingChapterOutline.keyPlotPoints,
+        emotionalTone: editingChapterOutline.emotionalTone,
+        subplot: editingChapterOutline.subplot,
+        antagonism: editingChapterOutline.antagonism,
+      }
+      const updated = await updateVolumeChapterOutline(
+        editingChapterOutline.outlineId,
+        payload
+      )
+      setEditingChapterOutline(mapOutlineToEditingForm(updated))
+      message.success('章纲已保存')
+    } catch (error: any) {
+      console.error('保存章纲失败:', error)
+      message.error(error?.message || '保存章纲失败')
+    } finally {
+      setChapterOutlineLoading(false)
     }
   }
 
@@ -309,8 +844,24 @@ const WritingStudioPage: React.FC = () => {
     }
   }
 
-  // 选择文档
+  // 选择文档或搜索结果（当前搜索结果实际为章节列表）
   const handleSelectDocument = async (doc: NovelDocument) => {
+    // 如果没有 folderId，说明这是从左侧搜索返回的“章节”结果，
+    // 需要走章节详情接口而不是文档接口
+    if (doc.folderId == null) {
+      try {
+        const detail = await getChapterById(doc.id)
+        setSelectedChapter(detail)
+        setSelectedDocument(null)
+        setEditingType('chapter')
+        setSelectedTreeKey(`chapter-${doc.id}`)
+      } catch (error: any) {
+        message.error(error?.message || '加载章节失败')
+      }
+      return
+    }
+
+    // 正常文档节点
     try {
       await loadFolderDocuments(doc.folderId)
       const detail = await getDocumentById(doc.id)
@@ -595,28 +1146,24 @@ const WritingStudioPage: React.FC = () => {
     }
 
     try {
+      // 重置所有状态，确保每次生成都是全新的
       setIsGenerating(true)
-      setAIOutput('思考中...')
+      setAIOutput('')
+      setGenerationPhases([])
+      setHasContentStarted(false)
       
       const userMessage = aiInput.trim() || '开始'
-      const currentTitle = editingType === 'chapter' ? selectedChapter?.title : selectedDocument?.title
-      const currentId = editingType === 'chapter' ? selectedChapter?.id : selectedDocument?.id
+      const currentChapterNumber = editingType === 'chapter' ? selectedChapter?.chapterNumber : null
       
       const token = localStorage.getItem('token')
       const requestBody = withAIConfig({
-        chapterPlan: {
-          chapterNumber: currentId,
-          title: currentTitle,
-          type: '剧情',
-          coreEvent: userMessage,
-          estimatedWords: 3000,
-          priority: 'high',
-          mood: 'normal'
-        },
+        novelId: novelIdNumber,
+        startChapter: currentChapterNumber,
+        count: 1,
         userAdjustment: userMessage
       })
       
-      const response = await fetch(`/api/novel-craft/${novelIdNumber}/write-chapter-stream`, {
+      const response = await fetch('/api/agentic/generate-chapters-stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -640,17 +1187,64 @@ const WritingStudioPage: React.FC = () => {
 
       let buffer = ''
       let accumulatedContent = ''
-      let hasReceivedContent = false
-      
-      const filterRegex = /(开始写作章节|正在生成|生成中|开始创作|正在创作|创作中)/i
+      let currentEventName = ''
+      let currentDataLines: string[] = []
+      const phases: string[] = []
+
+      const processSSEEvent = (eventName: string, data: string) => {
+        if (!data || data === '[DONE]') {
+          return
+        }
+
+        // 按事件类型处理：后端已保证使用 event 类型区分内容与状态
+        if (eventName === 'error') {
+          message.error(data || '生成失败')
+          setIsGenerating(false)
+          return
+        }
+
+        if (eventName === 'phase') {
+          phases.push(data)
+          setGenerationPhases([...phases])
+          console.log('phase', data)
+          return
+        }
+
+        if (eventName === 'outline') {
+          phases.push(data)
+          setGenerationPhases([...phases])
+          console.log('outline', data)
+          return
+        }
+
+        if (eventName === 'message') {
+          // 处理正文内容流式输出（message事件），按一键格式化逻辑实时排版
+          console.log('[流式输出] 接收到 message 事件，纯文本:', data)
+          setHasContentStarted(true)
+          accumulatedContent += data
+          console.log('[流式输出] 累积内容长度:', accumulatedContent.length)
+          const formattedContent = formatChineseSentences(accumulatedContent)
+          setAIOutput(formattedContent)
+          return
+        }
+
+        // 其他事件类型（keepalive、batch_complete等）不写入正文
+      }
 
       while (true) {
         const { done, value } = await reader.read()
         
         if (done) {
+          // 生成完成，重置状态
           setIsGenerating(false)
           if (accumulatedContent.trim()) {
+            // 生成完成后格式化内容
+            const formatted = formatChineseSentences(accumulatedContent)
+            setAIOutput(formatted)
             message.success('AI写作完成')
+          } else {
+            // 如果没有内容，也要确保状态正确
+            setHasContentStarted(false)
           }
           break
         }
@@ -662,53 +1256,52 @@ const WritingStudioPage: React.FC = () => {
         buffer = lines.pop() || ''
 
         for (const line of lines) {
+          const trimmed = line.trim()
+
+          // 空行表示一个事件块结束：处理当前块
+          if (!trimmed) {
+            if (currentDataLines.length > 0) {
+              const data = currentDataLines.join('\n')
+              processSSEEvent(currentEventName, data)
+              currentDataLines = []
+              currentEventName = ''
+            }
+            continue
+          }
+
+          // 事件名称可以出现在 data 之前或之后，取同一块中最后一次出现的名称
+          if (line.startsWith('event:')) {
+            currentEventName = line.startsWith('event: ') ? line.slice(7).trim() : line.slice(6).trim()
+            continue
+          }
+          
           if (line.startsWith('data:')) {
-            const data = line.startsWith('data: ') ? line.slice(6) : line.slice(5)
-            
-            if (data === '[DONE]') {
+            const payload = line.startsWith('data: ') ? line.slice(6) : line.slice(5)
+            if (payload === '[DONE]') {
+              // 单独处理 DONE：结束当前块并重置状态
+              if (currentDataLines.length > 0) {
+                const data = currentDataLines.join('\n')
+                processSSEEvent(currentEventName, data)
+                currentDataLines = []
+                currentEventName = ''
+              }
               continue
             }
-            
-            try {
-              const parsed = JSON.parse(data)
-              let contentToAdd = ''
-              
-              if (typeof parsed === 'string' || typeof parsed === 'number') {
-                contentToAdd = String(parsed)
-              } else if (Array.isArray(parsed)) {
-                contentToAdd = parsed
-                  .map((v) => (typeof v === 'string' || typeof v === 'number') ? String(v) : '')
-                  .join('')
-              } else if (parsed && typeof parsed === 'object' && parsed.content) {
-                contentToAdd = String(parsed.content)
-              }
-              
-              if (contentToAdd && !filterRegex.test(contentToAdd)) {
-                accumulatedContent += contentToAdd
-                hasReceivedContent = true
-                const displayContent = formatChineseSentences(accumulatedContent)
-                setAIOutput(displayContent)
-              }
-            } catch (e) {
-              if (data && data !== '[DONE]' && !filterRegex.test(data)) {
-                accumulatedContent += data
-                hasReceivedContent = true
-                const displayContent = formatChineseSentences(accumulatedContent)
-                setAIOutput(displayContent)
-              }
-            }
+            currentDataLines.push(payload)
+            continue
           }
-        }
-        
-        if (!hasReceivedContent) {
-          setAIOutput('思考中...')
+
+          // 其他行忽略
         }
       }
     } catch (error: any) {
       console.error('AI生成失败:', error)
       message.error(error?.message || '生成失败')
+      // 确保错误时所有状态都被重置
       setIsGenerating(false)
       setAIOutput('')
+      setGenerationPhases([])
+      setHasContentStarted(false)
     }
   }
 
@@ -769,6 +1362,35 @@ const WritingStudioPage: React.FC = () => {
     }
   }
 
+  // 打开历史版本弹窗
+  const handleShowHistory = async () => {
+    if (editingType === 'chapter' && selectedChapter) {
+      try {
+        setHistoryLoading(true)
+        const list = await getChapterHistory(selectedChapter.id)
+        setVersionHistory(list)
+        setHistoryModalVisible(true)
+      } catch (error: any) {
+        message.error(error?.message || '加载章节历史版本失败')
+      } finally {
+        setHistoryLoading(false)
+      }
+    } else if (editingType === 'document' && selectedDocument) {
+      try {
+        setHistoryLoading(true)
+        const list = await getDocumentHistory(selectedDocument.id)
+        setVersionHistory(list)
+        setHistoryModalVisible(true)
+      } catch (error: any) {
+        message.error(error?.message || '加载文档历史版本失败')
+      } finally {
+        setHistoryLoading(false)
+      }
+    } else {
+      message.warning('请先选择要编辑的章节或文档')
+    }
+  }
+
   const handleSearchDocuments = async (keyword: string) => {
     if (!novelIdNumber || !keyword.trim()) {
       setIsSearching(false)
@@ -789,8 +1411,8 @@ const WritingStudioPage: React.FC = () => {
     setSearchResults([])
   }
   
-  // AI消痕处理
-  const handleRemoveAITrace = async () => {
+  // AI消痕处理 - 第一次点击打开抽屉
+  const handleRemoveAITrace = () => {
     const currentContent = editingType === 'chapter' ? selectedChapter?.content : selectedDocument?.content
     
     if (!currentContent) {
@@ -803,6 +1425,19 @@ const WritingStudioPage: React.FC = () => {
       return
     }
     
+    // 第一次点击：打开抽屉，不请求接口
+    setProcessedContent('') // 清空之前的结果
+    setTraceRemovalDrawerVisible(true)
+  }
+  
+  // 执行AI消痕的实际逻辑
+  const executeRemoveAITrace = async () => {
+    const currentContent = editingType === 'chapter' ? selectedChapter?.content : selectedDocument?.content
+    
+    if (!currentContent) {
+      message.warning('请先编辑内容后再进行AI消痕')
+      return
+    }
     try {
       setIsRemovingTrace(true)
       setProcessedContent('')
@@ -906,8 +1541,135 @@ const WritingStudioPage: React.FC = () => {
     }
   }
   
-  // AI审稿处理
-  const handleReviewManuscript = async () => {
+  // AI精简处理 - 第一次点击打开抽屉
+  const handleStreamlineContent = () => {
+    const currentContent = editingType === 'chapter' ? selectedChapter?.content : selectedDocument?.content
+    
+    if (!currentContent) {
+      message.warning('请先编辑内容后再进行AI精简')
+      return
+    }
+    
+    if (!checkAIConfig()) {
+      message.error(AI_CONFIG_ERROR_MESSAGE)
+      return
+    }
+    
+    // 第一次点击：打开抽屉，不请求接口
+    setStreamlinedContent('')
+    setStreamlineDrawerVisible(true)
+  }
+  
+  // 执行AI精简的实际逻辑
+  const executeStreamlineContent = async () => {
+    const currentContent = editingType === 'chapter' ? selectedChapter?.content : selectedDocument?.content
+    
+    if (!currentContent) {
+      message.warning('请先编辑内容后再进行AI精简')
+      return
+    }
+    
+    try {
+      setIsStreamlining(true)
+      setStreamlinedContent('')
+      
+      const token = localStorage.getItem('token')
+      const requestBody = withAIConfig({
+        content: currentContent
+      })
+      
+      const response = await fetch('/api/ai/streamline-content-stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(requestBody)
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      
+      if (!reader) {
+        throw new Error('无法获取响应流')
+      }
+      
+      message.info('开始AI精简处理...')
+      
+      let buffer = ''
+      let accumulated = ''
+      
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        if (done) {
+          setIsStreamlining(false)
+          message.success('AI精简完成')
+          break
+        }
+        
+        const chunk = decoder.decode(value, { stream: true })
+        buffer += chunk
+        
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        
+        for (const line of lines) {
+          if (line.startsWith('data:')) {
+            const data = line.startsWith('data: ') ? line.slice(6) : line.slice(5)
+            
+            if (data === '[DONE]') {
+              continue
+            }
+            
+            try {
+              const parsed = JSON.parse(data)
+              let contentToAdd = ''
+              
+              if (typeof parsed === 'string' || typeof parsed === 'number') {
+                contentToAdd = String(parsed)
+              } else if (Array.isArray(parsed)) {
+                contentToAdd = parsed
+                  .map((v) => (typeof v === 'string' || typeof v === 'number') ? String(v) : '')
+                  .join('')
+              } else if (parsed && typeof parsed === 'object') {
+                if (parsed.content) {
+                  contentToAdd = String(parsed.content)
+                } else if (parsed.delta) {
+                  contentToAdd = String(parsed.delta)
+                } else if (parsed.text) {
+                  contentToAdd = String(parsed.text)
+                }
+              }
+              
+              if (contentToAdd) {
+                accumulated += contentToAdd
+                setStreamlinedContent(accumulated)
+              }
+            } catch (e) {
+              if (data && data !== '[DONE]') {
+                accumulated += data
+                setStreamlinedContent(accumulated)
+              }
+            }
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error('AI精简失败:', error)
+      message.error(error?.message || 'AI精简失败')
+      setIsStreamlining(false)
+    }
+  }
+  
+  // AI审稿处理 - 第一次点击打开弹窗
+  const handleReviewManuscript = () => {
     const currentContent = editingType === 'chapter' ? selectedChapter?.content : selectedDocument?.content
     
     if (!currentContent) {
@@ -920,10 +1682,23 @@ const WritingStudioPage: React.FC = () => {
       return
     }
     
+    // 第一次点击：打开弹窗，不请求接口
+    setReviewResult('')
+    setReviewDrawerVisible(true)
+  }
+  
+  // 执行AI审稿的实际逻辑
+  const executeReviewManuscript = async () => {
+    const currentContent = editingType === 'chapter' ? selectedChapter?.content : selectedDocument?.content
+    
+    if (!currentContent) {
+      message.warning('请先编辑内容后再审稿')
+      return
+    }
+    
     try {
       setIsReviewing(true)
       setReviewResult('')
-      setReviewDrawerVisible(true)
       
       const token = localStorage.getItem('token')
       const requestBody = withAIConfig({
@@ -1022,11 +1797,6 @@ const WritingStudioPage: React.FC = () => {
     )
   }
 
-  // 获取当前编辑的内容（章节或文档）
-  const currentContent = editingType === 'chapter' ? selectedChapter?.content : selectedDocument?.content
-  const currentTitle = editingType === 'chapter' ? selectedChapter?.title : selectedDocument?.title
-  const currentWordCount = editingType === 'chapter' ? selectedChapter?.wordCount : selectedDocument?.wordCount
-
   return (
     <Layout className="writing-studio">
       <Sider width={240} className="writing-sidebar" theme="light">
@@ -1115,6 +1885,7 @@ const WritingStudioPage: React.FC = () => {
           }}
           lastSaveTime={lastSaveTime}
           isSaving={isSaving}
+          onShowHistory={handleShowHistory}
           onShowOutline={async () => {
             await loadNovelOutline()
             setOutlineDrawerVisible(true)
@@ -1123,6 +1894,7 @@ const WritingStudioPage: React.FC = () => {
             await loadVolumeOutline()
             setVolumeOutlineDrawerVisible(true)
           }}
+          onStreamlineContent={handleStreamlineContent}
           onReviewManuscript={handleReviewManuscript}
           onRemoveAITrace={handleRemoveAITrace}
         />
@@ -1144,8 +1916,11 @@ const WritingStudioPage: React.FC = () => {
           onChangeAIInput={setAIInput}
           onSendAIRequest={handleSendAIRequest}
           aiOutput={aiOutput}
+          generationPhases={generationPhases}
+          hasContentStarted={hasContentStarted}
           folders={folders}
           documentsMap={documentsMap}
+          onShowChapterOutline={handleShowChapterOutline}
           onCopyAIOutput={() => {
             navigator.clipboard.writeText(aiOutput)
             message.success('已复制到剪贴板')
@@ -1171,6 +1946,104 @@ const WritingStudioPage: React.FC = () => {
           currentVolumeNumber={currentVolume?.volumeNumber ?? null}
         />
       </Sider>
+
+      {/* 正文历史版本弹窗 */}
+      <Modal
+        title={editingType === 'chapter' ? '章节历史版本' : '文档历史版本'}
+        open={historyModalVisible}
+        onCancel={() => setHistoryModalVisible(false)}
+        footer={null}
+        width={900}
+      >
+        <div
+          style={{
+            maxHeight: '70vh',
+            overflow: 'auto',
+          }}
+        >
+          {historyLoading ? (
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              <Spin size="large" />
+            </div>
+          ) : versionHistory.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
+              暂无历史版本
+            </div>
+          ) : (
+            <List
+              dataSource={versionHistory}
+              renderItem={(item) => (
+                <List.Item
+                  key={item.id}
+                  actions={[
+                    <Button
+                      key="apply"
+                      type="link"
+                      onClick={() => {
+                        const content = item.content || ''
+                        if (editingType === 'chapter' && selectedChapter) {
+                          setSelectedChapter((prev) =>
+                            prev ? { ...prev, content, wordCount: content.replace(/\s+/g, '').length } : prev
+                          )
+                        } else if (editingType === 'document' && selectedDocument) {
+                          setSelectedDocument((prev) =>
+                            prev ? { ...prev, content, wordCount: content.replace(/\s+/g, '').length } : prev
+                          )
+                        }
+                        onContentChange(content)
+                        setHistoryModalVisible(false)
+                        message.success('已应用该历史版本内容')
+                      }}
+                    >
+                      应用此版本
+                    </Button>,
+                  ]}
+                >
+                  <List.Item.Meta
+                    title={
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span>{new Date(item.createdAt).toLocaleString()}</span>
+                        <Tag>
+                          {item.sourceType === 'AUTO_SAVE'
+                            ? '自动保存'
+                            : item.sourceType === 'MANUAL_SAVE'
+                            ? '手动保存'
+                            : item.sourceType === 'AI_REPLACE'
+                            ? 'AI替换正文'
+                            : item.sourceType}
+                        </Tag>
+                        {typeof item.diffRatio === 'number' && (
+                          <span style={{ color: '#999', fontSize: 12 }}>
+                            变动约 {item.diffRatio.toFixed(1)}%
+                          </span>
+                        )}
+                      </div>
+                    }
+                    description={
+                      <div
+                        style={{
+                          marginTop: 8,
+                          maxHeight: 80,
+                          overflow: 'hidden',
+                          whiteSpace: 'pre-wrap',
+                          fontSize: 12,
+                          color: '#666',
+                          background: '#fafafa',
+                          padding: 8,
+                          borderRadius: 4,
+                        }}
+                      >
+                        {(item.content || '').slice(0, 300)}
+                        {(item.content || '').length > 300 ? '...' : ''}
+                      </div>
+                    }
+                  />
+                </List.Item>
+              )}
+            />
+          )}
+        </div>
+      </Modal>
       
       {/* 大纲弹窗 */}
       <Modal
@@ -1282,48 +2155,479 @@ const WritingStudioPage: React.FC = () => {
         />
       </Modal>
       
-      {/* AI审稿弹窗 */}
+      {/* 章节章纲弹窗 */}
       <Modal
-        title="AI审稿报告"
-        open={reviewDrawerVisible}
-        onCancel={() => setReviewDrawerVisible(false)}
+        title={<span style={{ fontSize: '16px', fontWeight: 600 }}>📋 章节章纲</span>}
+        open={chapterOutlineLoading || !!editingChapterOutline || chapterOutlineListVisible}
+        onCancel={() => {
+          setChapterOutlineListVisible(false)
+          setChapterOutlineVolumeId(null)
+          setEditingChapterOutline(null)
+        }}
         footer={[
           <button
             key="close"
-            onClick={() => setReviewDrawerVisible(false)}
+            onClick={() => {
+              setChapterOutlineListVisible(false)
+              setChapterOutlineVolumeId(null)
+              setEditingChapterOutline(null)
+            }}
             style={{
               padding: '8px 20px',
               border: '1px solid #d9d9d9',
               borderRadius: '6px',
               background: '#fff',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              marginRight: '8px',
+              fontSize: '14px',
+              transition: 'all 0.3s'
             }}
           >
             关闭
-          </button>
+          </button>,
+          <button
+            key="save"
+            onClick={handleSaveChapterOutline}
+            disabled={
+              chapterOutlineLoading || !editingChapterOutline?.outlineId
+            }
+            style={{
+              padding: '8px 20px',
+              border: 'none',
+              borderRadius: '6px',
+              background:
+                chapterOutlineLoading || !editingChapterOutline?.outlineId ? '#d9d9d9' : '#52c41a',
+              color: '#fff',
+              cursor:
+                chapterOutlineLoading || !editingChapterOutline?.outlineId ? 'not-allowed' : 'pointer',
+              fontSize: '14px',
+              fontWeight: 500,
+              transition: 'all 0.3s'
+            }}
+          >
+            {chapterOutlineLoading ? '保存中...' : '💾 保存章纲'}
+          </button>,
         ]}
-        width={1200}
+        width={1000}
       >
-        <div style={{
-          maxHeight: '70vh',
-          overflow: 'auto',
-          padding: '16px',
-          background: '#fafafa',
-          borderRadius: '8px'
-        }}>
-          {isReviewing ? (
+        <div
+          style={{
+            display: 'flex',
+            gap: '16px',
+            alignItems: 'stretch',
+            minHeight: '320px',
+          }}
+        >
+          {chapterOutlineListVisible && (
+            <div
+              style={{
+                width: '260px',
+                paddingRight: '16px',
+                borderRight: '1px solid #f0f0f0',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 8,
+                }}
+              >
+                <span style={{ fontSize: 13, fontWeight: 500 }}>本卷章纲列表</span>
+                <button
+                  onClick={() => setChapterOutlineListVisible(false)}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '4px',
+                    border: '1px solid #d9d9d9',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                  }}
+                >
+                  收起
+                </button>
+              </div>
+              <div
+                style={{
+                  maxHeight: '360px',
+                  overflowY: 'auto',
+                  border: '1px solid #f0f0f0',
+                  borderRadius: '4px',
+                  padding: '8px',
+                  background: '#fafafa',
+                }}
+              >
+                {chapterOutlineListLoading ? (
+                  <div style={{ textAlign: 'center', padding: '24px 0' }}>
+                    <Spin size="small" />
+                    <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>
+                      正在加载本卷章纲...
+                    </div>
+                  </div>
+                ) : chapterOutlineVolumeId ? (
+                  chapterOutlineList.length > 0 ? (
+                    chapterOutlineList.map((item) => {
+                      const isActive =
+                        editingChapterOutline &&
+                        item.globalChapterNumber &&
+                        editingChapterOutline.globalChapterNumber === item.globalChapterNumber
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => handleSelectOutlineChapter(item.globalChapterNumber)}
+                          style={{
+                            padding: '6px 8px',
+                            borderRadius: '4px',
+                            marginBottom: '6px',
+                            cursor: 'pointer',
+                            background: isActive ? '#e6f7ff' : '#fff',
+                            border: isActive
+                              ? '1px solid #1890ff'
+                              : '1px solid #f0f0f0',
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 500,
+                              marginBottom: 2,
+                            }}
+                          >
+                            第
+                            {item.chapterInVolume ??
+                              item.globalChapterNumber ??
+                              '-'}
+                            章
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: '#666',
+                              marginBottom: 2,
+                            }}
+                          >
+                            {item.emotionalTone || '情感基调未设定'}
+                          </div>
+                          <div style={{ fontSize: 12, color: '#999' }}>
+                            状态：{getOutlineStatusText(item.status)}
+                          </div>
+                        </div>
+                      )
+                    })
+                  ) : (
+                    <div style={{ fontSize: 12, color: '#999' }}>
+                      当前卷尚未生成任何章纲
+                    </div>
+                  )
+                ) : (
+                  <div style={{ fontSize: 12, color: '#999' }}>
+                    暂未识别当前章节所属的卷
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          <div
+            style={{
+              flex: 1,
+              paddingLeft: chapterOutlineListVisible ? '16px' : 0,
+              transition: 'all 0.2s ease',
+            }}
+          >
+            {chapterOutlineLoading && !editingChapterOutline ? (
+              <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                <Spin size="large" />
+                <div style={{ marginTop: 16, color: '#666' }}>正在加载章纲...</div>
+              </div>
+            ) : editingChapterOutline ? (
+              <>
+                <div
+                  style={{
+                    marginBottom: 16,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        fontSize: 14,
+                        marginBottom: 4,
+                      }}
+                    >
+                      第{' '}
+                      {editingChapterOutline.globalChapterNumber ??
+                        editingChapterOutline.chapterInVolume ??
+                        '-'}{' '}
+                      章
+                      {editingChapterOutline.volumeNumber
+                        ? ` · 第${editingChapterOutline.volumeNumber}卷`
+                        : ''}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#666' }}>
+                      情感基调：
+                      <span>
+                        {editingChapterOutline.emotionalTone
+                          ? editingChapterOutline.emotionalTone
+                          : '未设置'}
+                      </span>
+                      <span style={{ marginLeft: 12 }}>
+                        状态：{getOutlineStatusText(editingChapterOutline.status)}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const nextVisible = !chapterOutlineListVisible
+                      setChapterOutlineListVisible(nextVisible)
+
+                      if (
+                        nextVisible &&
+                        chapterOutlineVolumeId &&
+                        chapterOutlineList.length === 0
+                      ) {
+                        try {
+                          setChapterOutlineListLoading(true)
+                          const list = await getChapterOutlinesByVolume(
+                            chapterOutlineVolumeId,
+                            true
+                          )
+                          setChapterOutlineList(list)
+                        } catch (e) {
+                          console.error('加载卷章纲列表失败:', e)
+                          message.error('加载本卷章纲列表失败')
+                        } finally {
+                          setChapterOutlineListLoading(false)
+                        }
+                      }
+                    }}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '4px',
+                      border: '1px solid #d9d9d9',
+                      background: '#fff',
+                      cursor: 'pointer',
+                      fontSize: 12,
+                    }}
+                  >
+                    {chapterOutlineListVisible ? '收起列表' : '本卷章纲列表'}
+                  </button>
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: '#999',
+                      marginBottom: 4,
+                    }}
+                  >
+                    本章剧情方向
+                  </div>
+                  <textarea
+                    value={editingChapterOutline.direction}
+                    onChange={(e) =>
+                      setEditingChapterOutline((prev) =>
+                        prev ? { ...prev, direction: e.target.value } : prev
+                      )
+                    }
+                    placeholder="简要说明本章要写什么、走向如何"
+                    style={{
+                      width: '100%',
+                      minHeight: '100px',
+                      padding: '8px',
+                      border: '1px solid #d9d9d9',
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      lineHeight: 1.6,
+                      resize: 'vertical',
+                    }}
+                  />
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: '#999',
+                      marginBottom: 4,
+                    }}
+                  >
+                    关键剧情点（每行一个）
+                  </div>
+                  <textarea
+                    value={editingChapterOutline.keyPlotPoints}
+                    onChange={(e) =>
+                      setEditingChapterOutline((prev) =>
+                        prev ? { ...prev, keyPlotPoints: e.target.value } : prev
+                      )
+                    }
+                    placeholder="例如：主角做出关键决定；反派伏笔出现；冲突升级等"
+                    style={{
+                      width: '100%',
+                      minHeight: '120px',
+                      padding: '8px',
+                      border: '1px solid #d9d9d9',
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      lineHeight: 1.6,
+                      resize: 'vertical',
+                    }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: '#999',
+                        marginBottom: 4,
+                      }}
+                    >
+                      支线 / 人物刻画
+                    </div>
+                    <textarea
+                      value={editingChapterOutline.subplot}
+                      onChange={(e) =>
+                        setEditingChapterOutline((prev) =>
+                          prev ? { ...prev, subplot: e.target.value } : prev
+                        )
+                      }
+                      placeholder="可选：本章想强化的支线或人设"
+                      style={{
+                        width: '100%',
+                        minHeight: '80px',
+                        padding: '8px',
+                        border: '1px solid #d9d9d9',
+                        borderRadius: '4px',
+                        fontSize: '13px',
+                        lineHeight: 1.6,
+                        resize: 'vertical',
+                      }}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: '#999',
+                        marginBottom: 4,
+                      }}
+                    >
+                      对手与赌注
+                    </div>
+                    <textarea
+                      value={editingChapterOutline.antagonism}
+                      onChange={(e) =>
+                        setEditingChapterOutline((prev) =>
+                          prev ? { ...prev, antagonism: e.target.value } : prev
+                        )
+                      }
+                      placeholder="可选：本章的阻力、风险和代价"
+                      style={{
+                        width: '100%',
+                        minHeight: '80px',
+                        padding: '8px',
+                        border: '1px solid #d9d9d9',
+                        borderRadius: '4px',
+                        fontSize: '13px',
+                        lineHeight: 1.6,
+                        resize: 'vertical',
+                      }}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
+                暂无章纲内容，请先选择左侧章节，或在其它规划页面生成本卷章纲后再查看。
+              </div>
+            )}
+          </div>
+        </div>
+      </Modal>
+      
+      {/* AI审稿弹窗 */}
+      <Drawer
+        title={<span style={{ fontSize: '16px', fontWeight: 600 }}>📝 AI审稿报告</span>}
+        placement="right"
+        width={600}
+        mask={false}
+        open={reviewDrawerVisible}
+        onClose={() => {
+          setReviewDrawerVisible(false)
+          setReviewResult('')
+        }}
+        footer={
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+            <button
+              onClick={() => {
+                setReviewDrawerVisible(false)
+                setReviewResult('')
+              }}
+              style={{
+                padding: '8px 20px',
+                border: '1px solid #d9d9d9',
+                borderRadius: '6px',
+                background: '#fff',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              关闭
+            </button>
+          </div>
+        }
+      >
+        <div style={{ padding: '0' }}>
+          {!reviewResult && !isReviewing ? (
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              <div style={{ marginBottom: '16px', color: '#666', fontSize: '14px' }}>
+                点击下方按钮开始AI审稿分析
+              </div>
+              <button
+                onClick={executeReviewManuscript}
+                style={{
+                  padding: '10px 24px',
+                  border: 'none',
+                  borderRadius: '6px',
+                  background: '#1890ff',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 500
+                }}
+              >
+                开始AI审稿
+              </button>
+            </div>
+          ) : isReviewing && !reviewResult ? (
             <div style={{ textAlign: 'center', padding: '40px 0' }}>
               <Spin size="large" />
               <div style={{ marginTop: '16px', color: '#666' }}>AI正在审稿中，请稍候...</div>
             </div>
           ) : reviewResult ? (
-            <div style={{
-              whiteSpace: 'pre-wrap',
-              fontSize: '14px',
-              lineHeight: '1.8',
-              color: '#333'
-            }}>
-              {reviewResult}
+            <div>
+              <div style={{ marginBottom: '12px', color: '#1890ff', fontSize: '13px', fontWeight: 500 }}>
+                ✓ 审稿完成
+              </div>
+              <div style={{
+                whiteSpace: 'pre-wrap',
+                fontSize: '14px',
+                lineHeight: '1.8',
+                color: '#333',
+                background: '#f0f5ff',
+                padding: '16px',
+                borderRadius: '6px',
+                border: '1px solid #adc6ff',
+                maxHeight: 'calc(100vh - 250px)',
+                overflowY: 'auto'
+              }}>
+                {reviewResult}
+              </div>
             </div>
           ) : (
             <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
@@ -1331,83 +2635,108 @@ const WritingStudioPage: React.FC = () => {
             </div>
           )}
         </div>
-      </Modal>
+      </Drawer>
       
-      {/* AI消痕弹窗 */}
-      <Modal
-        title="🧹 AI消痕处理"
+      {/* AI消痕抽屉 */}
+      <Drawer
+        title={<span style={{ fontSize: '16px', fontWeight: 600 }}>🧹 AI消痕处理</span>}
+        placement="right"
+        width={600}
+        mask={false}
         open={traceRemovalDrawerVisible}
-        onCancel={() => setTraceRemovalDrawerVisible(false)}
-        footer={[
-          <button
-            key="cancel"
-            onClick={() => setTraceRemovalDrawerVisible(false)}
-            style={{
-              padding: '8px 20px',
-              border: '1px solid #d9d9d9',
-              borderRadius: '6px',
-              background: '#fff',
-              cursor: 'pointer',
-              marginRight: '8px'
-            }}
-          >
-            取消
-          </button>,
-          <button
-            key="apply"
-            onClick={() => {
-              if (processedContent) {
-                if (editingType === 'chapter' && selectedChapter) {
-                  setSelectedChapter((prev) => prev ? { ...prev, content: processedContent } : prev)
-                } else if (editingType === 'document' && selectedDocument) {
-                  setSelectedDocument((prev) => prev ? { ...prev, content: processedContent } : prev)
-                }
-                onContentChange(processedContent)
-                message.success('已应用AI消痕后的内容')
+        onClose={() => {
+          setTraceRemovalDrawerVisible(false)
+          setProcessedContent('')
+        }}
+        footer={
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+            <button
+              onClick={() => {
                 setTraceRemovalDrawerVisible(false)
-              }
-            }}
-            disabled={!processedContent || isRemovingTrace}
-            style={{
-              padding: '8px 20px',
-              border: 'none',
-              borderRadius: '6px',
-              background: (!processedContent || isRemovingTrace) ? '#d9d9d9' : '#52c41a',
-              color: '#fff',
-              cursor: (!processedContent || isRemovingTrace) ? 'not-allowed' : 'pointer'
-            }}
-          >
-            应用到正文
-          </button>
-        ]}
-        width={1000}
+                setProcessedContent('')
+              }}
+              style={{
+                padding: '8px 20px',
+                border: '1px solid #d9d9d9',
+                borderRadius: '6px',
+                background: '#fff',
+                cursor: 'pointer'
+              }}
+            >
+              关闭
+            </button>
+            <button
+              onClick={() => {
+                if (processedContent) {
+                  if (editingType === 'chapter' && selectedChapter) {
+                    setSelectedChapter((prev) => prev ? { ...prev, content: processedContent } : prev)
+                  } else if (editingType === 'document' && selectedDocument) {
+                    setSelectedDocument((prev) => prev ? { ...prev, content: processedContent } : prev)
+                  }
+                  onContentChange(processedContent)
+                  message.success('已应用AI消痕后的内容')
+                  setTraceRemovalDrawerVisible(false)
+                  setProcessedContent('')
+                }
+              }}
+              disabled={!processedContent}
+              style={{
+                padding: '8px 20px',
+                border: 'none',
+                borderRadius: '6px',
+                background: processedContent ? '#52c41a' : '#d9d9d9',
+                color: '#fff',
+                cursor: processedContent ? 'pointer' : 'not-allowed'
+              }}
+            >
+              应用到正文
+            </button>
+          </div>
+        }
       >
-        <div style={{
-          maxHeight: '70vh',
-          overflow: 'auto',
-          padding: '16px',
-          background: '#fafafa',
-          borderRadius: '8px'
-        }}>
-          {isRemovingTrace ? (
+        <div style={{ padding: '0' }}>
+          {!processedContent && !isRemovingTrace ? (
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              <div style={{ marginBottom: '16px', color: '#666', fontSize: '14px' }}>
+                点击下方按钮开始AI消痕处理
+              </div>
+              <button
+                onClick={executeRemoveAITrace}
+                style={{
+                  padding: '10px 24px',
+                  border: 'none',
+                  borderRadius: '6px',
+                  background: '#1890ff',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 500
+                }}
+              >
+                开始AI消痕
+              </button>
+            </div>
+          ) : isRemovingTrace && !processedContent ? (
             <div style={{ textAlign: 'center', padding: '40px 0' }}>
               <Spin size="large" />
               <div style={{ marginTop: '16px', color: '#666' }}>正在AI消痕处理中...</div>
             </div>
           ) : processedContent ? (
             <div>
-              <div style={{ marginBottom: '12px', color: '#666', fontSize: '12px' }}>
-                处理后内容（共 {processedContent.replace(/\s+/g, '').length} 字）：
+              <div style={{ marginBottom: '12px', color: '#52c41a', fontSize: '13px', fontWeight: 500 }}>
+                ✓ 处理后内容（共 {processedContent.replace(/\s+/g, '').length} 字）
               </div>
               <div style={{
                 whiteSpace: 'pre-wrap',
                 fontSize: '14px',
                 lineHeight: '1.8',
                 color: '#333',
-                background: '#fff',
+                background: '#f6ffed',
                 padding: '16px',
                 borderRadius: '6px',
-                border: '1px solid #e8e8e8'
+                border: '1px solid #b7eb8f',
+                maxHeight: 'calc(100vh - 250px)',
+                overflowY: 'auto'
               }}>
                 {processedContent}
               </div>
@@ -1418,7 +2747,123 @@ const WritingStudioPage: React.FC = () => {
             </div>
           )}
         </div>
-      </Modal>
+      </Drawer>
+      
+      {/* AI精简抽屉 */}
+      <Drawer
+        title={<span style={{ fontSize: '16px', fontWeight: 600 }}>✂️ AI精简优化</span>}
+        placement="right"
+        width={600}
+        mask={false}
+        open={streamlineDrawerVisible}
+        onClose={() => {
+          setStreamlineDrawerVisible(false)
+          setStreamlinedContent('')
+        }}
+        footer={
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+            <button
+              onClick={() => {
+                setStreamlineDrawerVisible(false)
+                setStreamlinedContent('')
+              }}
+              style={{
+                padding: '8px 20px',
+                border: '1px solid #d9d9d9',
+                borderRadius: '6px',
+                background: '#fff',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              关闭
+            </button>
+            <button
+              onClick={() => {
+                if (streamlinedContent) {
+                  if (editingType === 'chapter' && selectedChapter) {
+                    setSelectedChapter((prev) => prev ? { ...prev, content: streamlinedContent } : prev)
+                  } else if (editingType === 'document' && selectedDocument) {
+                    setSelectedDocument((prev) => prev ? { ...prev, content: streamlinedContent } : prev)
+                  }
+                  onContentChange(streamlinedContent)
+                  message.success('已应用AI精简后的内容')
+                  setStreamlineDrawerVisible(false)
+                  setStreamlinedContent('')
+                }
+              }}
+              disabled={!streamlinedContent}
+              style={{
+                padding: '8px 20px',
+                border: 'none',
+                borderRadius: '6px',
+                background: streamlinedContent ? '#ff9800' : '#d9d9d9',
+                color: '#fff',
+                cursor: streamlinedContent ? 'pointer' : 'not-allowed',
+                fontSize: '14px',
+                fontWeight: 500
+              }}
+            >
+              应用到正文
+            </button>
+          </div>
+        }
+      >
+        <div style={{ padding: '0' }}>
+          {!streamlinedContent && !isStreamlining ? (
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              <div style={{ marginBottom: '16px', color: '#666', fontSize: '14px', lineHeight: '1.6' }}>
+                AI将分析文章内容，精简冗余片段，<br/>
+                加快剧情节奏，提升阅读体验
+              </div>
+              <button
+                onClick={executeStreamlineContent}
+                style={{
+                  padding: '10px 24px',
+                  border: 'none',
+                  borderRadius: '6px',
+                  background: '#ff9800',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 500
+                }}
+              >
+                开始AI精简
+              </button>
+            </div>
+          ) : isStreamlining && !streamlinedContent ? (
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              <Spin size="large" />
+              <div style={{ marginTop: '16px', color: '#666' }}>AI正在精简优化中，请稍候...</div>
+            </div>
+          ) : streamlinedContent ? (
+            <div>
+              <div style={{ marginBottom: '12px', color: '#ff9800', fontSize: '13px', fontWeight: 500 }}>
+                ✓ 精简后内容（共 {streamlinedContent.replace(/\s+/g, '').length} 字）
+              </div>
+              <div style={{
+                whiteSpace: 'pre-wrap',
+                fontSize: '14px',
+                lineHeight: '1.8',
+                color: '#333',
+                background: '#fff8e1',
+                padding: '16px',
+                borderRadius: '6px',
+                border: '1px solid #ffcc80',
+                maxHeight: 'calc(100vh - 250px)',
+                overflowY: 'auto'
+              }}>
+                {streamlinedContent}
+              </div>
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
+              暂无处理结果
+            </div>
+          )}
+        </div>
+      </Drawer>
     </Layout>
   )
 }

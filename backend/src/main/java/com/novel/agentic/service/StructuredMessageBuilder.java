@@ -28,123 +28,7 @@ public class StructuredMessageBuilder {
     @Autowired(required = false)
     private com.novel.agentic.service.graph.IGraphService graphService;
 
-    /**
-     * 直接写作模式：收集完整上下文后直接构建写作消息（不经过决策和章纲）
-     */
-    public List<Map<String, String>> buildMessagesForDirectWriting(
-            Novel novel,
-            WritingContext context,
-            Integer chapterNumber,
-            String userAdjustment,
-            String stylePromptFile) {
 
-        List<Map<String, String>> messages = new ArrayList<>();
-
-        // Message 1: System - 基础写作规则 + 风格
-        String systemPrompt = buildSystemPrompt(null, chapterNumber, stylePromptFile);
-        if (StringUtils.isBlank(systemPrompt)) {
-            logger.warn("⚠️ 系统提示词为空！使用默认提示词");
-            systemPrompt = "你是一位专业的网文小说家AI助手。请根据以下上下文信息创作高质量的小说章节内容。";
-        }
-        logger.info("📝 系统提示词长度: {}字 (使用: {})", systemPrompt.length(),
-            stylePromptFile != null ? stylePromptFile : "默认");
-        messages.add(createMessage("system", systemPrompt));
-
-        // Message 2: 小说基础信息
-        String basicInfo = buildBasicInfo(novel, chapterNumber);
-        messages.add(createMessage("system", basicInfo));
-
-        // Message 3: 核心设定（如果有）
-        String core = context.getCoreSettings();
-        if (StringUtils.isNotBlank(core)) {
-            StringBuilder sb = new StringBuilder();
-            sb.append("【核心设定】\n");
-            sb.append(core).append("\n");
-            messages.add(createMessage("system", sb.toString()));
-            logger.info("✅ 已添加核心设定 ({}字)", core.length());
-        }
-
-        // Message 4: 卷蓝图（如果有）
-        String volumeBlueprint = buildVolumeBlueprintMessage(context);
-        if (StringUtils.isNotBlank(volumeBlueprint)) {
-            messages.add(createMessage("system", volumeBlueprint));
-            logger.info("✅ 已添加卷蓝图");
-        }
-
-        // Message 5: 最近章节完整内容和概要
-        addRecentChapterMessages(context, messages);
-
-        // Message 6: 角色档案（如果有）
-        String characters = buildWorldAndCharacters(context);
-        if (StringUtils.isNotBlank(characters)) {
-            messages.add(createMessage("system", characters));
-            logger.info("✅ 已添加角色信息");
-        }
-
-        // Message 6.5: 状态硬约束（核心记忆账本）
-        String stateConstraints = buildStateConstraints(context);
-        if (StringUtils.isNotBlank(stateConstraints)) {
-            messages.add(createMessage("system", stateConstraints));
-            logger.info("✅ 已添加状态硬约束");
-        }
-
-        Map<String, String> manualReferences = context.getReferenceContents();
-        if (manualReferences != null && !manualReferences.isEmpty()) {
-            String userReferences = buildUserReferenceMessage(manualReferences);
-            if (StringUtils.isNotBlank(userReferences)) {
-                messages.add(createMessage("system", userReferences));
-                logger.info("✅ 已添加{}条关联内容", manualReferences.size());
-            }
-        }
-
-        // Message 7: 图谱上下文（历史事件、伏笔等）
-        String graphContext = buildGraphContextForDirectWriting(context);
-        if (StringUtils.isNotBlank(graphContext)) {
-            messages.add(createMessage("system", graphContext));
-            logger.info("✅ 已添加图谱上下文");
-        }
-
-        // Message 8: 用户调整指令（如果有）
-        if (StringUtils.isNotBlank(userAdjustment)) {
-            messages.add(createMessage("user", "【用户特殊要求】\n" + userAdjustment));
-            logger.info("✅ 已添加用户特殊要求");
-        }
-
-        // Message 9: 写作任务说明
-        StringBuilder taskDesc = new StringBuilder();
-        taskDesc.append("【本章写作任务】\n");
-        taskDesc.append("请创作第").append(chapterNumber).append("章的内容。\n");
-        taskDesc.append("要求：\n");
-        taskDesc.append("1. 与前文剧情自然衔接，保持连贯性\n");
-        taskDesc.append("2. 角色性格、行为与已建立的人设一致\n");
-        taskDesc.append("3. 遵守已设定的世界规则和伏笔\n");
-        taskDesc.append("4. 推进剧情发展，避免原地踏步\n");
-        taskDesc.append("5. 保持文笔流畅，节奏适中\n");
-        messages.add(createMessage("user", taskDesc.toString()));
-
-        // Message 10: 字数限制
-        String wordCountLimit = buildWordCountLimitSimple(chapterNumber);
-        messages.add(createMessage("user", wordCountLimit));
-
-        // Message 11: 执行指令
-        String executionPrompt = buildExecutionPrompt();
-        messages.add(createMessage("user", executionPrompt));
-
-        logger.info("✅ 直接写作消息构建完成: 共{}条消息", messages.size());
-
-        // 详细日志
-        for (int i = 0; i < messages.size(); i++) {
-            Map<String, String> msg = messages.get(i);
-            String role = msg.get("role");
-            String content = msg.get("content");
-            String preview = content != null && content.length() > 80
-                ? content.substring(0, 80).replaceAll("\n", " ") + "..."
-                : (content != null ? content.replaceAll("\n", " ") : "null");
-            logger.info("  [Message {}] role={}, 内容摘要: {}", i + 1, role, preview);
-        }
-
-        return messages;
-    }
 
     /**
      * 为直接写作模式构建图谱上下文（简化版）
@@ -199,90 +83,8 @@ public class StructuredMessageBuilder {
         return body.toString();
     }
 
-    /**
-     * 🆕 新架构：只传章纲（Brief）给写作层
-     * 写作层不看原始大纲/蓝图/历史全文，只看精炼的章纲
-     */
-    public List<Map<String, String>> buildMessagesFromBrief(Novel novel, String brief, Integer chapterNumber, String stylePromptFile) {
-        List<Map<String, String>> messages = new ArrayList<>();
 
-        // Message 1: System - 基础写作规则 + 风格
-        String systemPrompt = buildSystemPrompt(null, chapterNumber, stylePromptFile);
-        if (StringUtils.isBlank(systemPrompt)) {
-            logger.warn("⚠️ 系统提示词为空！使用默认提示词");
-            systemPrompt = "你是一位专业的网文小说家AI助手。请根据章纲创作高质量的小说章节内容。";
-        }
-        logger.info("📝 系统提示词长度: {}字 (使用: {})", systemPrompt.length(),
-            stylePromptFile != null ? stylePromptFile : "默认");
-        messages.add(createMessage("system", systemPrompt));
 
-        // Message 2: 小说基础信息（简化版，只有书名和题材）
-        StringBuilder basicInfo = new StringBuilder();
-        basicInfo.append("【小说基础信息】\n");
-        basicInfo.append("书名：").append(novel.getTitle()).append("\n");
-        // 题材已移除：让AI从大纲与素材中自推断风格
-        messages.add(createMessage("system", basicInfo.toString()));
-
-        // Message 3: 章纲（核心内容）
-        messages.add(createMessage("user", brief));
-
-        // Message 4: 字数限制
-        String wordCountLimit = buildWordCountLimitSimple(chapterNumber);
-        messages.add(createMessage("user", wordCountLimit));
-
-        // Message 5: 执行指令
-        String executionPrompt = buildExecutionPrompt();
-        messages.add(createMessage("user", executionPrompt));
-
-        logger.info("✅ 简化消息构建完成（新架构）: 共{}条消息", messages.size());
-
-        return messages;
-    }
-
-    /**
-     * 🆕 新架构（含硬约束）：只传章纲 + 状态硬约束
-     */
-    public List<Map<String, String>> buildMessagesFromBrief(
-            Novel novel, WritingContext context, String brief, Integer chapterNumber, String stylePromptFile) {
-        List<Map<String, String>> messages = new ArrayList<>();
-
-        // Message 1: System - 基础写作规则 + 风格
-        String systemPrompt = buildSystemPrompt(null, chapterNumber, stylePromptFile);
-        if (StringUtils.isBlank(systemPrompt)) {
-            logger.warn("⚠️ 系统提示词为空！使用默认提示词");
-            systemPrompt = "你是一位专业的网文小说家AI助手。请根据章纲创作高质量的小说章节内容。";
-        }
-        messages.add(createMessage("system", systemPrompt));
-
-        // Message 2: 小说基础信息
-        StringBuilder basicInfo = new StringBuilder();
-        basicInfo.append("【小说基础信息】\n");
-        basicInfo.append("书名：").append(novel.getTitle()).append("\n");
-        messages.add(createMessage("system", basicInfo.toString()));
-
-        // Message 3: 状态硬约束（若可用）
-        if (context != null) {
-            String stateConstraints = buildStateConstraints(context);
-            if (StringUtils.isNotBlank(stateConstraints)) {
-                messages.add(createMessage("system", stateConstraints));
-                logger.info("✅ 已添加状态硬约束");
-            }
-        }
-
-        // Message 4: 章纲（核心）
-        messages.add(createMessage("user", brief));
-
-        // Message 5: 字数限制
-        String wordCountLimit = buildWordCountLimitSimple(chapterNumber);
-        messages.add(createMessage("user", wordCountLimit));
-
-        // Message 6: 执行指令
-        String executionPrompt = buildExecutionPrompt();
-        messages.add(createMessage("user", executionPrompt));
-
-        logger.info("✅ 简化消息构建完成（含硬约束）: 共{}条消息", messages.size());
-        return messages;
-    }
     /**
      * 🆕 从推理意图（plotIntent JSON）构建写作消息
      * 替代原来的"推理 → 生成Markdown章纲 → 写作"流程
@@ -356,6 +158,14 @@ public class StructuredMessageBuilder {
             if (StringUtils.isNotBlank(stateConstraints)) {
                 messages.add(createMessage("system", stateConstraints));
                 logger.info("✅ 已添加状态硬约束");
+            }
+        }
+
+        if (context != null) {
+            String characterMindmap = buildCharacterMindmap(context);
+            if (StringUtils.isNotBlank(characterMindmap)) {
+                messages.add(createMessage("system", characterMindmap));
+                logger.info("✅ 已添加人物思维导图");
             }
         }
 
@@ -434,24 +244,13 @@ public class StructuredMessageBuilder {
 
         // Message 10: 写作任务说明
         StringBuilder taskDesc = new StringBuilder();
-        taskDesc.append("【本章写作任务】\n");
-        taskDesc.append("请创作第").append(chapterNumber).append("章的内容。\n");
-        taskDesc.append("要求：\n");
-        taskDesc.append("1. 严格按照【本章创作方向】中的剧情方向和关键剧情点展开\n");
-        taskDesc.append("2. 与前文剧情自然衔接，保持连贯性\n");
-        taskDesc.append("3. 角色性格、行为与已建立的人设一致\n");
-        taskDesc.append("4. 遵守已设定的世界规则和伏笔\n");
-        taskDesc.append("5. 推进剧情发展，避免原地踏步\n");
-        taskDesc.append("6. 保持文笔流畅，节奏适中\n");
-        messages.add(createMessage("user", taskDesc.toString()));
+        taskDesc.append("请按照以上要求和设定去创作第").append(chapterNumber).append("章的内容。\n");
+        messages.add(createMessage("system",taskDesc.toString()));
+        //字数限制
+        String wordCountLimit = buildWordCountLimitSimple(novel);
+        messages.add(createMessage("system", wordCountLimit));
 
-        // Message 11: 字数限制
-        String wordCountLimit = buildWordCountLimitSimple(chapterNumber);
-        messages.add(createMessage("user", wordCountLimit));
 
-        // Message 12: 执行指令
-        String executionPrompt = buildExecutionPrompt();
-        messages.add(createMessage("user", executionPrompt));
 
         logger.info("✅ 意图驱动写作消息构建完成: 共{}条消息", messages.size());
 
@@ -475,21 +274,27 @@ public class StructuredMessageBuilder {
      * 构建执行提示
      */
     private String buildExecutionPrompt() {
-        return "请直接输出小说正文，不要附加任何标题、解释或元信息。现在开始创作：";
+        return "请直接输出小说正文，不要附加任何标题、解释或元信息。"
+            + "写作时请始终从普通读者的阅读体验出发，要站在读者视角思考，不能太突兀，有些点需要思考是不是需要先交代写内容让用户了解，多思考"
+            + "现在开始创作：";
     }
 
     /**
      * 构建简化的字数限制
+     * 基于小说配置的每章目标字数（novels.words_per_chapter），若无配置则回退到 2500 字
      */
-    private String buildWordCountLimitSimple(Integer chapterNumber) {
-        int targetWords = 2500;
-        int maxWords = 2750;
+    private String buildWordCountLimitSimple(Novel novel) {
+        int base = 2500;
+        if (novel != null && novel.getWordsPerChapter() != null && novel.getWordsPerChapter() > 0) {
+            base = novel.getWordsPerChapter();
+        }
+
+        int targetWords = base;
+        int maxWords = base + 200; // 上下浮动约200字，这里设置硬上限为+200
 
         StringBuilder sb = new StringBuilder();
-        sb.append("【字数要求】\n");
-        sb.append("- 目标字数：").append(targetWords).append(" 字\n");
-        sb.append("- 绝对上限：").append(maxWords).append(" 字\n");
-        sb.append("- 达到目标字数时必须开始收尾，达到上限时必须立即停止\n");
+        sb.append("【字数硬性要求】\n");
+        sb.append("- 字数范围：").append(targetWords).append(" 字（可上下浮动约 200 字）\n");
         return sb.toString();
     }
 
@@ -588,9 +393,16 @@ public class StructuredMessageBuilder {
         }
 
         StringBuilder sb = new StringBuilder();
-        sb.append("优先聚焦此指令,此规则优先级最高\n");
-        sb.append("此指令是开头三篇才会有,为了减少开头对场景过分描述,要迅速进入剧情吸引读者。\n");
-        sb.append(" 先忽略大纲和卷蓝图的繁琐设定 可以偏离设定 但是要吸引人 为了吸引人不择手段的创作出即使不符合大纲的内容 前三百字优先创作出一个开头惊艳的脑洞,不能慢热 而是要狠狠吸引读者 剧情要一两句话就能吸引读者 聚焦于吸引读者技巧 而不是慢热 记住 读者划走再好的大纲和设定也没用 要开局就放大招吸引读者阅读\n");
+        sb.append("【黄金三章开局专用指令】\n");
+        sb.append("- 本指令仅在全书最前面的章节生效，在这些章节中优先级最高。\n");
+        sb.append("- 读者第一次接触作品多半只看开头几屏，如果这里不立刻抓住人，后面再精彩也没人看到。\n");
+        sb.append("- 一开场就让读者“掉进事件里”：用冲突、选择或异常场景切入，不要从天气、环境或大段设定说明写起。\n");
+        sb.append("- 尽量让前几段就出现：主角明确的欲望或目标、需要立刻应对的压力或机会，以及做出选择带来的直接后果。\n");
+        sb.append("- 必须让读者感到真实代价：关系紧张、局势恶化、资源被消耗、时间被压缩等，而不是虚空的口头威胁。\n");
+        sb.append("- 可以在不推翻作品核心设定和主线目标的前提下，适度偏离卷蓝图或细节规划，以换取更强的开局吸引力；后续章节再慢慢校正。\n");
+        sb.append("- 避免长篇讲解世界观或背景，把必要信息拆散，夹在动作、对话和冲突推进之中，让读者一边追剧情一边顺手理解设定。\n");
+        sb.append("- 章节结尾必须留下钩子：未解决的问题、被打断的行动、危险的悬而未决、出乎意料的提议或信号等，迫使读者想“再看一小段”。\n");
+        sb.append("- 语言上多用有画面感的动作和对话，少用空泛的议论和解释，让读者“看到场景在动”，而不是在听作者讲道理。\n");
         return sb.toString();
     }
 
@@ -614,21 +426,7 @@ public class StructuredMessageBuilder {
         return sb.toString();
     }
 
-    /**
-     * Message 4: 大纲
-     */
-    private String buildOutlineMessage(String outlineText, TokenBudget budget) {
-        if (StringUtils.isBlank(outlineText)) {
-            return "";
-        }
 
-        String outline = budget.truncate(outlineText, budget.getMaxOutline());
-        StringBuilder sb = new StringBuilder();
-        sb.append("【整体大纲】\n");
-        sb.append("（用于理解宏观剧情节奏，若与本章无关可忽略）\n\n");
-        sb.append(outline).append("\n");
-        return sb.toString();
-    }
 
     /**
      * Message 5: 卷蓝图
@@ -668,7 +466,7 @@ public class StructuredMessageBuilder {
 
         if (context.getCharacterProfiles() != null && !context.getCharacterProfiles().isEmpty()) {
             body.append("## 关键角色\n");
-            context.getCharacterProfiles().stream().limit(3).forEach(profile -> {
+            context.getCharacterProfiles().stream().forEach(profile -> {
                 String name = safeString(profile.get("character_name"), "未知角色");
                 if ("未知角色".equals(name)) {
                     name = safeString(profile.get("characterName"), name);
@@ -696,9 +494,288 @@ public class StructuredMessageBuilder {
 
         StringBuilder result = new StringBuilder();
         result.append("【角色信息】\n\n");
-        result.append("提示：仅引用对本章剧情有直接影响的角色信息。\n\n");
+        result.append("提示：下面是当前图谱中已建档的核心人物。\n");
+        result.append("- 当需要使用这些人物时，请优先复用这里给出的【姓名】和【身份】，不要为同一人物另起新名；\n");
+        result.append("- 你可以根据本章剧情需要，从中选择少量关键角色登场，不必全部使用；\n");
+        result.append("- 若需要引入全新、未来会长期出现的角色，可以自行创造新名字，并在后续章节保持一致。\n\n");
         result.append(body);
         return result.toString();
+    }
+
+    private String buildCharacterMindmap(WritingContext context) {
+        if (context == null) {
+            return "";
+        }
+
+        Map<String, Map<String, Object>> merged = new LinkedHashMap<>();
+
+        List<Map<String, Object>> profiles = context.getCharacterProfiles();
+        if (profiles != null) {
+            for (Map<String, Object> profile : profiles) {
+                if (profile == null) {
+                    continue;
+                }
+                String name = safeString(profile.get("character_name"), null);
+                if (name == null || "未知角色".equals(name)) {
+                    name = safeString(profile.get("characterName"), null);
+                }
+                if (name == null) {
+                    continue;
+                }
+                Map<String, Object> data = merged.computeIfAbsent(name, k -> new LinkedHashMap<>());
+                if (!data.containsKey("role")) {
+                    String role = safeString(profile.get("role_position"), "");
+                    if (StringUtils.isBlank(role)) {
+                        role = safeString(profile.get("role"), "");
+                    }
+                    if (StringUtils.isNotBlank(role)) {
+                        data.put("role", role);
+                    }
+                }
+                if (!data.containsKey("trait")) {
+                    String trait = safeString(profile.get("extreme_trait"), "");
+                    if (StringUtils.isNotBlank(trait)) {
+                        data.put("trait", trait);
+                    }
+                }
+            }
+        }
+
+        List<Map<String, Object>> characterStates = context.getCharacterStates();
+        if (characterStates != null) {
+            for (Map<String, Object> state : characterStates) {
+                if (state == null) {
+                    continue;
+                }
+                String name = safeString(state.get("name"), null);
+                if (name == null) {
+                    continue;
+                }
+                Map<String, Object> data = merged.computeIfAbsent(name, k -> new LinkedHashMap<>());
+                if (!data.containsKey("alive") && state.get("alive") != null) {
+                    data.put("alive", state.get("alive"));
+                }
+                if (!data.containsKey("location") && state.get("location") != null) {
+                    data.put("location", state.get("location"));
+                }
+                if (!data.containsKey("realm") && state.get("realm") != null) {
+                    data.put("realm", state.get("realm"));
+                }
+                if (!data.containsKey("status") && state.get("status") != null) {
+                    data.put("status", state.get("status"));
+                }
+                if (!data.containsKey("lastSeenChapter") && state.get("lastSeenChapter") != null) {
+                    data.put("lastSeenChapter", state.get("lastSeenChapter"));
+                }
+                if (!data.containsKey("deathChapter") && state.get("deathChapter") != null) {
+                    data.put("deathChapter", state.get("deathChapter"));
+                }
+            }
+        }
+
+        if (merged.isEmpty()) {
+            Map<String, CharacterState> inferred = extractCharacterStates(context);
+            if (!inferred.isEmpty()) {
+                for (CharacterState st : inferred.values()) {
+                    if (st == null || st.name == null) {
+                        continue;
+                    }
+                    Map<String, Object> data = merged.computeIfAbsent(st.name, k -> new LinkedHashMap<>());
+                    if (!data.containsKey("alive")) {
+                        data.put("alive", st.isAlive);
+                    }
+                    if (!data.containsKey("location") && st.location != null) {
+                        data.put("location", st.location);
+                    }
+                    if (!data.containsKey("realm") && st.realm != null) {
+                        data.put("realm", st.realm);
+                    }
+                    if (!data.containsKey("deathChapter") && st.deathChapter != null) {
+                        data.put("deathChapter", st.deathChapter);
+                    }
+                    if (!data.containsKey("lastSeenChapter") && st.lastSeenChapter != null) {
+                        data.put("lastSeenChapter", st.lastSeenChapter);
+                    }
+                }
+            }
+        }
+
+        Map<String, List<String>> relations = new LinkedHashMap<>();
+        List<Map<String, Object>> relationshipStates = context.getRelationshipStates();
+        if (relationshipStates != null) {
+            for (Map<String, Object> rel : relationshipStates) {
+                if (rel == null) {
+                    continue;
+                }
+                String a = safeString(rel.get("a"), null);
+                String b = safeString(rel.get("b"), null);
+                if (a == null || b == null) {
+                    continue;
+                }
+
+                // 确保关系中的人物也被纳入人物集合，避免只在关系里出现却不在列表里的情况
+                merged.computeIfAbsent(a, k -> new LinkedHashMap<>());
+                merged.computeIfAbsent(b, k -> new LinkedHashMap<>());
+
+                String type = safeString(rel.get("type"), "");
+                String ab = StringUtils.isNotBlank(type) ? b + "（" + type + "）" : b;
+                String ba = StringUtils.isNotBlank(type) ? a + "（" + type + "）" : a;
+                relations.computeIfAbsent(a, k -> new ArrayList<>()).add(ab);
+                relations.computeIfAbsent(b, k -> new ArrayList<>()).add(ba);
+            }
+        }
+
+        if (merged.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("【人物关系导图】\n\n");
+        sb.append("这里列出当前小说中已经登场过的角色名单及其关系网络，用于保持人名一致；本章未必全部出场，但不要给已有角色改名。已死亡角色禁止以活人身份登场。\n\n");
+
+        final int MAX_LENGTH = 10000;
+        java.util.List<Map.Entry<String, Map<String, Object>>> entries = new java.util.ArrayList<>(merged.entrySet());
+        entries.sort((e1, e2) -> {
+            String n1 = e1.getKey();
+            String n2 = e2.getKey();
+            Map<String, Object> d1 = e1.getValue();
+            Map<String, Object> d2 = e2.getValue();
+            double s1 = computeCharacterPriority(n1, d1, relations);
+            double s2 = computeCharacterPriority(n2, d2, relations);
+            int cmp = Double.compare(s2, s1);
+            if (cmp != 0) {
+                return cmp;
+            }
+            if (n1 == null && n2 == null) {
+                return 0;
+            }
+            if (n1 == null) {
+                return 1;
+            }
+            if (n2 == null) {
+                return -1;
+            }
+            return n1.compareTo(n2);
+        });
+
+        for (Map.Entry<String, Map<String, Object>> entry : entries) {
+            if (sb.length() >= MAX_LENGTH) {
+                sb.append("...\n（角色列表已截断，后续多为边缘角色，可按需忽略）");
+                break;
+            }
+            String name = entry.getKey();
+            Map<String, Object> data = entry.getValue();
+            if (StringUtils.isBlank(name)) {
+                continue;
+            }
+            sb.append("- ").append(name);
+            Object role = data.get("role");
+            if (role != null && StringUtils.isNotBlank(role.toString())) {
+                sb.append("（").append(role).append("）");
+            }
+            sb.append("\n");
+
+            sb.append("  · 状态：");
+            Object alive = data.get("alive");
+            if (alive instanceof Boolean && !(Boolean) alive) {
+                sb.append("已死亡");
+            } else {
+                Object status = data.get("status");
+                if (status != null && StringUtils.isNotBlank(status.toString())) {
+                    sb.append(status.toString());
+                } else {
+                    sb.append("存活");
+                }
+            }
+
+            Object location = data.get("location");
+            if (location != null && StringUtils.isNotBlank(location.toString())) {
+                sb.append(" | 位置：").append(location);
+            }
+
+            Object realm = data.get("realm");
+            if (realm != null && StringUtils.isNotBlank(realm.toString())) {
+                sb.append(" | 阶段：").append(realm);
+            }
+
+            Object trait = data.get("trait");
+            if (trait != null && StringUtils.isNotBlank(trait.toString())) {
+                sb.append(" | 核心特质：").append(trait);
+            }
+
+            sb.append("\n");
+        }
+
+        if (relationshipStates != null && !relationshipStates.isEmpty() && sb.length() < MAX_LENGTH) {
+            sb.append("\n【人物关系连线】\n");
+            int edgeCount = 0;
+            for (Map<String, Object> rel : relationshipStates) {
+                if (rel == null) {
+                    continue;
+                }
+                String a = safeString(rel.get("a"), null);
+                String b = safeString(rel.get("b"), null);
+                if (StringUtils.isBlank(a) || StringUtils.isBlank(b)) {
+                    continue;
+                }
+                String type = safeString(rel.get("type"), "");
+                sb.append("- ").append(a);
+                if (StringUtils.isNotBlank(type)) {
+                    sb.append(" —").append(type).append("→ ");
+                } else {
+                    sb.append(" → ");
+                }
+                sb.append(b).append("\n");
+
+                edgeCount++;
+                if (edgeCount >= 80 || sb.length() >= MAX_LENGTH) {
+                    break;
+                }
+            }
+        }
+
+        return sb.toString().trim();
+    }
+
+    private double computeCharacterPriority(String name, Map<String, Object> data, Map<String, List<String>> relations) {
+        double score = 0.0;
+
+        if (data != null) {
+            Object role = data.get("role");
+            if (role != null) {
+                String r = role.toString();
+                if (r.contains("主角") || r.contains("男主") || r.contains("女主")) {
+                    score += 100.0;
+                } else if (r.contains("反派") || r.toLowerCase(Locale.ROOT).contains("boss")) {
+                    score += 80.0;
+                } else if (r.contains("配角")) {
+                    score += 60.0;
+                }
+            }
+
+            Object alive = data.get("alive");
+            if (alive instanceof Boolean) {
+                if ((Boolean) alive) {
+                    score += 5.0;
+                } else {
+                    score += 2.0;
+                }
+            }
+
+            Object trait = data.get("trait");
+            if (trait != null && StringUtils.isNotBlank(trait.toString())) {
+                score += 3.0;
+            }
+        }
+
+        if (relations != null && name != null) {
+            List<String> relList = relations.get(name);
+            if (relList != null && !relList.isEmpty()) {
+                score += Math.min(5.0, relList.size());
+            }
+        }
+
+        return score;
     }
 
 
@@ -1388,5 +1465,4 @@ public class StructuredMessageBuilder {
         Integer lastSeenChapter;
     }
 }
-
 

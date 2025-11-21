@@ -641,8 +641,13 @@ const WritingStudioPage: React.FC = () => {
       let buffer = ''
       let accumulatedContent = ''
       let hasReceivedContent = false
+      let currentEventType = '' // 跟踪当前事件类型
       
-      const filterRegex = /(开始写作章节|正在生成|生成中|开始创作|正在创作|创作中)/i
+      // 只过滤纯状态消息（短消息且只包含状态词），不过滤正文内容
+      const isStatusMessage = (text: string): boolean => {
+        if (!text || text.length > 50) return false // 正文内容通常较长
+        return /^[🔧📥🧠📋✍️🤖💾🔍🔎🗑️\s]*(开始写作章节|正在生成|生成中|开始创作|正在创作|创作中|思考中|收集.*中|保存中|抽取.*中)[\.。…]*$/i.test(text)
+      }
 
       while (true) {
         const { done, value } = await reader.read()
@@ -662,10 +667,29 @@ const WritingStudioPage: React.FC = () => {
         buffer = lines.pop() || ''
 
         for (const line of lines) {
-          if (line.startsWith('data:')) {
+          if (line.startsWith('event:')) {
+            // 记录当前事件类型
+            currentEventType = line.slice(6).trim()
+          } else if (line.startsWith('data:')) {
             const data = line.startsWith('data: ') ? line.slice(6) : line.slice(5)
             
             if (data === '[DONE]') {
+              currentEventType = '' // 重置事件类型
+              continue
+            }
+            
+            // 跳过 phase 事件的所有数据（不显示、不累积）
+            if (currentEventType === 'phase') {
+              currentEventType = '' // 重置事件类型
+              continue
+            }
+            
+            // 检查是否是状态消息
+            if (isStatusMessage(data)) {
+              if (!hasReceivedContent) {
+                setAIOutput(data) // 显示状态
+              }
+              currentEventType = '' // 重置事件类型
               continue
             }
             
@@ -683,14 +707,14 @@ const WritingStudioPage: React.FC = () => {
                 contentToAdd = String(parsed.content)
               }
               
-              if (contentToAdd && !filterRegex.test(contentToAdd)) {
+              if (contentToAdd && !isStatusMessage(contentToAdd)) {
                 accumulatedContent += contentToAdd
                 hasReceivedContent = true
                 const displayContent = formatChineseSentences(accumulatedContent)
                 setAIOutput(displayContent)
               }
             } catch (e) {
-              if (data && data !== '[DONE]' && !filterRegex.test(data)) {
+              if (data && data !== '[DONE]' && !isStatusMessage(data)) {
                 accumulatedContent += data
                 hasReceivedContent = true
                 const displayContent = formatChineseSentences(accumulatedContent)
