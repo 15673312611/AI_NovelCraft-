@@ -4,7 +4,7 @@ import { SearchOutlined, EditOutlined, FormOutlined, HighlightOutlined, BarChart
 import type { NovelDocument } from '@/services/documentService'
 import aiService from '@/services/aiService'
 import api from '@/services/api'
-import { checkAIConfig, AI_CONFIG_ERROR_MESSAGE, withAIConfig } from '@/utils/aiRequest'
+import { checkAIConfig, AI_CONFIG_ERROR_MESSAGE, withAIConfig, getAIConfigOrThrow } from '@/utils/aiRequest'
 import './EditorPanel.css'
 
 
@@ -292,7 +292,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
       setIsProofreading(true)
       const response = await aiService.proofread({
         content,
-        characterNames: [], // TODO: 可以从小说信息中获取角色名称
+        characterNames: [],
       })
 
       if (!response || response.code !== 200) {
@@ -315,21 +315,46 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
     }
   }
 
+  const findErrorPosition = (
+    fullContent: string,
+    error: { position: number; original: string }
+  ): number => {
+    const { position, original } = error
+    if (!original) return -1
+
+    let actualPosition = position
+
+    // 优先尝试使用AI返回的position直接匹配
+    if (
+      actualPosition < 0 ||
+      actualPosition + original.length > fullContent.length ||
+      fullContent.substring(actualPosition, actualPosition + original.length) !== original
+    ) {
+      const searchStart = Math.max(0, position - 50)
+      actualPosition = fullContent.indexOf(original, searchStart)
+
+      if (actualPosition === -1) {
+        // 兜底：全局搜索
+        actualPosition = fullContent.indexOf(original)
+      }
+    }
+
+    return actualPosition
+  }
+
   const handleApplySingleError = (index: number) => {
     const error = proofreadErrors[index]
     if (!error || error.applied) return
 
     const { position, original, corrected } = error
 
-    // 查找原始文本的位置
-    const actualPosition = content.indexOf(original, Math.max(0, position - 50))
+    const actualPosition = findErrorPosition(content, { position, original })
 
     if (actualPosition === -1) {
       message.warning('未找到错误文本，可能已被修改')
       return
     }
 
-    // 替换文本
     const newContent =
       content.substring(0, actualPosition) +
       corrected +
@@ -338,7 +363,6 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
     setContent(newContent)
     onChangeContent(newContent)
 
-    // 标记为已应用
     const newErrors = [...proofreadErrors]
     newErrors[index] = { ...error, applied: true }
     setProofreadErrors(newErrors)
@@ -352,18 +376,18 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
     let newContent = content
     let appliedCount = 0
 
-    // 从后往前应用，避免位置偏移
+    // 
     const sortedErrors = proofreadErrors
       .map((err, index) => ({ ...err, index }))
       .filter(err => !err.applied)
       .sort((a, b) => {
-        const posA = newContent.indexOf(a.original, Math.max(0, a.position - 50))
-        const posB = newContent.indexOf(b.original, Math.max(0, b.position - 50))
+        const posA = findErrorPosition(newContent, { position: a.position, original: a.original })
+        const posB = findErrorPosition(newContent, { position: b.position, original: b.original })
         return posB - posA
       })
 
     for (const error of sortedErrors) {
-      const actualPosition = newContent.indexOf(error.original, Math.max(0, error.position - 50))
+      const actualPosition = findErrorPosition(newContent, { position: error.position, original: error.original })
 
       if (actualPosition !== -1) {
         newContent =
@@ -418,55 +442,75 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
 
       const prompt = `# 任务
 
-请为下面这一章节内容创作5个爆款中文标题，用风格混搭的方式制造惊喜与吸引力。
+请为下面这一章节内容创作 5 个高质量的中文标题。
 
 # 输入章节内容
 
 ${contentPreview}${content.length > 1500 ? '\n...(内容较长，已截取前1500字)' : ''}
 
-# 创作人设
+# 核心要求
 
-你是一个“多风格标题工坊”主理人：既懂番茄小说的爽文打法，也能随手调动悬疑、仙侠、都市、科幻、脑洞等不同美学。每个标题都像开盲盒，给读者新鲜冲击。
-
-# 写作流程
-
-1. **洞察剧情**：提炼本章的爽点、冲突、反转、情感峰值。
-2. **锁定钩子**：从人物身份、关系撕裂、神秘线索、情绪爆点里挑选最能吊胃口的元素。
-3. **随机混风格**：每个标题需从“番茄爽感 / 都市悬疑 / 古风仙侠 / 赛博科幻 / 脑洞黑色幽默 / 热血成长”中随机挑选不同的组合或标签，保证至少3种不同风格出现。
-4. **压缩能量**：字数控制在4-15个字，语言短促有画面，禁止平铺直叙。
-
-# 强制要求
-
-- 5 个标题全部不同，且整体风格分布要“番茄爽感+随机混搭”。
-- 每个标题都要钩住读者：可用热词（真千金、疯批、修罗场）、意象（霜刃、星港）、问题或命令句。
-- 不能剧透全部剧情，但必须与本章核心内容高度贴合。
-- 禁用“新的开始、第一次见面”这类空洞措辞，不要使用序号或说明文字。
+1. 标题要大致概括本章的核心情节或情绪，并具有一定吸引力。
+2. 风格不限，可以自由发挥，只需符合通俗小说的阅读习惯。
+3. 字数一般控制在 4-15 个字左右即可，不必死板卡字数。
 
 # 输出格式
 
-只输出5行标题，不要编号，不要解释，不要多余符号。
+只输出 5 行标题，每行一个标题。
+不要编号，不要解释，不要附加其他任何文字或符号。`
 
-# 示例（仅示例风格，不可照搬）
-疯批质子闯后宫
-月下请君入局
-星港黑名单解封
-她把修罗场写成诗
-断案系统说我赢了`
+      const aiConfig = getAIConfigOrThrow()
 
-      // 使用通用AI调用（复用polishSelection接口）
-      const requestBody = withAIConfig({
-        chapterContent: contentPreview,
-        selection: '生成章节标题',
-        instructions: prompt,
-        chapterTitle: document?.title || '章节'
-      })
-      const response = await api.post('/ai/polish-selection', requestBody)
-
-      if (!response || response.code !== 200) {
-        throw new Error(response?.message || 'AI生成失败')
+      let apiUrl = (aiConfig.baseUrl || '').trim()
+      if (!apiUrl) {
+        const providerUrls: Record<string, string> = {
+          deepseek: 'https://api.deepseek.com/v1/chat/completions',
+          qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+          kimi: 'https://api.moonshot.cn/v1/chat/completions',
+          openai: 'https://api.openai.com/v1/chat/completions',
+          custom: ''
+        }
+        apiUrl = providerUrls[aiConfig.provider] || 'https://api.openai.com/v1/chat/completions'
+      } else {
+        if (!/chat\/completions/.test(apiUrl)) {
+          apiUrl = apiUrl.replace(/\/v1\/?$/, '')
+          apiUrl = apiUrl.replace(/\/+$/, '')
+          apiUrl = `${apiUrl}/v1/chat/completions`
+        }
       }
 
-      const aiResponse = response.data?.polishedContent || ''
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${aiConfig.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: aiConfig.model,
+          messages: [
+            {
+              role: 'system',
+              content:
+                '你是一个擅长为中文网络小说章节取名的助手，请根据用户提供的章节内容，给出5个有吸引力且贴合剧情的章节标题。',
+            },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`AI生成失败: ${response.status} ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      const aiResponse: string =
+        data?.choices?.[0]?.message?.content ||
+        data?.choices?.[0]?.text ||
+        ''
+
       const names = aiResponse
         .split('\n')
         .map((line: string) => line.trim())
@@ -843,8 +887,7 @@ ${contentPreview}${content.length > 1500 ? '\n...(内容较长，已截取前150
       setSelectionInfo(null)
       textareaRef.current.focus()
       textareaRef.current.setSelectionRange(first.start, first.end)
-      textareaRef.current.scrollTop = textareaRef.current.scrollHeight * (first.start / content.length)
-
+      
       // 延迟重置标记，确保所有事件处理完成
       setTimeout(() => {
         isProgrammaticSelection.current = false
@@ -955,6 +998,95 @@ ${contentPreview}${content.length > 1500 ? '\n...(内容较长，已截取前150
     setMatches([])
     setCurrentMatchIndex(0)
   }
+
+  // 渲染覆盖层内容
+  const renderOverlayContent = () => {
+    // 优先级 1: 搜索高亮
+    if (searchReplaceVisible && matches.length > 0) {
+      const result = []
+      let lastIndex = 0
+      matches.forEach((match, index) => {
+        // 匹配前的文本
+        if (match.start > lastIndex) {
+          result.push(content.substring(lastIndex, match.start))
+        }
+        // 匹配文本
+        const isCurrent = index === currentMatchIndex
+        result.push(
+          <span
+            key={`match-${index}`}
+            className={`search-highlight ${isCurrent ? 'current' : ''}`}
+            data-match-index={index}
+          >
+            {content.substring(match.start, match.end)}
+          </span>
+        )
+        lastIndex = match.end
+      })
+      // 剩余文本
+      if (lastIndex < content.length) {
+        result.push(content.substring(lastIndex))
+      }
+      return <div className="editor-overlay-content">{result}</div>
+    }
+
+    // 优先级 2: 选区 (润色)
+    if (selectionInfo && showPolishButton) {
+      return (
+        <div className="editor-overlay-content">
+          {content.slice(0, selectionInfo.start)}
+          <span className="selection-highlight">
+            {selectionInfo.text}
+          </span>
+          <span className="selection-toolbar-inline">
+            <span className="selection-word-count">已选 {selectionInfo.text.replace(/\s/g, '').length} 字</span>
+            <button
+              type="button"
+              className="selection-polish-button"
+              onClick={openPolishModal}
+            >
+              AI重写
+            </button>
+          </span>
+          {content.slice(selectionInfo.end)}
+        </div>
+      )
+    }
+
+    return null
+  }
+
+  // 自动滚动到当前搜索匹配项
+  useEffect(() => {
+    if (!searchReplaceVisible || matches.length === 0) return
+
+    // 使用 setTimeout 等待渲染更新
+    const timer = setTimeout(() => {
+      const overlay = overlayRef.current
+      if (!overlay) return
+
+      const currentHighlight = overlay.querySelector(`[data-match-index="${currentMatchIndex}"]`) as HTMLElement
+      if (currentHighlight && textareaRef.current) {
+        const textarea = textareaRef.current
+        const textareaHeight = textarea.clientHeight
+        // 计算高亮元素相对于覆盖层内容的偏移
+        // 注意：overlayContent 受到 transform 影响，但 offsetTop 是相对于父级（overlayContent）的
+        // 我们需要的是它在文档流中的相对位置
+        const highlightTop = currentHighlight.offsetTop
+        const highlightHeight = currentHighlight.offsetHeight
+
+        // 计算目标滚动位置：将高亮元素置于可视区域中间
+        let newScrollTop = highlightTop - (textareaHeight / 2) + (highlightHeight / 2)
+        
+        // 边界检查
+        newScrollTop = Math.max(0, Math.min(newScrollTop, textarea.scrollHeight - textareaHeight))
+        
+        textarea.scrollTop = newScrollTop
+      }
+    }, 50)
+
+    return () => clearTimeout(timer)
+  }, [currentMatchIndex, searchReplaceVisible, matches])
 
   // 更新搜索面板位置
   useEffect(() => {
@@ -1147,28 +1279,7 @@ ${contentPreview}${content.length > 1500 ? '\n...(内容较长，已截取前150
             />
             {/* 文本覆盖层 - 显示选中文本和按钮 */}
             <div ref={overlayRef} className="editor-overlay">
-              {selectionInfo && showPolishButton && (
-                <div className="editor-overlay-content">
-
-
-
-                  {content.slice(0, selectionInfo.start)}
-                  <span className="selection-highlight">
-                    {selectionInfo.text}
-                  </span>
-                  <span className="selection-toolbar-inline">
-                    <span className="selection-word-count">已选 {selectionInfo.text.replace(/\s/g, '').length} 字</span>
-                    <button
-                      type="button"
-                      className="selection-polish-button"
-                      onClick={openPolishModal}
-                    >
-                      AI润色
-                    </button>
-                  </span>
-                  {content.slice(selectionInfo.end)}
-                </div>
-              )}
+              {renderOverlayContent()}
             </div>
           </div>
         </div>
@@ -1187,7 +1298,7 @@ ${contentPreview}${content.length > 1500 ? '\n...(内容较长，已截取前150
         title={
           <div style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <HighlightOutlined style={{ fontSize: 20, color: '#7c3aed' }} />
-            <span>AI润色助手</span>
+            <span>AI重写助手</span>
           </div>
         }
         width={880}
@@ -1237,10 +1348,10 @@ ${contentPreview}${content.length > 1500 ? '\n...(内容较长，已截取前150
       >
         <div className="polish-modal-body">
           <div className="polish-instruction">
-            <div className="polish-section-title">润色要求</div>
+            <div className="polish-section-title">修改要求</div>
             <Input.TextArea
               autoSize={{ minRows: 3, maxRows: 6 }}
-              placeholder="例如：保持第一人称视角，加强紧张感，减少重复用词，优化语言表达..."
+              placeholder="希望怎么改？（AI将强制尝试换一种完全不同的写法，如有特殊要求请在此补充）"
               value={polishInstructions}
               onChange={(e) => setPolishInstructions(e.target.value)}
               style={{

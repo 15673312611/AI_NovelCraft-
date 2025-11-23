@@ -149,19 +149,28 @@ public class AIWritingService {
             String url = aiConfig.getApiUrl();
             logger.info("🌐 调用AI接口（非流式）: {}", url);
             
-            RestTemplate restTemplate = new RestTemplate();
+            // 使用带超时配置的 RestTemplate（连接30秒，读取5分钟）
+            SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+            requestFactory.setConnectTimeout(30000);
+            requestFactory.setReadTimeout(300000);
+            RestTemplate restTemplate = new RestTemplate(requestFactory);
+            
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.setBearerAuth(apiKey);
             
             HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(requestBody, headers);
-            ResponseEntity<Map> response = restTemplate.postForEntity(url, requestEntity, Map.class);
+            @SuppressWarnings("unchecked")
+            ResponseEntity<Map<String, Object>> response = (ResponseEntity<Map<String, Object>>) 
+                (ResponseEntity<?>) restTemplate.postForEntity(url, requestEntity, Map.class);
             
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 Map<String, Object> responseBody = response.getBody();
+                @SuppressWarnings("unchecked")
                 List<Map<String, Object>> choices = (List<Map<String, Object>>) responseBody.get("choices");
                 if (choices != null && !choices.isEmpty()) {
                     Map<String, Object> firstChoice = choices.get(0);
+                    @SuppressWarnings("unchecked")
                     Map<String, Object> messageObj = (Map<String, Object>) firstChoice.get("message");
                     if (messageObj != null) {
                         String content = (String) messageObj.get("content");
@@ -637,20 +646,29 @@ public class AIWritingService {
         try {
             String url = aiConfig.getApiUrl();
             logger.info("🌐 调用AI接口（非流式，messages模式）: {}", url);
-            
-            RestTemplate restTemplate = new RestTemplate();
+
+            // 使用带超时配置的 RestTemplate（连接30秒，读取5分钟）
+            SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+            requestFactory.setConnectTimeout(30000);
+            requestFactory.setReadTimeout(300000);
+            RestTemplate restTemplate = new RestTemplate(requestFactory);
+
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.setBearerAuth(apiKey);
-            
+
             HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(requestBody, headers);
-            ResponseEntity<Map> response = restTemplate.postForEntity(url, requestEntity, Map.class);
+            @SuppressWarnings("unchecked")
+            ResponseEntity<Map<String, Object>> response = (ResponseEntity<Map<String, Object>>) 
+                (ResponseEntity<?>) restTemplate.postForEntity(url, requestEntity, Map.class);
             
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 Map<String, Object> responseBody = response.getBody();
+                @SuppressWarnings("unchecked")
                 List<Map<String, Object>> choices = (List<Map<String, Object>>) responseBody.get("choices");
                 if (choices != null && !choices.isEmpty()) {
                     Map<String, Object> firstChoice = choices.get(0);
+                    @SuppressWarnings("unchecked")
                     Map<String, Object> messageObj = (Map<String, Object>) firstChoice.get("message");
                     if (messageObj != null) {
                         String content = (String) messageObj.get("content");

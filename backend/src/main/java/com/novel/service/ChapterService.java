@@ -171,8 +171,19 @@ public class ChapterService {
      * 更新章节（重写章节时会清理相关旧数据）
      */
     public Chapter updateChapter(Long id, Chapter chapterData) {
+        return updateChapterInternal(id, chapterData, true);
+    }
+
+    /**
+     * 系统内部使用，跳过登录校验的章节更新（供Agentic流程等后台任务调用）
+     */
+    public Chapter updateChapterInternal(Long id, Chapter chapterData) {
+        return updateChapterInternal(id, chapterData, false);
+    }
+
+    private Chapter updateChapterInternal(Long id, Chapter chapterData, boolean validateAuth) {
         Long currentUserId = AuthUtils.getCurrentUserId();
-        if (currentUserId == null) {
+        if (validateAuth && currentUserId == null) {
             throw new SecurityException("用户未登录，无法更新章节");
         }
 
@@ -182,74 +193,74 @@ public class ChapterService {
         }
 
         Novel novel = novelRepository.selectById(chapter.getNovelId());
-        if (novel == null || novel.getAuthorId() == null || !currentUserId.equals(novel.getAuthorId())) {
-            throw new SecurityException("无权限修改该章节");
+        if (novel == null) {
+            throw new SecurityException("小说不存在，无法更新章节");
+        }
+        if (validateAuth) {
+            if (novel.getAuthorId() == null || !currentUserId.equals(novel.getAuthorId())) {
+                throw new SecurityException("无权限修改该章节");
+            }
         }
 
-        if (chapter != null) {
-            String oldContentSnapshot = chapter.getContent() != null ? chapter.getContent() : "";
-            String newContentForHistory = null;
-            boolean isContentRewrite = false;
-            
-            if (chapterData.getTitle() != null) {
-                chapter.setTitle(chapterData.getTitle());
-            }
-              if (chapterData.getContent() != null) {
-                  // 检测是否是内容重写（内容变化超过50%视为重写）
-                  String oldContent = chapter.getContent() != null ? chapter.getContent() : "";
-                  String newContent = chapterData.getContent();
-                  
-                  if (!oldContent.isEmpty() && !oldContent.equals(newContent)) {
-                      // 计算内容相似度（简单判断：新内容与旧内容差异大于50%）
-                      double similarity = calculateSimilarity(oldContent, newContent);
-                      if (similarity < 0.5) {
-                        isContentRewrite = true;
-                        logger.info("检测到章节 {} 内容被重写（相似度：{}%），将清理相关旧数据", 
-                            chapter.getChapterNumber(), (int)(similarity * 100));
-                      }
-                  }
-                  
-                  chapter.setContent(newContent);
-                  chapter.setWordCount(newContent.length());
-                  chapter.calculateReadingTime();
+        String oldContentSnapshot = chapter.getContent() != null ? chapter.getContent() : "";
+        String newContentForHistory = null;
+        boolean isContentRewrite = false;
 
-                  // 供版本历史记录使用（只在本次请求修改了 content 时才更新）
-                  newContentForHistory = newContent;
-              }
-            if (chapterData.getChapterNumber() != null) {
-                chapter.setChapterNumber(chapterData.getChapterNumber());
-            }
-            if (chapterData.getStatus() != null) {
-                chapter.setStatus(chapterData.getStatus());
-            }
-            if (chapterData.getGenerationContext() != null) {
-                chapter.setGenerationContext(chapterData.getGenerationContext());
-            }
-
-              chapterRepository.updateById(chapter);
-              
-              // 如果是重写，清理相关旧数据
-              if (isContentRewrite && chapter.getNovelId() != null && chapter.getChapterNumber() != null) {
-                  cleanupChapterRelatedData(chapter.getNovelId(), chapter.getChapterNumber());
-              }
-
-              // 记录正文版本历史（正文只存章节表，这里只针对 content 有变更的情况）
-              if (newContentForHistory != null) {
-                  try {
-                      writingVersionHistoryService.recordChapterVersion(
-                              chapter,
-                              oldContentSnapshot,
-                              newContentForHistory,
-                              "AUTO_SAVE"  // 写作页主要通过自动保存更新正文，这里统一标记为 AUTO_SAVE
-                      );
-                  } catch (Exception e) {
-                      logger.warn("记录章节版本历史失败（不影响章节更新）: {}", e.getMessage());
-                  }
-              }
-              
-              return chapter;
+        if (chapterData.getTitle() != null) {
+            chapter.setTitle(chapterData.getTitle());
         }
-        return null;
+        if (chapterData.getContent() != null) {
+            String oldContent = chapter.getContent() != null ? chapter.getContent() : "";
+            String newContent = chapterData.getContent();
+
+            if (!oldContent.isEmpty() && !oldContent.equals(newContent)) {
+                double similarity = calculateSimilarity(oldContent, newContent);
+                if (similarity < 0.5) {
+                    isContentRewrite = true;
+                    logger.info("检测到章节 {} 内容被重写（相似度：{}%），将清理相关旧数据",
+                            chapter.getChapterNumber(), (int) (similarity * 100));
+                }
+            }
+
+            chapter.setContent(newContent);
+            chapter.setWordCount(newContent.length());
+            chapter.calculateReadingTime();
+
+            newContentForHistory = newContent;
+        }
+        if (chapterData.getChapterNumber() != null) {
+            chapter.setChapterNumber(chapterData.getChapterNumber());
+        }
+        if (chapterData.getStatus() != null) {
+            chapter.setStatus(chapterData.getStatus());
+        }
+        if (chapterData.getGenerationContext() != null) {
+            chapter.setGenerationContext(chapterData.getGenerationContext());
+        }
+        if (chapterData.getReactDecisionLog() != null) {
+            chapter.setReactDecisionLog(chapterData.getReactDecisionLog());
+        }
+
+        chapterRepository.updateById(chapter);
+
+        if (isContentRewrite && chapter.getNovelId() != null && chapter.getChapterNumber() != null) {
+            cleanupChapterRelatedData(chapter.getNovelId(), chapter.getChapterNumber());
+        }
+
+        if (newContentForHistory != null) {
+            try {
+                writingVersionHistoryService.recordChapterVersion(
+                        chapter,
+                        oldContentSnapshot,
+                        newContentForHistory,
+                        "AUTO_SAVE"
+                );
+            } catch (Exception e) {
+                logger.warn("记录章节版本历史失败（不影响章节更新）: {}", e.getMessage());
+            }
+        }
+
+        return chapter;
     }
     
     /**

@@ -440,6 +440,7 @@ const WritingStudioPage: React.FC = () => {
   const [referenceFiles, setReferenceFiles] = useState<ReferenceFile[]>([])
   const [selectedReferenceIds, setSelectedReferenceIds] = useState<number[]>([])
   const [selectedLinkedIds, setSelectedLinkedIds] = useState<number[]>([])
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3-pro-preview')
   const [aiHistory, setAIHistory] = useState<AIConversation[]>([])
   const [aiInput, setAIInput] = useState('')
   const [aiOutput, setAIOutput] = useState('')
@@ -463,6 +464,8 @@ const WritingStudioPage: React.FC = () => {
   const [historyModalVisible, setHistoryModalVisible] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [versionHistory, setVersionHistory] = useState<WritingVersionHistory[]>([])
+  const [historyPreviewVisible, setHistoryPreviewVisible] = useState(false)
+  const [historyPreviewItem, setHistoryPreviewItem] = useState<WritingVersionHistory | null>(null)
   
   // 大纲相关状态
   const [outlineDrawerVisible, setOutlineDrawerVisible] = useState(false)
@@ -506,6 +509,7 @@ const WritingStudioPage: React.FC = () => {
   const [streamlineDrawerVisible, setStreamlineDrawerVisible] = useState(false)
   const [streamlinedContent, setStreamlinedContent] = useState<string>('')
   const [isStreamlining, setIsStreamlining] = useState(false)
+  const [streamlineTargetLength, setStreamlineTargetLength] = useState<string>('')
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -1161,6 +1165,8 @@ const WritingStudioPage: React.FC = () => {
         startChapter: currentChapterNumber,
         count: 1,
         userAdjustment: userMessage
+      }, {
+        model: selectedModel
       })
       
       const response = await fetch('/api/agentic/generate-chapters-stream', {
@@ -1557,6 +1563,7 @@ const WritingStudioPage: React.FC = () => {
     
     // 第一次点击：打开抽屉，不请求接口
     setStreamlinedContent('')
+    setStreamlineTargetLength('')
     setStreamlineDrawerVisible(true)
   }
   
@@ -1904,6 +1911,8 @@ const WritingStudioPage: React.FC = () => {
           isGenerating={isGenerating}
           generatorId={generatorId}
           onGeneratorChange={setGeneratorId}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
           referenceFiles={referenceFiles}
           onUploadReferenceFile={handleUploadReference}
           onDeleteReferenceFile={handleDeleteReference}
@@ -1976,6 +1985,17 @@ const WritingStudioPage: React.FC = () => {
                 <List.Item
                   key={item.id}
                   actions={[
+                    <Button
+                      key="preview"
+                      type="link"
+                      onClick={() => {
+                        setHistoryPreviewItem(item)
+                        setHistoryPreviewVisible(true)
+                        setHistoryModalVisible(false)
+                      }}
+                    >
+                      查看
+                    </Button>,
                     <Button
                       key="apply"
                       type="link"
@@ -2550,6 +2570,76 @@ const WritingStudioPage: React.FC = () => {
         </div>
       </Modal>
       
+      {/* 历史版本预览抽屉 */}
+      <Drawer
+        title={
+          <span style={{ fontSize: '16px', fontWeight: 600 }}>
+            历史版本预览
+          </span>
+        }
+        placement="right"
+        width={600}
+        mask={false}
+        open={historyPreviewVisible}
+        onClose={() => {
+          setHistoryPreviewVisible(false)
+          setHistoryPreviewItem(null)
+        }}
+      >
+        <div style={{ padding: 0 }}>
+          {historyPreviewItem ? (
+            <>
+              <div
+                style={{
+                  marginBottom: 12,
+                  fontSize: 13,
+                  color: '#666',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <span>{new Date(historyPreviewItem.createdAt).toLocaleString()}</span>
+                <Tag>
+                  {historyPreviewItem.sourceType === 'AUTO_SAVE'
+                    ? '自动保存'
+                    : historyPreviewItem.sourceType === 'MANUAL_SAVE'
+                    ? '手动保存'
+                    : historyPreviewItem.sourceType === 'AI_REPLACE'
+                    ? 'AI替换正文'
+                    : historyPreviewItem.sourceType}
+                </Tag>
+                {typeof historyPreviewItem.diffRatio === 'number' && (
+                  <span style={{ color: '#999', fontSize: 12 }}>
+                    变动约 {historyPreviewItem.diffRatio.toFixed(1)}%
+                  </span>
+                )}
+              </div>
+              <div
+                style={{
+                  whiteSpace: 'pre-wrap',
+                  fontSize: '14px',
+                  lineHeight: '1.8',
+                  color: '#333',
+                  background: '#fafafa',
+                  padding: '16px',
+                  borderRadius: '6px',
+                  border: '1px solid #f0f0f0',
+                  maxHeight: 'calc(100vh - 220px)',
+                  overflowY: 'auto',
+                }}
+              >
+                {historyPreviewItem.content || ''}
+              </div>
+            </>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
+              请选择要查看的历史版本
+            </div>
+          )}
+        </div>
+      </Drawer>
+
       {/* AI审稿弹窗 */}
       <Drawer
         title={<span style={{ fontSize: '16px', fontWeight: 600 }}>📝 AI审稿报告</span>}
@@ -2759,6 +2849,7 @@ const WritingStudioPage: React.FC = () => {
         onClose={() => {
           setStreamlineDrawerVisible(false)
           setStreamlinedContent('')
+          setStreamlineTargetLength('')
         }}
         footer={
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
@@ -2811,26 +2902,46 @@ const WritingStudioPage: React.FC = () => {
       >
         <div style={{ padding: '0' }}>
           {!streamlinedContent && !isStreamlining ? (
-            <div style={{ textAlign: 'center', padding: '40px 0' }}>
-              <div style={{ marginBottom: '16px', color: '#666', fontSize: '14px', lineHeight: '1.6' }}>
-                AI将分析文章内容，精简冗余片段，<br/>
-                加快剧情节奏，提升阅读体验
+            <div style={{ padding: '24px 16px' }}>
+              <div style={{ marginBottom: '12px', color: '#666', fontSize: '14px', lineHeight: '1.6' }}>
+                AI将分析文章内容，在不改变主要情节和爽感的前提下，
+                精简无意义或拖沓的描写，适当加快节奏。
               </div>
-              <button
-                onClick={executeStreamlineContent}
-                style={{
-                  padding: '10px 24px',
-                  border: 'none',
-                  borderRadius: '6px',
-                  background: '#ff9800',
-                  color: '#fff',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 500
-                }}
-              >
-                开始AI精简
-              </button>
+              <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '13px', color: '#666' }}>目标字数：</span>
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="请输入精简后的字数，如 1500"
+                  value={streamlineTargetLength}
+                  onChange={(e) => setStreamlineTargetLength(e.target.value)}
+                  style={{
+                    width: 180,
+                    padding: '6px 8px',
+                    fontSize: '13px',
+                    borderRadius: 4,
+                    border: '1px solid #d9d9d9'
+                  }}
+                />
+                <span style={{ fontSize: '12px', color: '#999' }}>不填则按系统默认比例精简</span>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <button
+                  onClick={executeStreamlineContent}
+                  style={{
+                    padding: '10px 24px',
+                    border: 'none',
+                    borderRadius: '6px',
+                    background: '#ff9800',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 500
+                  }}
+                >
+                  开始AI精简
+                </button>
+              </div>
             </div>
           ) : isStreamlining && !streamlinedContent ? (
             <div style={{ textAlign: 'center', padding: '40px 0' }}>

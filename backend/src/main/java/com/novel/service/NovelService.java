@@ -107,6 +107,10 @@ public class NovelService {
             if (novelData.getTargetTotalChapters() != null) {
                 existingNovel.setTargetTotalChapters(novelData.getTargetTotalChapters());
             }
+            // 新增：支持更新每章字数
+            if (novelData.getWordsPerChapter() != null) {
+                existingNovel.setWordsPerChapter(novelData.getWordsPerChapter());
+            }
             // 新增：支持更新目标总字数
             if (novelData.getTotalWordTarget() != null) {
                 existingNovel.setTotalWordTarget(novelData.getTotalWordTarget());
@@ -144,7 +148,10 @@ public class NovelService {
      */
     public IPage<Novel> getNovels(int page, int size) {
         Page<Novel> pageParam = new Page<>(page + 1, size);
-        return novelRepository.selectPage(pageParam, null);
+        QueryWrapper<Novel> queryWrapper = new QueryWrapper<>();
+        //  updated_at 
+        queryWrapper.orderByDesc("updated_at");
+        return novelRepository.selectPage(pageParam, queryWrapper);
     }
 
     /**

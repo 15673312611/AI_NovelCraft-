@@ -106,12 +106,14 @@ public class StructuredMessageBuilder {
         // Message 1: System - 基础写作规则 + 风格
         String systemPrompt = buildSystemPrompt(null, chapterNumber, stylePromptFile);
         if (systemPrompt == null || systemPrompt.trim().isEmpty()) {
-            logger.warn("⚠️ 系统提示词为空！使用默认提示词");
+            logger.warn("系统提示词为空！使用默认提示词");
             systemPrompt = "你是一位专业的网文小说家AI助手。请根据章节意图和上下文创作高质量的小说章节内容。";
         }
-        logger.info("📝 系统提示词长度: {}字 (使用: {})", systemPrompt.length(),
+        logger.info("系统提示词长度: {}字 (使用: {})", systemPrompt.length(),
             stylePromptFile != null ? stylePromptFile : "默认");
         messages.add(createMessage("system", systemPrompt));
+
+
 
         // Message 2: 小说基础信息
         String basicInfo = buildBasicInfo(novel, chapterNumber);
@@ -125,7 +127,7 @@ public class StructuredMessageBuilder {
                 sb.append("【核心设定】\n");
                 sb.append(core).append("\n");
                 messages.add(createMessage("system", sb.toString()));
-                logger.info("✅ 已添加核心设定 ({}字)", core.length());
+                logger.info("已添加核心设定 ({}字)", core.length());
             }
         }
 
@@ -134,7 +136,7 @@ public class StructuredMessageBuilder {
             String volumeBlueprint = buildVolumeBlueprintMessage(context);
             if (StringUtils.isNotBlank(volumeBlueprint)) {
                 messages.add(createMessage("system", volumeBlueprint));
-                logger.info("✅ 已添加卷蓝图");
+                logger.info("已添加卷蓝图");
             }
         }
 
@@ -148,7 +150,7 @@ public class StructuredMessageBuilder {
             String characters = buildWorldAndCharacters(context);
             if (StringUtils.isNotBlank(characters)) {
                 messages.add(createMessage("system", characters));
-                logger.info("✅ 已添加角色信息");
+                logger.info("已添加角色信息");
             }
         }
 
@@ -157,7 +159,7 @@ public class StructuredMessageBuilder {
             String stateConstraints = buildStateConstraints(context);
             if (StringUtils.isNotBlank(stateConstraints)) {
                 messages.add(createMessage("system", stateConstraints));
-                logger.info("✅ 已添加状态硬约束");
+                logger.info("已添加状态硬约束");
             }
         }
 
@@ -165,7 +167,7 @@ public class StructuredMessageBuilder {
             String characterMindmap = buildCharacterMindmap(context);
             if (StringUtils.isNotBlank(characterMindmap)) {
                 messages.add(createMessage("system", characterMindmap));
-                logger.info("✅ 已添加人物思维导图");
+                logger.info("已添加人物思维导图");
             }
         }
 
@@ -174,7 +176,7 @@ public class StructuredMessageBuilder {
             String graphContext = buildGraphContextForDirectWriting(context);
             if (StringUtils.isNotBlank(graphContext)) {
                 messages.add(createMessage("system", graphContext));
-                logger.info("✅ 已添加图谱上下文");
+                logger.info("已添加图谱上下文");
             }
         }
 
@@ -239,12 +241,25 @@ public class StructuredMessageBuilder {
                     intentMsg.append("对抗关系：与").append(opponent).append("的冲突\n\n");
                 }
             }
+
+            Object adjacentHint = intent.get("adjacentOutlineHint");
+            if (adjacentHint != null && StringUtils.isNotBlank(adjacentHint.toString())) {
+                intentMsg.append(adjacentHint.toString()).append("\n");
+            }
         }
         messages.add(createMessage("user", intentMsg.toString()));
 
+//        //开篇提速
+//        String openingBooster = buildOpeningBooster(chapterNumber);
+//        if (StringUtils.isNotBlank(openingBooster)) {
+//            logger.info("添加开篇提速指令（第{}章）", chapterNumber);
+//            messages.add(createMessage("system", openingBooster));
+//        }
+
         // Message 10: 写作任务说明
         StringBuilder taskDesc = new StringBuilder();
-        taskDesc.append("请按照以上要求和设定去创作第").append(chapterNumber).append("章的内容。\n");
+        taskDesc.append("请开始创作第").append(chapterNumber).append("章。 \n");
+        taskDesc.append("遵循上面的指令,按照前面的上下文信息开始写作,保证逻辑通畅,衔接上一章剧情;如果上一章结尾和【本章创作方向】有出入 还要衔接上章为主 在慢慢按【本章创作方向】去编写;同时需要考虑逻辑性; 不能机械降神 不能引入超脱剧本的支线和设定 按照现有剧情设定去推理。");
         messages.add(createMessage("system",taskDesc.toString()));
         //字数限制
         String wordCountLimit = buildWordCountLimitSimple(novel);
@@ -252,7 +267,7 @@ public class StructuredMessageBuilder {
 
 
 
-        logger.info("✅ 意图驱动写作消息构建完成: 共{}条消息", messages.size());
+        logger.info("意图驱动写作消息构建完成: 共{}条消息", messages.size());
 
         // 详细日志
         for (int i = 0; i < messages.size(); i++) {
@@ -309,17 +324,17 @@ public class StructuredMessageBuilder {
         // Message 1: System - 底层规则 + 单一风格
         String systemPrompt = buildSystemPrompt(null, chapterNumber, stylePromptFile);
         if (StringUtils.isBlank(systemPrompt)) {
-            logger.warn("⚠️ 系统提示词为空！可能是提示词文件读取失败");
+            logger.warn("系统提示词为空！可能是提示词文件读取失败");
             systemPrompt = "你是一位专业的网文小说家AI助手。请根据以下信息创作高质量的小说章节内容，注意保持剧情连贯、人物性格一致。";
         }
-        logger.info("📝 系统提示词长度: {}字 (使用: {})", systemPrompt.length(),
+        logger.info("系统提示词长度: {}字 (使用: {})", systemPrompt.length(),
             stylePromptFile != null ? stylePromptFile : "默认");
         messages.add(createMessage("system", budget.truncate(systemPrompt, budget.getMaxSystemPrompt())));
 
         // Message 2: 开篇提速指令（前三章专用）
         String openingBooster = buildOpeningBooster(chapterNumber);
         if (StringUtils.isNotBlank(openingBooster)) {
-            logger.info("🚀 添加开篇提速指令（第{}章）", chapterNumber);
+            logger.info("添加开篇提速指令（第{}章）", chapterNumber);
             messages.add(createMessage("system", openingBooster));
         }
 
@@ -344,13 +359,13 @@ public class StructuredMessageBuilder {
 
         // Message 6: 图谱上下文（事件、伏笔、节奏）
 //        String graphContext = buildGraphContext(context);
-//        logger.info("📊 图谱上下文长度: {}字 ({})",
+//        logger.info("图谱上下文长度: {}字 ({})",
 //            graphContext != null ? graphContext.length() : 0,
 //            StringUtils.isNotBlank(graphContext) ? "有内容" : "为空");
 //        if (StringUtils.isNotBlank(graphContext)) {
 //            messages.add(createMessage("system", graphContext));
 //        } else {
-//            logger.warn("⚠️ 图谱上下文为空！检查图谱数据预加载是否执行");
+//            logger.warn("图谱上下文为空！检查图谱数据预加载是否执行");
 //        }
 //
         // Message 9+: 最近章节内容（每章一个独立message，不截断）
@@ -364,9 +379,9 @@ public class StructuredMessageBuilder {
         String wordCountLimit = buildWordCountLimit(context);
         messages.add(createMessage("user", wordCountLimit));
 
-        logger.info("✅ 结构化消息构建完成: 共{}条消息", messages.size());
+        logger.info("结构化消息构建完成: 共{}条消息", messages.size());
 
-        // 🔍 详细日志：输出每条消息的摘要
+        // 详细日志：输出每条消息的摘要
         for (int i = 0; i < messages.size(); i++) {
             Map<String, String> msg = messages.get(i);
             String role = msg.get("role");
@@ -395,6 +410,7 @@ public class StructuredMessageBuilder {
         StringBuilder sb = new StringBuilder();
         sb.append("【黄金三章开局专用指令】\n");
         sb.append("- 本指令仅在全书最前面的章节生效，在这些章节中优先级最高。\n");
+        sb.append("- 在不推翻作品核心设定和主线目标的前提下，可以暂时牺牲一部分节奏规划、世界观讲解顺序和细枝末节的严谨性，优先保证“好看、上瘾、爽”。\n");
         sb.append("- 读者第一次接触作品多半只看开头几屏，如果这里不立刻抓住人，后面再精彩也没人看到。\n");
         sb.append("- 一开场就让读者“掉进事件里”：用冲突、选择或异常场景切入，不要从天气、环境或大段设定说明写起。\n");
         sb.append("- 尽量让前几段就出现：主角明确的欲望或目标、需要立刻应对的压力或机会，以及做出选择带来的直接后果。\n");
@@ -438,7 +454,7 @@ public class StructuredMessageBuilder {
 
         Map<String, Object> volume = context.getVolumeBlueprint();
         StringBuilder sb = new StringBuilder();
-        sb.append("【当前卷蓝图】\n");
+        sb.append("【本卷故事蓝图】\n");
         sb.append("卷名：").append(volume.getOrDefault("volumeTitle", "未命名卷")).append("\n");
         sb.append("章节范围：").append(volume.getOrDefault("chapterRange", "未设定")).append("\n");
 
@@ -1008,11 +1024,12 @@ public class StructuredMessageBuilder {
                 String content = String.valueOf(chapter.get("content"));
 
                 StringBuilder sb = new StringBuilder();
-                sb.append("前面剧情回顾【第").append(chapterNum).append("章完整内容】\n\n");
+                sb.append("上一章剧情回顾【第").append(chapterNum).append("章完整内容】\n\n");
                 if (title != null) {
                     sb.append("标题：").append(title).append("\n\n");
                 }
                 sb.append(content); // 不截断，完整内容
+
 
                 messages.add(createMessage("system", sb.toString()));
                 logger.info("✅ 已添加第{}章完整内容（{}字）", chapterNum, content.length());
@@ -1024,7 +1041,7 @@ public class StructuredMessageBuilder {
         // 2. 将所有概要合并到一个message（概要本身就很短）
         if (context.getRecentSummaries() != null && !context.getRecentSummaries().isEmpty()) {
             StringBuilder sb = new StringBuilder();
-            sb.append("前面剧情回顾【更早章节概括】\n\n");
+            sb.append("\n\n【以往大致剧情回顾】(了解前因后果)\n\n");
 
             // 显示最近10章的概括
             int displayCount = Math.min(10, context.getRecentSummaries().size());

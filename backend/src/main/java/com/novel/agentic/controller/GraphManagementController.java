@@ -6,10 +6,12 @@ import com.novel.agentic.service.graph.GraphInitializationService;
 import com.novel.agentic.service.graph.IGraphService;
 import com.novel.agentic.util.CollectionUtils;
 import com.novel.domain.entity.Chapter;
+import com.novel.domain.entity.VolumeChapterOutline;
 import com.novel.dto.AIConfigRequest;
 import com.novel.mapper.NovelVolumeMapper;
 import com.novel.repository.ChapterRepository;
 import com.novel.repository.ChapterSummaryRepository;
+import com.novel.repository.VolumeChapterOutlineRepository;
 import com.novel.service.ChapterSummaryService;
 import com.novel.service.VolumeChapterOutlineService;
 import org.slf4j.Logger;
@@ -53,6 +55,9 @@ public class GraphManagementController {
 
     @Autowired
     private VolumeChapterOutlineService volumeChapterOutlineService;
+
+    @Autowired
+    private VolumeChapterOutlineRepository volumeChapterOutlineRepository;
 
     @Autowired
     private NovelVolumeMapper novelVolumeMapper;
@@ -351,7 +356,14 @@ public class GraphManagementController {
                     );
 
                     try {
-                        volumeChapterOutlineService.generateOutlineFromChapterContent(chapter, aiConfig);
+                        VolumeChapterOutline existingOutline =
+                                volumeChapterOutlineRepository.findByNovelAndGlobalChapter(
+                                        novelId, chapter.getChapterNumber());
+                        if (existingOutline == null) {
+                            volumeChapterOutlineService.generateOutlineFromChapterContent(chapter, aiConfig);
+                        } else {
+                            logger.info("⏭️ 章节章纲已存在，跳过重写: novelId={}, chapter={}", novelId, chapter.getChapterNumber());
+                        }
                     } catch (Exception e) {
                         logger.error("章节章纲生成失败: novelId={}, chapter={}", novelId, chapter.getChapterNumber(), e);
                     }

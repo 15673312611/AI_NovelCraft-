@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Button, Checkbox, Input, Modal, Radio, Space, message } from 'antd'
+import { Button, Checkbox, Input, Modal, Radio, Space, message, Select } from 'antd'
 import {
   CopyOutlined,
   SwapOutlined,
@@ -8,6 +8,7 @@ import {
   SearchOutlined,
   FolderOpenOutlined,
   BgColorsOutlined,
+  ExperimentOutlined,
 } from '@ant-design/icons'
 import type { ReferenceFile } from '@/services/referenceFileService'
 import type { NovelDocument } from '@/services/documentService'
@@ -69,6 +70,10 @@ export interface ToolPanelProps {
   generatorId?: number | null
   onGeneratorChange?: (id: number | null) => void
 
+  // 模型选择
+  selectedModel?: string
+  onModelChange?: (model: string) => void
+
   // 额外上下文（目前不在本组件内直接使用）
   novelId?: number
   currentChapterNumber?: number | null
@@ -100,9 +105,12 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
   onShowChapterOutline,
   aiHistory = [],
   onClearAIHistory,
+  selectedModel = 'gemini-3-pro-preview',
+  onModelChange,
 }) => {
   const [isLinkedModalVisible, setIsLinkedModalVisible] = useState(false)
   const [isWritingStyleModalVisible, setIsWritingStyleModalVisible] = useState(false)
+  const [isModelDropdownVisible, setIsModelDropdownVisible] = useState(false)
   const [searchKeyword, setSearchKeyword] = useState('')
   const [defaultContextSize, setDefaultContextSize] = useState({ summaries: 30, fullTexts: 3 })
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null)
@@ -391,6 +399,89 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
                   : '选择模板'}
               </span>
             </button>
+            
+            {/* 模型选择自定义组件 */}
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setIsModelDropdownVisible(!isModelDropdownVisible)}
+                className="custom-toolbar-btn model-select-btn"
+                style={{ marginLeft: 8 }}
+              >
+                <span className="btn-icon">
+                  <ExperimentOutlined />
+                </span>
+                <span className="btn-text">
+                  {selectedModel === 'gemini-3-pro-preview' ? 'Gemini 3 Pro' : 'Gemini 2.5 Pro'}
+                </span>
+              </button>
+              
+              {isModelDropdownVisible && (
+                <>
+                  <div 
+                    style={{ 
+                      position: 'fixed', 
+                      top: 0, 
+                      left: 0, 
+                      right: 0, 
+                      bottom: 0, 
+                      zIndex: 1000 
+                    }} 
+                    onClick={() => setIsModelDropdownVisible(false)}
+                  />
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: '100%',
+                      left: 8,
+                      marginBottom: 8,
+                      background: '#fff',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                      border: '1px solid #e0e0e0',
+                      zIndex: 1001,
+                      width: '160px',
+                      padding: '4px',
+                      overflow: 'hidden'
+                    }}
+                  >
+                    {[
+                      { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro' },
+                      { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+                    ].map((option) => (
+                      <div
+                        key={option.value}
+                        onClick={() => {
+                          onModelChange?.(option.value)
+                          setIsModelDropdownVisible(false)
+                        }}
+                        style={{
+                          padding: '8px 12px',
+                          fontSize: '13px',
+                          cursor: 'pointer',
+                          borderRadius: '6px',
+                          background: selectedModel === option.value ? '#f0f7ff' : 'transparent',
+                          color: selectedModel === option.value ? '#1890ff' : '#333',
+                          fontWeight: selectedModel === option.value ? 600 : 400,
+                          transition: 'all 0.2s',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (selectedModel !== option.value) {
+                            e.currentTarget.style.background = '#f5f5f5'
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (selectedModel !== option.value) {
+                            e.currentTarget.style.background = 'transparent'
+                          }
+                        }}
+                      >
+                        {option.label}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
           <div className="toolbar-right">
             <Button

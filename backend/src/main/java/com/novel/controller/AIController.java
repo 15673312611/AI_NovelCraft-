@@ -169,7 +169,7 @@ public class AIController {
                 emitter.completeWithError(new Exception("内容不能为空"));
                 return emitter;
             }
-            
+
             // 解析AI配置（前端withAIConfig是扁平化的，直接从根级别读取）
             AIConfigRequest aiConfig = new AIConfigRequest();
             if (request.containsKey("provider")) {
@@ -382,6 +382,22 @@ public class AIController {
                 return emitter;
             }
             
+            // 解析前端传入的目标字数（可选）
+            Integer parsedTargetLength = null;
+            Object targetLengthObj = request.get("targetLength");
+            if (targetLengthObj != null) {
+                try {
+                    if (targetLengthObj instanceof Number) {
+                        parsedTargetLength = ((Number) targetLengthObj).intValue();
+                    } else {
+                        parsedTargetLength = Integer.parseInt(targetLengthObj.toString());
+                    }
+                } catch (NumberFormatException ignore) {
+                    parsedTargetLength = null;
+                }
+            }
+            final Integer targetLength = parsedTargetLength;
+            
             // 解析AI配置
             AIConfigRequest aiConfig = new AIConfigRequest();
             if (request.containsKey("provider")) {
@@ -409,12 +425,12 @@ public class AIController {
                 return emitter;
             }
             
-            logger.info("✂️ 开始AI精简流式处理，内容长度: {}, 使用模型: {}", content.length(), aiConfig.getModel());
+            logger.info("✂️ 开始AI精简流式处理，内容长度: {}, 使用模型: {}, targetLength: {}", content.length(), aiConfig.getModel(), targetLength);
             
             // 异步执行AI精简
             java.util.concurrent.CompletableFuture.runAsync(() -> {
                 try {
-                    streamlineService.streamlineContentStream(content, aiConfig, emitter);
+                    streamlineService.streamlineContentStream(content, targetLength, aiConfig, emitter);
                 } catch (Exception e) {
                     logger.error("AI精简流式处理失败", e);
                     try {

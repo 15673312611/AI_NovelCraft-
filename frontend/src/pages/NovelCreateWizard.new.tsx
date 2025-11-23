@@ -31,7 +31,7 @@ const NovelCreateWizard: React.FC = () => {
         title: values.title,
         description: values.description,
         targetTotalChapters: 100, // 默认值
-        wordsPerChapter: 3000, // 默认值
+        wordsPerChapter: 2200, // 默认值
         plannedVolumeCount: 3, // 默认值
         totalWordTarget: 300000, // 默认值
       })).unwrap()
@@ -108,7 +108,7 @@ const NovelCreateWizard: React.FC = () => {
               rules={[
                 { required: true, message: '请输入您的创作构思' },
                 { min: 50, message: '构思至少需要50个字符，以便生成更好的大纲' },
-                { max: 2000, message: '构思长度不能超过2000个字符' },
+                { max: 3000, message: '构思长度不能超过3000个字符' },
               ]}
               extra={<span className="form-extra">详细描述您的故事构思、主要情节、人物设定等，AI将根据这些信息生成大纲</span>}
             >
@@ -116,7 +116,7 @@ const NovelCreateWizard: React.FC = () => {
                 placeholder="例如：一个现代青年穿越到修仙世界，从无灵根的废柴开始，通过获得神秘系统逐步崛起。故事主要讲述他如何在修仙界中历练成长，最终成为一代强者的故事..." 
                 rows={8}
                 showCount
-                maxLength={2000}
+                maxLength={3000}
                 className="form-textarea"
               />
             </Form.Item>

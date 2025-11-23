@@ -76,6 +76,63 @@ public class VolumeChapterOutlineController {
     }
 
     /**
+     * 为指定卷增量生成章节大纲：只为【尚未写正文】的章节生成或补充章纲
+     * - 保留已写正文章节对应的章纲，不会清空整卷旧数据
+     * - 自动判断当前写到本卷第几章，按需生成后续若干章纲
+     * - 支持额外的作者需求/偏好（userRequirements），仅影响后续未写正文的部分
+     *
+     * POST /volumes/{volumeId}/chapter-outlines/generate-remaining
+     * 请求体示例：
+     * {
+     *   "count": 10,                    // 可选，生成后续多少章，不传则自动等于剩余未写正文章数
+     *   "userRequirements": "……",     // 可选，作者本次对后续剧情的特别需求（爽点、情绪走向等）
+     *   "includeDecisionLog": false,    // 可选，是否返回 react_decision_log
+     *   "provider": "deepseek",       // 以下为扁平化 AI 配置，可选
+     *   "apiKey": "xxx",
+     *   "model": "deepseek-chat",
+     *   "baseUrl": "https://api.xxx.com"
+     * }
+     */
+    @PostMapping("/{volumeId}/chapter-outlines/generate-remaining")
+    public ResponseEntity<?> generateRemainingChapterOutlines(
+            @PathVariable("volumeId") Long volumeId,
+            @RequestBody(required = false) Map<String, Object> request
+    ) {
+        // 解析参数
+        Integer count = null;
+        Boolean includeDecisionLog = false;
+        String userRequirements = null;
+
+        if (request != null) {
+            if (request.containsKey("count") && request.get("count") != null) {
+                count = ((Number) request.get("count")).intValue();
+            }
+            if (request.containsKey("includeDecisionLog") && request.get("includeDecisionLog") != null) {
+                includeDecisionLog = (Boolean) request.get("includeDecisionLog");
+            }
+            if (request.containsKey("userRequirements") && request.get("userRequirements") != null) {
+                Object ur = request.get("userRequirements");
+                if (ur instanceof String) {
+                    userRequirements = ((String) ur).trim();
+                }
+            }
+        }
+
+        // 提取 AI 配置（扁平化参数）
+        AIConfigRequest aiConfig = extractAIConfig(request);
+
+        // 调用服务生成章纲（仅未写正文部分）
+        Map<String, Object> result = service.generateOutlinesForRemainingChapters(volumeId, count, aiConfig, userRequirements);
+
+        // 允许按需剥离 react_decision_log，避免响应过大
+        if (!includeDecisionLog) {
+            result.remove("react_decision_log");
+        }
+
+        return ResponseEntity.ok(result);
+    }
+
+    /**
      * 获取指定卷的所有章纲
      * GET /volumes/{volumeId}/chapter-outlines
      * 支持 summary=true 参数，只返回列表所需的基本字段（性能优化）

@@ -35,14 +35,15 @@ export const getAIConfigOrThrow = (): AIConfig => {
  * @param body 原始请求体
  * @returns 添加了AI配置字段的请求体
  */
-export const withAIConfig = (body: any = {}): any => {
+export const withAIConfig = (body: any = {}, overrides?: { model?: string }): any => {
   const aiConfig = getAIConfigOrThrow();
+  const effectiveModel = overrides?.model || aiConfig.model;
   return {
     ...body,
     aiConfig: {
       provider: aiConfig.provider,
       apiKey: aiConfig.apiKey,
-      model: aiConfig.model,
+      model: effectiveModel,
       baseUrl: aiConfig.baseUrl || getDefaultApiUrl(aiConfig.provider)
     }
   };

@@ -45,6 +45,9 @@ public class VolumeChapterOutlineService {
     private ForeshadowLifecycleLogRepository lifecycleLogRepo;
 
     @Autowired
+    private ChapterRepository chapterRepository;
+
+    @Autowired
     private AIWritingService aiWritingService;
 
     private final ObjectMapper mapper = new ObjectMapper();
@@ -81,37 +84,98 @@ public class VolumeChapterOutlineService {
                 volume.getNovelId(), "ACTIVE");
 
         //章纲提示词
-        String prompt = buildPrompt(novel, volume, nextVolume, superOutline, unresolved, count);
+        String basePrompt = buildPrompt(novel, volume, nextVolume, superOutline, unresolved, count);
+        String prompt = basePrompt;
+
+        if (volume.getChapterStart() != null && volume.getChapterEnd() != null) {
+            try {
+                List<Chapter> chapters = chapterRepository.findByNovelIdAndChapterNumberBetween(
+                        volume.getNovelId(),
+                        volume.getChapterStart(),
+                        volume.getChapterEnd()
+                );
+                if (chapters != null && !chapters.isEmpty()) {
+                    List<Chapter> chaptersWithContent = new ArrayList<>();
+                    for (Chapter chapter : chapters) {
+                        if (chapter.getContent() != null && !chapter.getContent().trim().isEmpty()) {
+                            chaptersWithContent.add(chapter);
+                        }
+                    }
+                    if (!chaptersWithContent.isEmpty()) {
+                        StringBuilder promptBuilder = new StringBuilder(basePrompt);
+                        promptBuilder.append("\n\n");
+                        promptBuilder.append("# 已写章节正文与进度\n");
+                        promptBuilder.append("下面是本卷中已经有正文的章节。请你先根据这些正文推导出它们对应的章纲，并将这些章纲与正文严格对齐；然后在此基础上，为整卷生成可以自然承接这些章节的完整章纲序列（共")
+                                .append(count).append("章）。\n\n");
+                        for (Chapter chapter : chaptersWithContent) {
+                            Integer chapterNumber = chapter.getChapterNumber();
+                            Integer chapterInVolume = null;
+                            if (volume.getChapterStart() != null) {
+                                chapterInVolume = chapterNumber - volume.getChapterStart() + 1;
+                            }
+                            promptBuilder.append("## 已写章节\n");
+                            promptBuilder.append("【全局章节号】").append(chapterNumber).append("\n");
+                            if (chapterInVolume != null && chapterInVolume > 0) {
+                                promptBuilder.append("【卷内章节号】").append(chapterInVolume).append("\n");
+                            }
+                            promptBuilder.append("【章节标题】").append(s(chapter.getTitle())).append("\n");
+                            String chapterContent = chapter.getContent();
+                            if (chapterContent != null && chapterContent.length() > 2000) {
+                                chapterContent = chapterContent.substring(0, 2000) + "...";
+                            }
+                            promptBuilder.append("【正文节选】\n");
+                            promptBuilder.append(chapterContent == null ? "" : chapterContent).append("\n\n");
+                        }
+                        promptBuilder.append("请特别注意：\n");
+                        promptBuilder.append("- 对于已写正文的章节，你生成的章纲必须与上面的正文保持一致，只能在不改变关键事件和情绪走向的前提下做轻微调整；\n");
+                        promptBuilder.append("- 对于尚未写正文的章节，章纲需要在节奏、因果和伏笔上自然承接这些已写章节，而不是重新假定另一条时间线。\n");
+                        prompt = promptBuilder.toString();
+                    }
+                }
+            } catch (Exception e) {
+                logger.error("构建已写章节正文上下文失败: volumeId={}", volumeId, e);
+            }
+        }
+
         List<Map<String, String>> messages = buildMessages(prompt);
 
-        logger.info("🤖 调用AI批量生成卷章纲，volumeId={}, count={}, promptLen={}", volumeId, count, prompt.length());
+        logger.info("🤖 调用AI批量生成卷章纲（流式），volumeId={}, count={}, promptLen={}", volumeId, count, prompt.length());
 
-        String raw;
+        // 使用流式请求收集完整响应，避免超时
+        StringBuilder rawBuilder = new StringBuilder();
         try {
-            raw = aiWritingService.generateContentWithMessages(messages, "volume_chapter_outlines_generation", aiConfig);
+            aiWritingService.streamGenerateContentWithMessages(
+                messages,
+                "volume_chapter_outlines_generation",
+                aiConfig,
+                chunk -> {
+                    rawBuilder.append(chunk);
+                    // 可选：记录进度
+                    if (rawBuilder.length() % 1000 == 0) {
+                        logger.debug("已接收 {} 字符", rawBuilder.length());
+                    }
+                }
+            );
         } catch (Exception e) {
             logger.error("AI生成卷章纲失败: {}", e.getMessage(), e);
             throw new RuntimeException("AI服务调用失败: " + e.getMessage());
         }
 
+        String raw = rawBuilder.toString();
+        logger.info("✅ 流式接收完成，总长度: {} 字符", raw.length());
+
         // 解析 JSON（失败则直接抛异常，不删除旧数据）
         String json = extractPureJson(raw);
+
+        // 预先清理所有非标准引号，避免JSON解析失败
+        json = cleanJsonQuotes(json);
+
         List<Map<String, Object>> outlines;
         try {
             outlines = mapper.readValue(json, new TypeReference<List<Map<String, Object>>>(){});
         } catch (Exception e) {
-            logger.warn("JSON解析失败，尝试替换中文引号后重试: {}", e.getMessage());
-            String fixed = json
-                    .replace('\u201C', '"')
-                    .replace('\u201D', '"')
-                    .replace('\u2018', '\'')
-                    .replace('\u2019', '\'');
-            try {
-                outlines = mapper.readValue(fixed, new TypeReference<List<Map<String, Object>>>(){});
-            } catch (Exception e2) {
-                logger.error("❌ 解析卷章纲失败: {}\n原始响应(前500)：{}", e2.getMessage(), raw.substring(0, Math.min(500, raw.length())));
-                throw new RuntimeException("解析卷章纲失败，请检查AI返回格式: " + e2.getMessage());
-            }
+            logger.error("❌ 解析卷章纲失败: {}\n清理后JSON(前500)：{}", e.getMessage(), json.substring(0, Math.min(500, json.length())));
+            throw new RuntimeException("解析卷章纲失败，请检查AI返回格式: " + e.getMessage());
         }
 
         // 验证生成数量
@@ -132,6 +196,209 @@ public class VolumeChapterOutlineService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("volumeId", volumeId);
         result.put("novelId", volume.getNovelId());
+        result.put("count", outlines.size());
+        result.put("outlines", outlines);
+        result.put("react_decision_log", reactDecisionLog);
+        return result;
+    }
+
+    @Transactional
+    public Map<String, Object> generateOutlinesForRemainingChapters(
+            Long volumeId,
+            Integer count,
+            AIConfigRequest aiConfig,
+            String userRequirements
+    ) {
+        NovelVolume volume = volumeMapper.selectById(volumeId);
+        if (volume == null) {
+            throw new RuntimeException("卷不存在: " + volumeId);
+        }
+
+        Integer start = volume.getChapterStart();
+        Integer end = volume.getChapterEnd();
+        if (start == null || end == null || start <= 0 || end < start) {
+            throw new RuntimeException("当前卷未配置有效的章节范围（chapterStart/chapterEnd），无法仅为未写正文的章节生成章纲");
+        }
+
+        Novel novel = novelRepository.selectById(volume.getNovelId());
+        if (novel == null) {
+            throw new RuntimeException("小说不存在: " + volume.getNovelId());
+        }
+
+        NovelOutline superOutline = outlineRepository.findByNovelIdAndStatus(
+                volume.getNovelId(), NovelOutline.OutlineStatus.CONFIRMED).orElse(null);
+        if (superOutline == null || isBlank(superOutline.getPlotStructure())) {
+            throw new RuntimeException("缺少已确认的全书大纲(plotStructure)");
+        }
+
+        NovelVolume nextVolume = null;
+        Integer currentVolumeNumber = volume.getVolumeNumber();
+        if (currentVolumeNumber != null) {
+            nextVolume = volumeMapper.selectByVolumeNumber(volume.getNovelId(), currentVolumeNumber + 1);
+        }
+
+        // 历史未回收伏笔池（ACTIVE）
+        List<NovelForeshadowing> unresolved = foreshadowingRepository.findByNovelIdAndStatus(
+                volume.getNovelId(), "ACTIVE");
+
+        // 计算当前已写到本卷第几章
+        List<Chapter> chapters = chapterRepository.findByNovelIdAndChapterNumberBetween(
+                volume.getNovelId(),
+                start,
+                end
+        );
+        List<Chapter> chaptersWithContent = new ArrayList<>();
+        if (chapters != null) {
+            for (Chapter chapter : chapters) {
+                if (chapter.getContent() != null && !chapter.getContent().trim().isEmpty()) {
+                    chaptersWithContent.add(chapter);
+                }
+            }
+        }
+
+        Integer lastWrittenGlobalChapter = null;
+        if (!chaptersWithContent.isEmpty()) {
+            for (Chapter chapter : chaptersWithContent) {
+                Integer chapterNumber = chapter.getChapterNumber();
+                if (chapterNumber != null) {
+                    if (lastWrittenGlobalChapter == null || chapterNumber > lastWrittenGlobalChapter) {
+                        lastWrittenGlobalChapter = chapterNumber;
+                    }
+                }
+            }
+        }
+
+        int writtenCountInVolume = 0;
+        if (lastWrittenGlobalChapter != null) {
+            writtenCountInVolume = lastWrittenGlobalChapter - start + 1;
+            if (writtenCountInVolume < 0) {
+                writtenCountInVolume = 0;
+            }
+        }
+
+        int totalChaptersInVolume = end - start + 1;
+        int remainingChapters = totalChaptersInVolume - writtenCountInVolume;
+        if (remainingChapters <= 0) {
+            throw new RuntimeException("本卷章节正文已经全部写完或未剩余空白章节，无需生成新的章纲");
+        }
+
+        if (count == null || count <= 0 || count > remainingChapters) {
+            count = remainingChapters;
+        }
+
+        int firstNewChapterInVolume = writtenCountInVolume + 1;
+
+        // 构建提示词
+        String basePrompt = buildPrompt(novel, volume, nextVolume, superOutline, unresolved, count);
+        StringBuilder promptBuilder = new StringBuilder(basePrompt);
+
+        if (!isBlank(userRequirements)) {
+            promptBuilder.append("\n# 作者需求与偏好（本次仅影响尚未写正文的章节）\n");
+            promptBuilder.append("下面是作者针对后续章节给出的额外要求，请在保持逻辑自洽的前提下尽量满足：\n");
+            promptBuilder.append(userRequirements.trim()).append("\n");
+            promptBuilder.append("当这些需求与现有大纲略有冲突时，请优先保证节奏爽感、一环扣一环的推进与强钩子，再对细节做温和调整，而不是完全推翻前文。\n\n");
+        }
+
+        if (!chaptersWithContent.isEmpty()) {
+            promptBuilder.append("\n# 已写章节进度概览（只读，不可重写）\n");
+            promptBuilder.append("下面是本卷中已经有正文的章节的进度概览（只包含章节号和标题，不包含正文内容）。它们的走向已经固定，你只需要在此基础上，为之后尚未写正文的章节规划新的章纲：\n\n");
+            for (Chapter chapter : chaptersWithContent) {
+                Integer chapterNumber = chapter.getChapterNumber();
+                Integer chapterInVolume = null;
+                if (chapterNumber != null) {
+                    chapterInVolume = chapterNumber - start + 1;
+                }
+                promptBuilder.append("## 已写章节\n");
+                if (chapterNumber != null) {
+                    promptBuilder.append("【全局章节号】").append(chapterNumber).append("\n");
+                }
+                if (chapterInVolume != null && chapterInVolume > 0) {
+                    promptBuilder.append("【卷内章节号】").append(chapterInVolume).append("\n");
+                }
+                promptBuilder.append("【章节标题】").append(s(chapter.getTitle())).append("\n\n");
+            }
+            int lastFixed = writtenCountInVolume;
+            int firstNew = firstNewChapterInVolume;
+            int lastNew = firstNewChapterInVolume + count - 1;
+            promptBuilder.append("请特别注意：\n");
+            promptBuilder.append("- 卷内第1-").append(lastFixed).append("章已经有正文与既定走向，你不要重新设计或推翻，只能在后续章纲中自然承接这些章节留下的局面与伏笔；\n");
+            promptBuilder.append("- 本次只为【卷内第").append(firstNew).append("章到第").append(lastNew).append("章】生成章纲；\n");
+            promptBuilder.append("- 每一章都要在目标推进、冲突升级或爽点兑现上给读者明确的反馈，避免纯过场；\n");
+            promptBuilder.append("- 每一章结尾都要留下尚未解决的问题、危机或强烈情绪钩子，让读者强烈想看下一章。\n");
+        } else {
+            promptBuilder.append("\n# 当前进度\n");
+            promptBuilder.append("本卷暂时还没有已写正文，本次任务等价于从第1章开始为后续").append(count).append("章规划章纲。\n");
+        }
+
+        promptBuilder.append("\n# 本次任务的输出范围\n");
+        promptBuilder.append("- 你需要输出一个长度恰好为").append(count).append("的JSON数组，表示从当前进度之后连续的后续章节；\n");
+        promptBuilder.append("- 按数组顺序规划剧情：数组第1个元素对应当前进度之后的第一章，数组第2个对应第二章，以此类推；\n");
+        promptBuilder.append("- 你可以让 chapterInVolume 字段从1顺序编号，系统会按数组下标自动映射到真实的卷内章节号和全局章节号。\n");
+
+        String prompt = promptBuilder.toString();
+
+        List<Map<String, String>> messages = buildMessages(prompt);
+
+        logger.info("🤖 调用AI增量生成卷章纲（仅未写正文部分），volumeId={}, firstNewChapterInVolume={}, count={}, promptLen={}",
+                volumeId, firstNewChapterInVolume, count, prompt.length());
+
+        // 使用流式请求收集完整响应，避免超时
+        StringBuilder rawBuilder = new StringBuilder();
+        try {
+            aiWritingService.streamGenerateContentWithMessages(
+                messages,
+                "volume_chapter_outlines_generation_missing",
+                aiConfig,
+                chunk -> {
+                    rawBuilder.append(chunk);
+                    if (rawBuilder.length() % 1000 == 0) {
+                        logger.debug("已接收 {} 字符", rawBuilder.length());
+                    }
+                }
+            );
+        } catch (Exception e) {
+            logger.error("AI增量生成卷章纲失败: {}", e.getMessage(), e);
+            throw new RuntimeException("AI服务调用失败: " + e.getMessage());
+        }
+
+        String raw = rawBuilder.toString();
+        logger.info("✅ 流式接收完成（增量生成），总长度: {} 字符", raw.length());
+
+        String json = extractPureJson(raw);
+
+        // 预先清理所有非标准引号，避免JSON解析失败
+        json = cleanJsonQuotes(json);
+
+        List<Map<String, Object>> outlines;
+        try {
+            outlines = mapper.readValue(json, new TypeReference<List<Map<String, Object>>>(){});
+        } catch (Exception e) {
+            logger.error("❌ 解析增量卷章纲失败: {}\n清理后JSON(前500)：{}", e.getMessage(), json.substring(0, Math.min(500, json.length())));
+            throw new RuntimeException("解析卷章纲失败，请检查AI返回格式: " + e.getMessage());
+        }
+
+        // 验证生成数量
+        if (outlines == null || outlines.isEmpty()) {
+            logger.error("❌ AI返回空章纲列表（增量生成）");
+            throw new RuntimeException("AI返回空章纲列表，生成失败");
+        }
+        if (outlines.size() != count) {
+            logger.warn("⚠️ 增量生成章纲数量与期望不一致: expected={}, actual={}", count, outlines.size());
+        }
+        logger.info("✅ AI增量生成章纲成功: volumeId={}, startChapterInVolume={}, 实际生成{}章", volumeId, firstNewChapterInVolume, outlines.size());
+
+        // 附带决策日志
+        String reactDecisionLog = buildDecisionLog(novel, volume, superOutline, unresolved, prompt, raw, count);
+
+        // 入库：保存后半部分章纲 + 伏笔生命周期日志（不清空整卷旧数据）
+        persistRemainingOutlines(volume, firstNewChapterInVolume, outlines, reactDecisionLog);
+        logger.info("✅ 卷章纲增量入库完成: volumeId={}, startChapterInVolume={}, count={}", volumeId, firstNewChapterInVolume, outlines.size());
+
+        // 只有完全成功才返回结果
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("volumeId", volumeId);
+        result.put("novelId", volume.getNovelId());
+        result.put("startChapterInVolume", firstNewChapterInVolume);
         result.put("count", outlines.size());
         result.put("outlines", outlines);
         result.put("react_decision_log", reactDecisionLog);
@@ -202,20 +469,34 @@ public class VolumeChapterOutlineService {
 
         List<Map<String, String>> messages = buildMessages(promptBuilder.toString());
 
-        String raw;
+        // 使用流式请求收集完整响应
+        StringBuilder rawBuilder = new StringBuilder();
         try {
-            raw = aiWritingService.generateContentWithMessages(messages, "chapter_outline_from_content", aiConfig);
+            aiWritingService.streamGenerateContentWithMessages(
+                messages, 
+                "chapter_outline_from_content", 
+                aiConfig, 
+                chunk -> rawBuilder.append(chunk)
+            );
         } catch (Exception e) {
             logger.error("AI按正文生成章纲失败: novelId={}, chapter={}, 错误={}", novelId, chapterNumber, e.getMessage(), e);
             throw new RuntimeException("AI服务调用失败: " + e.getMessage());
         }
+        
+        String raw = rawBuilder.toString();
+        logger.info("✅ 流式接收完成，总长度: {} 字符", raw.length());
 
         String json = extractPureJson(raw);
+        
+        // 预先清理所有非标准引号，避免JSON解析失败
+        json = cleanJsonQuotes(json);
+        
         List<Map<String, Object>> outlines;
         try {
             outlines = mapper.readValue(json, new TypeReference<List<Map<String, Object>>>(){});
         } catch (Exception e) {
-            logger.error("解析按正文生成的章纲失败: novelId={}, chapter={}, 错误={}", novelId, chapterNumber, e.getMessage(), e);
+            logger.error("解析按正文生成的章纲失败: novelId={}, chapter={}, 错误={}\n清理后JSON(前500)：{}", 
+                novelId, chapterNumber, e.getMessage(), json.substring(0, Math.min(500, json.length())));
             throw new RuntimeException("解析章纲失败，请检查AI返回格式: " + e.getMessage());
         }
 
@@ -331,10 +612,17 @@ public class VolumeChapterOutlineService {
         }
         sb.append("\n");
 
+        sb.append("# 剧情评估与校正原则\n")
+          .append("- 先评估本卷蓝图与全书大纲中每个重大节点的因果链，若发现夸张、跳跃或缺少动机与铺垫的片段，应主动设计补偿性的铺垫、过渡或代价，确保剧情可信。\n")
+          .append("- 当输入内容存在明显的不合理指令（例如角色突然拥有未曾交代的力量、无因转折等），不要照抄；请在章纲里通过补充证据、延迟兑现或改写动机的方式让其变得合理，再继续推进。\n")
+          .append("- 若蓝图把大块剧情匆匆带过，但卷的目标章节数仍较多，你需要拆解这些大块剧情为多个章纲：前期铺垫、中段拉扯、后段兑现，避免“一章解决一卷冲突”。\n")
+          .append("- 反之，如蓝图细碎但总章节数有限，则可以合并或并行推进支线，但仍需保持“触发→行动→后果”的因果闭环。\n")
+          .append("- 始终保证人物的抉择是推进剧情的原因，而不是被动等待命运安排；必要时给出他们做出选择的心理或外部压力来源。\n\n");
+
         sb.append("# 章纲生成目标\n")
           .append("- 数量：恰好").append(count).append("章（不可多也不可少）。\n")
           .append("- 黄金三章：本卷最前面的若干章（至少前三个章纲）必须承担“拉读者入坑”的职责：从打破平静或打破惯性的位置切入，而不是平铺日常介绍；让主角在早期就面对清晰的欲望或目标，并被迫做出难以轻易撤回的选择；这些选择要带来实际代价或风险（例如失去某种资源、关系矛盾被抬高、局势明显恶化等）；每一章结尾都要留下尚未解决的问题、危险或情绪张力，形成继续阅读的动力。在不破坏全书大方向的前提下，黄金三章可以适度偏离原始规划，以换取更强的吸引力，后续章节再逐步校正走向。\n")
-          .append("- 节奏波浪：整卷必须存在明显的起伏，而不是匀速推进。要有高压推进的章节，也要有短暂缓冲或蓄势的章节，还要有阶段性的翻盘/崩盘节点；同一条主线可以经历多轮起落，而不是一次性解决。在每章的 direction 和 keyPlotPoints 中，用自然语言体现这一章大致处于“加压推进”“短暂缓和”还是“阶段翻盘/崩塌”，但不要输出专门的标签或编号。\n")
+          .append("- 节奏波浪：整卷必须存在明显的起伏，而不是匀速推进。要有高压推进的章节，也要有短暂缓冲或蓄势的章节，还要有阶段性的翻盘/崩盘节点；同一条主线可以经历多轮起落，而不是一次性解决。在每章的 direction 和 keyPlotPoints 中，用自然语言体现这一章大致处于“加压推进”“短暂缓和”还是“阶段翻盘/崩塌”，但不要输出专门的标签或编号。若发现整卷被蓝图草率概述，应主动拆分节奏层次，防止“快速略写”导致内容空心。\n")
           .append("- 人物与动机：每一章的关键事件尽量由人物的欲望、恐惧或立场推动，而不是纯粹的外部巧合。章纲里要点出人物在本章“想要什么/害怕什么”，以便后续写作时围绕人物驱动剧情。\n")
           .append("- 反直线发展：在不牺牲逻辑自洽的前提下，优先考虑比“最直接解法”略微出乎意料的推进方式，如绕行、延迟、误判后反噬等，但不要为了“反转而反转”。\n")
           .append("- 适配任意题材：不要假定具体世界观或题材，只基于输入的大纲和蓝图来判断冲突强度与节奏位置，使设计对任何题材都成立。\n")
@@ -354,7 +642,12 @@ public class VolumeChapterOutlineService {
         sb.append("# 节奏提示\n")
           .append("- 避免“一碰就赢”或“一味挨打”的直线节奏，多考虑拉锯、反复试探和阶段性停顿，让读者能感到波动而不是匀速。\n")
           .append("- 如需设置某章为节奏缓和段，章纲里仍应保留至少一个信息点、情绪转折点或人物关系变化点，避免成为完全可删章节。\n")
-          .append("- 章末尽量安排情绪或信息上的“未完待续”（未解决的问题、悬而未决的选择、隐隐加重的危机等），增强续读意愿。\n\n");
+          .append("- 章末尽量安排情绪或信息上的“未完待续”（未解决的问题、悬而未决的选择、隐隐加重的危机等），增强续读意愿。\n\n")
+          .append("# 爽感与钩子强化\n")
+          .append("- 每一章至少设计一个清晰的“爽点”（逆袭、扳回局面、打脸、获得关键资源等）或“痛点”（重大损失、反噬、被狠狠压制），并通过后续章节的补偿或反转形成波动，让读者始终觉得有东西在输赢；\n")
+          .append("- 同一冲突不要一次性解决干净，优先采用“部分兑现+新的更大问题暴露”的方式，让剧情一环扣一环，而不是简单结束；\n")
+          .append("- 尽量让人物的选择带来不可逆或代价巨大的后果，让读者在每个关键节点都本能地想：接下来会怎样？他们真的扛得住吗？\n")
+          .append("- 章末的钩子要具体而可感知，例如：一个尚未拆解的阴谋、一个必须做出的艰难决定、一个刚刚出现且来历成谜的威胁，而不是抽象的“故事还在继续”。\n\n");
 
         sb.append("# 输出格式（严格JSON数组，不含任何多余文本）\n")
           .append("数组长度必须为").append(count).append("。每个元素是一个对象，字段如下：\n")
@@ -442,6 +735,58 @@ public class VolumeChapterOutlineService {
     }
 
     /**
+     * 清理JSON中的非标准引号
+     * 策略：智能识别JSON字符串内部的中文引号并转义
+     */
+    private String cleanJsonQuotes(String json) {
+        if (json == null) return null;
+        
+        StringBuilder result = new StringBuilder(json.length() + 100);
+        boolean inString = false;  // 是否在JSON字符串内部
+        char prevChar = 0;
+        
+        for (int i = 0; i < json.length(); i++) {
+            char c = json.charAt(i);
+            
+            // 检测标准双引号，判断是否进入/退出字符串
+            if (c == '"' && prevChar != '\\') {
+                inString = !inString;
+                result.append(c);
+            }
+            // 处理中文双引号
+            else if (c == '\u201C' || c == '\u201D') {  // " "
+                if (inString) {
+                    // 在JSON字符串内部，需要转义
+                    result.append("\\\"");
+                } else {
+                    // 不在字符串内部，可能是JSON结构的一部分（不应该出现，但容错处理）
+                    result.append('"');
+                }
+            }
+            // 处理全角引号
+            else if (c == '\uFF02') {  // ＂
+                if (inString) {
+                    result.append("\\\"");
+                } else {
+                    result.append('"');
+                }
+            }
+            // 处理中文单引号 - 保持原样或替换为普通单引号
+            else if (c == '\u2018' || c == '\u2019') {  // ' '
+                result.append('\'');
+            }
+            // 其他字符直接添加
+            else {
+                result.append(c);
+            }
+            
+            prevChar = c;
+        }
+        
+        return result.toString();
+    }
+
+    /**
      * 入库：保存章纲 + 伏笔生命周期日志
      * 失败时抛异常，触发事务回滚（旧数据会恢复）
      */
@@ -526,6 +871,104 @@ public class VolumeChapterOutlineService {
         }
 
         logger.info("✅ 成功插入{}条章纲记录", insertedCount);
+    }
+
+    /**
+     * 入库：仅更新本卷中尚未写正文部分的章纲
+     * 不清空整卷旧数据，只对指定起始章节之后的章纲进行插入/更新，并追加伏笔生命周期日志
+     */
+    private void persistRemainingOutlines(NovelVolume volume,
+                                          int firstNewChapterInVolume,
+                                          List<Map<String, Object>> outlines,
+                                          String reactDecisionLog) {
+        if (outlines == null || outlines.isEmpty()) {
+            throw new RuntimeException("章纲列表为空，无法入库");
+        }
+
+        List<VolumeChapterOutline> existing = outlineRepo.findByVolumeId(volume.getId());
+        Map<Integer, VolumeChapterOutline> existingByChapter = new HashMap<>();
+        if (existing != null) {
+            for (VolumeChapterOutline e : existing) {
+                if (e.getChapterInVolume() != null) {
+                    existingByChapter.put(e.getChapterInVolume(), e);
+                }
+            }
+        }
+
+        int insertedOrUpdated = 0;
+        int index = 0;
+        for (Map<String, Object> outline : outlines) {
+            try {
+                int chapterInVolume = firstNewChapterInVolume + index;
+                Integer globalChapterNumber = null;
+                if (volume.getChapterStart() != null) {
+                    globalChapterNumber = volume.getChapterStart() + chapterInVolume - 1;
+                }
+
+                VolumeChapterOutline entity = existingByChapter.get(chapterInVolume);
+                if (entity == null) {
+                    entity = new VolumeChapterOutline();
+                    entity.setNovelId(volume.getNovelId());
+                    entity.setVolumeId(volume.getId());
+                    entity.setVolumeNumber(volume.getVolumeNumber());
+                    entity.setChapterInVolume(chapterInVolume);
+                }
+
+                entity.setGlobalChapterNumber(globalChapterNumber);
+                entity.setDirection(getString(outline, "direction"));
+                entity.setKeyPlotPoints(toJson(outline.get("keyPlotPoints")));
+                entity.setEmotionalTone(getString(outline, "emotionalTone"));
+                entity.setForeshadowAction(getString(outline, "foreshadowAction"));
+                entity.setForeshadowDetail(toJson(outline.get("foreshadowDetail")));
+                entity.setSubplot(getString(outline, "subplot"));
+                entity.setAntagonism(toJson(outline.get("antagonism")));
+                entity.setStatus("PENDING");
+                entity.setReactDecisionLog(reactDecisionLog);
+
+                if (entity.getId() == null) {
+                    outlineRepo.insert(entity);
+                } else {
+                    outlineRepo.updateById(entity);
+                }
+                insertedOrUpdated++;
+
+                logger.debug("✓ 增量章纲入库成功: 卷内第{}章, 全书第{}章", chapterInVolume, globalChapterNumber);
+
+                // 若有伏笔动作，写入生命周期日志
+                String action = entity.getForeshadowAction();
+                if (action != null && !action.equals("NONE") && entity.getForeshadowDetail() != null) {
+                    try {
+                        Map<String, Object> detail = mapper.readValue(entity.getForeshadowDetail(), new TypeReference<Map<String, Object>>(){});
+                        Long foreshadowId = getLong(detail, "refId");
+                        if (foreshadowId == null && action.equals("PLANT")) {
+                            // PLANT 时可能还没有 refId，暂时跳过或创建新伏笔
+                        } else if (foreshadowId != null) {
+                            ForeshadowLifecycleLog log = new ForeshadowLifecycleLog();
+                            log.setForeshadowId(foreshadowId);
+                            log.setNovelId(volume.getNovelId());
+                            log.setVolumeId(volume.getId());
+                            log.setVolumeNumber(volume.getVolumeNumber());
+                            log.setChapterInVolume(entity.getChapterInVolume());
+                            log.setGlobalChapterNumber(entity.getGlobalChapterNumber());
+                            log.setAction(action);
+                            log.setDetail(entity.getForeshadowDetail());
+                            lifecycleLogRepo.insert(log);
+                        }
+                    } catch (Exception e) {
+                        logger.warn("⚠️ 解析伏笔详情失败，跳过生命周期日志（增量）: {}", e.getMessage());
+                    }
+                }
+
+            } catch (Exception e) {
+                logger.error("❌ 增量章纲入库失败: startChapterInVolume={}, index={}, 错误: {}",
+                    firstNewChapterInVolume, index, e.getMessage());
+                throw new RuntimeException("章纲入库失败（增量，第" + (index + 1) + "条）: " + e.getMessage(), e);
+            }
+
+            index++;
+        }
+
+        logger.info("✅ 成功增量插入/更新{}条章纲记录（从卷内第{}章起）", insertedOrUpdated, firstNewChapterInVolume);
     }
 
     private Integer getInt(Map<String, Object> map, String key) {

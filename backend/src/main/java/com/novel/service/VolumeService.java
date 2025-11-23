@@ -194,9 +194,10 @@ public class VolumeService {
             // 构建提示词
             StringBuilder prompt = new StringBuilder();
             prompt
-                  .append("你是顶级网文总编，专门设计\"让读者欲罢不能\"的卷蓝图。你的任务是规划大方向和关键节点，但绝不锁死具体剧情，也不平均分配精彩度，而是为整部作品设计有高有低的节奏波浪。\n\n")
+                  .append("你是顶级网文总编，专门设计\"让读者欲罢不能\"的卷蓝图。你的任务是给出【方向型】的卷规划：只管大方向、阶段结构和里程碑，不抢着把故事细节写完，也不平均分配精彩度，而是为整部作品设计有高有低的节奏波浪。\n\n")
                   .append("# 核心理念\n")
                   .append("**蓝图不是剧本**：只给路线图和资源包，不写执行细节。让AI写作时有发挥空间，能根据实际情况灵活调整。\n")
+                  .append("**禁止写成剧情简介或片段**：不要逐段复述故事内容，不要详细描述具体场景过程，更不要出现人物对白。若写出的文字看起来像某一卷的小说节选，而不是主编给作者讲这一卷\"大概要怎么写\"的抽象规划，就说明跑题了。\n")
                   .append("**冲突驱动一切**：围绕\"主角想要什么→遇到什么阻碍→付出什么代价→得到什么结果\"来规划每一阶段，不追求匀速推进，而是通过拉扯和迟到的兑现来制造上瘾感。\n")
                   .append("**卷间节奏波浪**：不同卷可以承担不同节奏角色（攀升卷/高峰卷/缓冲卷/翻盘卷等），不需要平均分配爆点；重要情节可以有意跨卷铺垫和兑现，只要整体遵守超级大纲。\n\n")
                   .append("# 小说信息\n")
@@ -236,6 +237,9 @@ public class VolumeService {
                   .append("- 在本卷内部设计明显的情绪起伏：紧张与放松相间、危机与逆转呼应，让读者在关键节点产生“停不下来”的冲动，尤其是本卷后半程和卷末附近。\n")
                   .append("- 针对目标读者喜好突出市场卖点（成长、情感、爽感、悬念等），打造让人想追更的阅读体验。\n\n")
                   .append("# 输出要求\n\n")
+                  .append("- 用编辑视角写作：像在跟作者讨论这一卷的大致写法，而不是在向读者讲故事。\n")
+                  .append("- 全文保持在适中篇幅，更偏向抽象总结和结构规划，而不是展开具体桥段经过。\n")
+                  .append("- 禁止出现引号中的人物台词（如“他冷笑着说：……”），也不要写出完整的时间线式剧情复盘。\n\n")
                   
                   .append("## 一、本卷核心定位\n")
                   .append("用2-3句话说清楚：这一卷要解决什么问题？主角要达成什么目标？读者能爽到什么？\n\n")
@@ -543,7 +547,7 @@ public class VolumeService {
                     "#一致性规范\n" +
                     "- 卷名规范：第X卷：高概括关键词（2-8字），体现本卷核心看点。\n" +
                     "- 主题（theme）不超过50字，概括本卷主线发展与舞台升级。\n" +
-                    "- contentOutline为单段中文，不使用换行、列表或嵌套引号；避免英文和过多术语。\n" +
+                    "- contentOutline为单段中文，不使用换行（禁止出现\\n或\\r）、列表或嵌套引号；尤其禁止在contentOutline内部使用英文双引号\"，否则会导致系统解析JSON失败。如需标注话语或特殊用词，请使用中文引号「」或书名号《》等，不要用英文\"。\n" +
                     "- 每卷contentOutline需包含三要素（以自然语句融入，不用显式标签）：\n" +
                     "  1) 看点亮点：点名1-2个本卷核心爆点（如“身份错置审判”“失控副作用反噬”）\n" +
                     "  2) 起承转合：核心冲突→关键转折→阶段性收束，并抛出下一卷钩子\n" +
@@ -563,7 +567,7 @@ public class VolumeService {
                     "\n" +
                     "#创作建议\n" +
                     "- 自主选择最优看点与结构，不向用户索要任何选择。\n" +
-                    "- 每卷必须有可传播名场面与一句高记忆度台词或行为（自然嵌入contentOutline）。\n" +
+                    "- 每卷必须设计1-2个可传播的高记忆度瞬间（可以是台词、行为或局面），但只需用概括性语句描述其效果和冲击力，不要在contentOutline中写出完整对白原文或加上英文引号。\n" +
                     "- 强化升级与筹码变化，确保舞台逐卷放大、敌我信息差加深、资源与规则不断刷新。\n" +
                     "- 善用伏笔与反转，避免套路直给；伏笔在中后期统一回收。\n" +
                     "- 兼顾情节爽点与人物弧线，避免流水账。\n" +
@@ -709,27 +713,17 @@ public class VolumeService {
 
                 List<Map> jsonPlans = null;
 
-                // 先尝试直接解析原始JSON
+                String sanitizedJson = sanitizeJsonForParsing(jsonContent);
+                if (!jsonContent.equals(sanitizedJson)) {
+                    logger.info("🧹 JSON内容经过清理，长度: {} -> {}", jsonContent.length(), sanitizedJson.length());
+                }
+
                 try {
-                    jsonPlans = mapper.readValue(jsonContent, List.class);
+                    jsonPlans = mapper.readValue(sanitizedJson, List.class);
                     logger.info("✅ JSON解析成功，获得{}个卷规划", jsonPlans.size());
                 } catch (Exception e) {
-                    logger.warn("⚠️ 原始JSON解析失败，尝试修复中文引号: {}", e.getMessage());
-
-                    // 修复中文引号问题：将中文引号替换为英文引号（作为备用方案）
-                    String fixedJson = jsonContent
-                        .replace('\u201C', '"')
-                        .replace('\u201D', '"')
-                        .replace('\u2018', '\'')
-                        .replace('\u2019', '\'');
-
-                    try {
-                        jsonPlans = mapper.readValue(fixedJson, List.class);
-                        logger.info("✅ JSON解析成功（修复后），获得{}个卷规划", jsonPlans.size());
-                    } catch (Exception e2) {
-                        logger.error("❌ 修复后仍然解析失败: {}", e2.getMessage());
-                        throw e2;
-                    }
+                    logger.error("❌ JSON解析失败（清理后）: {}", e.getMessage());
+                    throw e;
                 }
                 
                 if (jsonPlans == null) {
@@ -799,17 +793,79 @@ public class VolumeService {
             if (response != null && response.length() > 0) {
                 logger.error("🔍 失败响应的前200字符: {}", response.substring(0, Math.min(200, response.length())));
             }
+            // 直接抛出异常，让上层感知失败并返回错误给前端，而不是静默生成默认卷
+            throw new RuntimeException("解析AI卷规划失败: " + e.getMessage(), e);
         }
-        
-        // 如果解析失败，生成简化规划
+
         if (plans.isEmpty()) {
-            logger.warn("⚠️ AI解析完全失败，使用简化卷规划");
-            // 注意：这里无法获取novel和outline对象，因此只能使用基础的默认规划
-            plans = generateBasicVolumePlans(volumeCount);
+            // 文本解析也未得到任何有效卷规划，视为失败
+            throw new RuntimeException("AI卷规划解析结果为空，请检查模型输出与提示词配置。");
         }
-        
+
         logger.info("🎯 最终返回{}个卷规划", plans.size());
         return plans;
+    }
+
+    /**
+     * 清理AI返回的JSON，确保字符串内部的换行和特殊引号被正确转义
+     */
+    private String sanitizeJsonForParsing(String json) {
+        if (json == null) {
+            return null;
+        }
+
+        StringBuilder cleaned = new StringBuilder(json.length() + 100);
+        boolean inString = false;
+        boolean escaping = false;
+
+        for (int i = 0; i < json.length(); i++) {
+            char c = json.charAt(i);
+
+            if (c == '"' && !escaping) {
+                inString = !inString;
+                cleaned.append(c);
+            } else if (inString) {
+                switch (c) {
+                    case '\n':
+                        cleaned.append("\\n");
+                        break;
+                    case '\r':
+                        cleaned.append("\\r");
+                        break;
+                    case '\t':
+                        cleaned.append("\\t");
+                        break;
+                    case '\u201C':
+                    case '\u201D':
+                    case '\uFF02':
+                        cleaned.append("\\\"");
+                        break;
+                    case '\u2018':
+                    case '\u2019':
+                        cleaned.append('\'');
+                        break;
+                    default:
+                        cleaned.append(c);
+                        break;
+                }
+            } else {
+                if (c == '\u201C' || c == '\u201D' || c == '\uFF02') {
+                    cleaned.append('"');
+                } else if (c == '\u2018' || c == '\u2019') {
+                    cleaned.append('\'');
+                } else {
+                    cleaned.append(c);
+                }
+            }
+
+            if (c == '\\' && !escaping) {
+                escaping = true;
+            } else {
+                escaping = false;
+            }
+        }
+
+        return cleaned.toString();
     }
     
     /**

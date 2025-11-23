@@ -143,12 +143,24 @@ public class AgenticChapterWriter {
 
         // 优先查询预生成章纲
         VolumeChapterOutline preGeneratedOutline = null;
+        VolumeChapterOutline prevOutline = null;
+        VolumeChapterOutline nextOutline = null;
         if (outlineRepository != null) {
             try {
                 preGeneratedOutline = outlineRepository.findByNovelAndGlobalChapter(novelId, chapterNumber);
                 if (preGeneratedOutline != null) {
                     logger.info("✅ 找到预生成章纲: 第{}章, 方向={}", chapterNumber, preGeneratedOutline.getDirection());
                     sendEvent(emitter, "outline", "📋 使用预生成章纲");
+                    if (chapterNumber != null && chapterNumber > 1) {
+                        prevOutline = outlineRepository.findByNovelAndGlobalChapter(novelId, chapterNumber - 1);
+                        if (prevOutline != null) {
+                            logger.info("✅ 找到前一章预生成章纲: 第{}章, 方向={}", prevOutline.getGlobalChapterNumber(), prevOutline.getDirection());
+                        }
+                    }
+                    nextOutline = outlineRepository.findByNovelAndGlobalChapter(novelId, chapterNumber + 1);
+                    if (nextOutline != null) {
+                        logger.info("✅ 找到后一章预生成章纲: 第{}章, 方向={}", nextOutline.getGlobalChapterNumber(), nextOutline.getDirection());
+                    }
                 }
             } catch (Exception e) {
                 logger.warn("⚠️ 查询预生成章纲失败: {}", e.getMessage());
@@ -163,7 +175,7 @@ public class AgenticChapterWriter {
         if (preGeneratedOutline != null) {
             // 有章纲：跳过推理，直接用章纲构建 plotIntent
             sendEvent(emitter, "phase", "📋 使用预生成章纲...");
-            plotIntent = convertOutlineToIntent(preGeneratedOutline);
+            plotIntent = convertOutlineToIntent(preGeneratedOutline, prevOutline, nextOutline);
             mode = "outline_writing";
         } else {
             // 无章纲：走推理流程
@@ -561,7 +573,7 @@ public class AgenticChapterWriter {
             update.setContent(content);
             update.setGenerationContext(generationContext);
             update.setReactDecisionLog(reactDecisionLog);
-            persisted = chapterService.updateChapter(existing.getId(), update);
+            persisted = chapterService.updateChapterInternal(existing.getId(), update);
         }
 
         if (persisted != null) {
@@ -944,11 +956,10 @@ public class AgenticChapterWriter {
     /**
      * 将预生成章纲转换为 plotIntent 格式
      */
-    private Map<String, Object> convertOutlineToIntent(VolumeChapterOutline outline) {
+    private Map<String, Object> convertOutlineToIntent(VolumeChapterOutline outline, VolumeChapterOutline prevOutline, VolumeChapterOutline nextOutline) {
         Map<String, Object> intent = new HashMap<>();
         intent.put("direction", outline.getDirection());
 
-        // 解析 keyPlotPoints（JSON数组）
         if (outline.getKeyPlotPoints() != null) {
             try {
                 List<String> points = objectMapper.readValue(outline.getKeyPlotPoints(),
@@ -962,7 +973,6 @@ public class AgenticChapterWriter {
 
         intent.put("emotionalTone", outline.getEmotionalTone());
 
-        // 解析 foreshadowDetail
         if (outline.getForeshadowDetail() != null) {
             try {
                 Map<String, Object> detail = objectMapper.readValue(outline.getForeshadowDetail(),
@@ -977,7 +987,6 @@ public class AgenticChapterWriter {
 
         intent.put("subplot", outline.getSubplot());
 
-        // 解析 antagonism
         if (outline.getAntagonism() != null) {
             try {
                 Map<String, Object> antag = objectMapper.readValue(outline.getAntagonism(),
@@ -988,6 +997,64 @@ public class AgenticChapterWriter {
             }
         }
 
+        if (outlineRepository != null) {
+            try {
+                List<VolumeChapterOutline> futureOutlines = new ArrayList<>();
+                Long futureNovelId = outline.getNovelId();
+                Integer baseChapter = outline.getGlobalChapterNumber();
+
+                if (futureNovelId != null && baseChapter != null) {
+                    for (int i = 1; i <= 10; i++) {
+                        VolumeChapterOutline future = outlineRepository.findByNovelAndGlobalChapter(futureNovelId, baseChapter + i);
+                        if (future == null) {
+                            break;
+                        }
+                        futureOutlines.add(future);
+                    }
+                } else if (nextOutline != null) {
+                    futureOutlines.add(nextOutline);
+                }
+
+                if (!futureOutlines.isEmpty()) {
+                    StringBuilder hint = new StringBuilder();
+                    hint.append("\n\n【后续章节关键剧情点】 注意下面内容非本章内容 主要是让你了解后续大致剧情走向：\n");
+                    for (VolumeChapterOutline fo : futureOutlines) {
+                        Integer g = fo.getGlobalChapterNumber();
+                        Integer civ = fo.getChapterInVolume();
+                        if (g != null) {
+                            hint.append("第").append(g).append("章：\n");
+                        } else if (civ != null) {
+                            hint.append("卷内第").append(civ).append("章：\n");
+                        } else {
+                            hint.append("未来章节：\n");
+                        }
+
+                        if (fo.getKeyPlotPoints() != null) {
+                            try {
+                                List<String> points = objectMapper.readValue(fo.getKeyPlotPoints(),
+                                        new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){});
+                                if (points != null && !points.isEmpty()) {
+                                    for (String p : points) {
+                                        if (p != null && !p.isEmpty()) {
+                                            hint.append(p).append("\n");
+                                        }
+                                    }
+                                }
+                            } catch (Exception e) {
+                                logger.warn("解析未来章节keyPlotPoints失败: {}", e.getMessage());
+                            }
+                        }
+                    }
+                    hint.append("本章剧情需要在不抢先写完上述关键剧情点全部结果的前提下，自然衔接并为这些发展做好铺垫。");
+                    intent.put("adjacentOutlineHint", hint.toString());
+                }
+            } catch (Exception e) {
+                logger.warn("构造后续章节关键剧情点提示失败: {}", e.getMessage());
+            }
+        }
+
         return intent;
     }
+
+
 }
