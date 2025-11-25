@@ -5,6 +5,7 @@ import com.novel.agentic.model.AgentThought;
 import com.novel.agentic.model.WritingContext;
 import com.novel.agentic.service.orchestrator.AgentOrchestrator;
 import com.novel.agentic.service.graph.EntityExtractionService;
+import com.novel.agentic.service.CoreStateExtractor;
 import com.novel.dto.AIConfigRequest;
 import com.novel.domain.entity.Novel;
 import com.novel.domain.entity.Chapter;

@@ -2,6 +2,8 @@ package com.novel.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.novel.agentic.model.GraphEntity;
+import com.novel.agentic.service.graph.IGraphService;
 import com.novel.domain.entity.*;
 import com.novel.dto.AIConfigRequest;
 import com.novel.mapper.NovelVolumeMapper;
@@ -49,6 +51,9 @@ public class VolumeChapterOutlineService {
 
     @Autowired
     private AIWritingService aiWritingService;
+
+    @Autowired(required = false)
+    private IGraphService graphService;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -288,9 +293,80 @@ public class VolumeChapterOutlineService {
 
         int firstNewChapterInVolume = writtenCountInVolume + 1;
 
+        // 已有章纲：用于为后续未写正文章节提供历史事件与人物关系上下文
+        List<VolumeChapterOutline> previousOutlines = new ArrayList<>();
+        try {
+            List<VolumeChapterOutline> existingOutlines = outlineRepo.findByVolumeId(volume.getId());
+            if (existingOutlines != null) {
+                for (VolumeChapterOutline o : existingOutlines) {
+                    if (o.getChapterInVolume() != null && o.getChapterInVolume() < firstNewChapterInVolume) {
+                        previousOutlines.add(o);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("加载已有章纲失败，volumeId={}, err={}", volumeId, e.getMessage());
+        }
+
+        if (!previousOutlines.isEmpty()) {
+            previousOutlines.sort(java.util.Comparator.comparing(VolumeChapterOutline::getChapterInVolume));
+        }
+
+        int firstNew = firstNewChapterInVolume;
+        int lastNew = firstNewChapterInVolume + count - 1;
+
+        java.util.List<GraphEntity> graphEvents = null;
+        java.util.List<GraphEntity> graphForeshadows = null;
+        Integer graphAnchorChapter = null;
+        if (volume.getChapterStart() != null) {
+            graphAnchorChapter = volume.getChapterStart() + firstNew - 1;
+        } else if (lastWrittenGlobalChapter != null) {
+            graphAnchorChapter = lastWrittenGlobalChapter;
+        }
+        if (graphService != null && graphAnchorChapter != null && graphAnchorChapter > 1) {
+            try {
+                java.util.List<GraphEntity> evts = graphService.getRelevantEvents(volume.getNovelId(), graphAnchorChapter, 10);
+                if (evts != null && !evts.isEmpty()) {
+                    graphEvents = evts;
+                }
+            } catch (Exception e) {
+                logger.warn("获取图谱历史事件失败, novelId={}, chapter={}, err={}", volume.getNovelId(), graphAnchorChapter, e.getMessage());
+            }
+            try {
+                java.util.List<GraphEntity> foreshadows = graphService.getUnresolvedForeshadows(volume.getNovelId(), graphAnchorChapter, 10);
+                if (foreshadows != null && !foreshadows.isEmpty()) {
+                    graphForeshadows = foreshadows;
+                }
+            } catch (Exception e) {
+                logger.warn("获取图谱伏笔失败, novelId={}, chapter={}, err={}", volume.getNovelId(), graphAnchorChapter, e.getMessage());
+            }
+        }
+
         // 构建提示词
         String basePrompt = buildPrompt(novel, volume, nextVolume, superOutline, unresolved, count);
         StringBuilder promptBuilder = new StringBuilder(basePrompt);
+
+        // 先明确本次是“增量补全”模式，而不是重写整卷
+        promptBuilder.append("\n# 本次任务模式说明（增量补全）\n");
+        if (writtenCountInVolume > 0) {
+            promptBuilder.append("本卷目前已有正文写到【卷内第")
+                    .append(writtenCountInVolume)
+                    .append("章】。这些章节及其对应的走向视为既定历史，本次任务不是推翻重写整卷，而是在保持这些既定章节不变的前提下，\n");
+            promptBuilder.append("只为【卷内第")
+                    .append(firstNew)
+                    .append("章～第")
+                    .append(lastNew)
+                    .append("章】规划新的章纲序列，用于自然承接并放大前文留下的局面、人物关系和伏笔。\n");
+        } else {
+            promptBuilder.append("本卷目前尚未写出任何正文，本次任务等价于从卷首开始，为后续")
+                    .append(count)
+                    .append("章规划初始章纲（卷内第")
+                    .append(firstNew)
+                    .append("章～第")
+                    .append(lastNew)
+                    .append("章）。\n");
+        }
+        promptBuilder.append("后面列出的“已有章纲与历史事件概览”（如存在）用于帮助你理解前文历史，它们是只读时间线，不要在输出结果中尝试重写这些既有章节，只能向后续章节延伸。\n\n");
 
         if (!isBlank(userRequirements)) {
             promptBuilder.append("\n# 作者需求与偏好（本次仅影响尚未写正文的章节）\n");
@@ -299,41 +375,126 @@ public class VolumeChapterOutlineService {
             promptBuilder.append("当这些需求与现有大纲略有冲突时，请优先保证节奏爽感、一环扣一环的推进与强钩子，再对细节做温和调整，而不是完全推翻前文。\n\n");
         }
 
-        if (!chaptersWithContent.isEmpty()) {
-            promptBuilder.append("\n# 已写章节进度概览（只读，不可重写）\n");
-            promptBuilder.append("下面是本卷中已经有正文的章节的进度概览（只包含章节号和标题，不包含正文内容）。它们的走向已经固定，你只需要在此基础上，为之后尚未写正文的章节规划新的章纲：\n\n");
-            for (Chapter chapter : chaptersWithContent) {
-                Integer chapterNumber = chapter.getChapterNumber();
-                Integer chapterInVolume = null;
-                if (chapterNumber != null) {
-                    chapterInVolume = chapterNumber - start + 1;
+        if (!previousOutlines.isEmpty()) {
+            promptBuilder.append("\n# 已有章纲与历史事件概览（只读，不可重写）\n");
+            promptBuilder.append("下面是本卷在当前进度之前已经存在的章纲摘要。它们已经确定了主要事件走向、人物关系和历史节点，你需要在此基础上，为之后尚未写正文的章节规划新的章纲：\n\n");
+            for (VolumeChapterOutline o : previousOutlines) {
+                Integer chapterInVolume = o.getChapterInVolume();
+                Integer globalChapterNumber = o.getGlobalChapterNumber();
+                if (chapterInVolume == null || chapterInVolume <= 0) {
+                    continue;
                 }
-                promptBuilder.append("## 已写章节\n");
-                if (chapterNumber != null) {
-                    promptBuilder.append("【全局章节号】").append(chapterNumber).append("\n");
+                promptBuilder.append("## 卷内第").append(chapterInVolume).append("章章纲\n");
+                if (globalChapterNumber != null && globalChapterNumber > 0) {
+                    promptBuilder.append("【全局章节号】").append(globalChapterNumber).append("\n");
                 }
-                if (chapterInVolume != null && chapterInVolume > 0) {
-                    promptBuilder.append("【卷内章节号】").append(chapterInVolume).append("\n");
+                String dir = s(o.getDirection());
+                if (!isBlank(dir)) {
+                    promptBuilder.append("【direction（本章大方向）】").append(dir).append("\n");
                 }
-                promptBuilder.append("【章节标题】").append(s(chapter.getTitle())).append("\n\n");
+                String kps = o.getKeyPlotPoints();
+                if (!isBlank(kps)) {
+                    promptBuilder.append("【keyPlotPoints（关键剧情点，JSON数组原文）】").append(limit(kps, 2000)).append("\n");
+                }
+                String subplot = o.getSubplot();
+                if (!isBlank(subplot)) {
+                    promptBuilder.append("【subplot（支线/人物关系要点）】").append(limit(subplot, 1000)).append("\n");
+                }
+                String antagonism = o.getAntagonism();
+                if (!isBlank(antagonism)) {
+                    promptBuilder.append("【antagonism（对手与赌注，JSON对象原文）】").append(limit(antagonism, 1000)).append("\n");
+                }
+                promptBuilder.append("\n");
             }
-            int lastFixed = writtenCountInVolume;
-            int firstNew = firstNewChapterInVolume;
-            int lastNew = firstNewChapterInVolume + count - 1;
+
             promptBuilder.append("请特别注意：\n");
-            promptBuilder.append("- 卷内第1-").append(lastFixed).append("章已经有正文与既定走向，你不要重新设计或推翻，只能在后续章纲中自然承接这些章节留下的局面与伏笔；\n");
-            promptBuilder.append("- 本次只为【卷内第").append(firstNew).append("章到第").append(lastNew).append("章】生成章纲；\n");
+            promptBuilder.append("- 上述章纲描述的章节视为【既有历史】，你不要重新设计或推翻，只能在后续章纲中自然承接这些章节留下的局面、人物关系和伏笔；\n");
+            promptBuilder.append("- 本次只为【卷内第").append(firstNew).append("章到第").append(lastNew).append("章】生成新的章纲，用于承接并放大上述事件与关系；\n");
             promptBuilder.append("- 每一章都要在目标推进、冲突升级或爽点兑现上给读者明确的反馈，避免纯过场；\n");
             promptBuilder.append("- 每一章结尾都要留下尚未解决的问题、危机或强烈情绪钩子，让读者强烈想看下一章。\n");
         } else {
             promptBuilder.append("\n# 当前进度\n");
-            promptBuilder.append("本卷暂时还没有已写正文，本次任务等价于从第1章开始为后续").append(count).append("章规划章纲。\n");
+            if (writtenCountInVolume > 0) {
+                promptBuilder.append("本卷目前已有正文写到卷内第").append(writtenCountInVolume)
+                        .append("章，但暂未加载到对应的章纲记录。本次从卷内第").append(firstNewChapterInVolume)
+                        .append("章开始，连续规划后续").append(count).append("章章纲。\n");
+            } else {
+                promptBuilder.append("本卷暂时还没有已写正文或既有章纲，本次任务等价于从第1章开始为后续")
+                        .append(count).append("章规划章纲。\n");
+            }
+        }
+
+        if ((graphEvents != null && !graphEvents.isEmpty()) || (graphForeshadows != null && !graphForeshadows.isEmpty())) {
+            promptBuilder.append("\n# 图谱视角下的历史事件与伏笔摘要\n");
+            if (graphEvents != null && !graphEvents.isEmpty()) {
+                promptBuilder.append("【历史事件（图谱）】\n");
+                for (GraphEntity ev : graphEvents) {
+                    if (ev == null) {
+                        continue;
+                    }
+                    Integer chNum = ev.getChapterNumber();
+                    java.util.Map<String, Object> props = ev.getProperties();
+                    Object desc = props != null ? props.get("description") : null;
+                    if (desc == null) {
+                        continue;
+                    }
+                    promptBuilder.append("- [第")
+                            .append(chNum != null ? chNum : 0)
+                            .append("章] ")
+                            .append(limit(desc.toString(), 120))
+                            .append("\n");
+                    Object location = props != null ? props.get("location") : null;
+                    if (location != null) {
+                        String loc = location.toString().trim();
+                        if (!loc.isEmpty()) {
+                            promptBuilder.append("  · 地点：").append(limit(loc, 60)).append("\n");
+                        }
+                    }
+                    Object participants = props != null ? props.get("participants") : null;
+                    if (participants != null) {
+                        String part = participants.toString().trim();
+                        if (!part.isEmpty()) {
+                            promptBuilder.append("  · 参与者：").append(limit(part, 80)).append("\n");
+                        }
+                    }
+                }
+                promptBuilder.append("\n");
+            }
+            if (graphForeshadows != null && !graphForeshadows.isEmpty()) {
+                promptBuilder.append("【待回收伏笔（图谱）】\n");
+                for (GraphEntity f : graphForeshadows) {
+                    if (f == null) {
+                        continue;
+                    }
+                    java.util.Map<String, Object> props = f.getProperties();
+                    Object desc = props != null ? props.get("description") : null;
+                    if (desc == null) {
+                        continue;
+                    }
+                    promptBuilder.append("- ")
+                            .append(limit(desc.toString(), 120));
+                    Object planted = props != null ? props.get("plantedAt") : null;
+                    if (planted != null) {
+                        promptBuilder.append("（埋于第").append(planted.toString()).append("章）");
+                    }
+                    promptBuilder.append("\n");
+                }
+                promptBuilder.append("\n");
+            }
+            promptBuilder.append("以上图谱摘要仅用于补充提醒哪些事件和伏笔在前文已经发生或尚未回收，你在生成后续章纲时应避免与这些既定事实冲突。\n");
         }
 
         promptBuilder.append("\n# 本次任务的输出范围\n");
-        promptBuilder.append("- 你需要输出一个长度恰好为").append(count).append("的JSON数组，表示从当前进度之后连续的后续章节；\n");
-        promptBuilder.append("- 按数组顺序规划剧情：数组第1个元素对应当前进度之后的第一章，数组第2个对应第二章，以此类推；\n");
-        promptBuilder.append("- 你可以让 chapterInVolume 字段从1顺序编号，系统会按数组下标自动映射到真实的卷内章节号和全局章节号。\n");
+        promptBuilder.append("- 你需要输出一个长度恰好为").append(count).append("的JSON数组，仅包含【卷内第")
+                .append(firstNew).append("章～第").append(lastNew).append("章】的章纲；\n");
+        promptBuilder.append("- 按数组顺序规划剧情：数组第1个元素对应卷内第").append(firstNew)
+                .append("章，数组第2个对应卷内第").append(firstNew + 1)
+                .append("章，以此类推，直到数组第").append(count).append("个元素对应卷内第")
+                .append(lastNew).append("章；\n");
+        promptBuilder.append("- 请在每个元素的 chapterInVolume 字段中填写对应的真实卷内章节号（例如：当本次从卷内第")
+                .append(firstNew).append("章开始、共生成").append(count)
+                .append("章时，输出的 chapterInVolume 应分别为 ")
+                .append(firstNew).append("、").append(firstNew + 1).append("、...、").append(lastNew).append("）。\n");
 
         String prompt = promptBuilder.toString();
 
@@ -565,10 +726,9 @@ public class VolumeChapterOutlineService {
                                List<NovelForeshadowing> unresolved, int count) {
         StringBuilder sb = new StringBuilder();
 
-        sb.append("# 角色\n")
-          .append("你是一名长期观察各类畅销作品数据的网文总策划兼金牌编辑。你不预设具体题材，也不套用单一类型的固定公式，只根据【全书大纲】和【本卷蓝图】来判断何时该提速、何时该蓄势。\n");
-        sb.append("你的任务是：为当前这一卷一次性规划出").append(count)
-          .append("个章节的【章纲】。章纲只负责说明每章要发生什么、为什么重要，以及大致情绪走向，不负责具体场景、对话或文风设计，这些交给后续写作AI自由发挥。\n\n");
+        sb.append("# 任务\n")
+          .append("为本卷规划").append(count).append("章章纲。每章必须有明确的爽点/冲突/钩子，节奏紧凑一环扣一环，让读者停不下来。\n")
+          .append("章纲只负责【发生什么+为什么爽+如何承接】，不写具体对话或场景描写。\n\n");
 
         sb.append("# 小说信息\n")
           .append("- 标题：").append(s(novel.getTitle())).append("\n")
@@ -612,42 +772,22 @@ public class VolumeChapterOutlineService {
         }
         sb.append("\n");
 
-        sb.append("# 剧情评估与校正原则\n")
-          .append("- 先评估本卷蓝图与全书大纲中每个重大节点的因果链，若发现夸张、跳跃或缺少动机与铺垫的片段，应主动设计补偿性的铺垫、过渡或代价，确保剧情可信。\n")
-          .append("- 当输入内容存在明显的不合理指令（例如角色突然拥有未曾交代的力量、无因转折等），不要照抄；请在章纲里通过补充证据、延迟兑现或改写动机的方式让其变得合理，再继续推进。\n")
-          .append("- 若蓝图把大块剧情匆匆带过，但卷的目标章节数仍较多，你需要拆解这些大块剧情为多个章纲：前期铺垫、中段拉扯、后段兑现，避免“一章解决一卷冲突”。\n")
-          .append("- 反之，如蓝图细碎但总章节数有限，则可以合并或并行推进支线，但仍需保持“触发→行动→后果”的因果闭环。\n")
-          .append("- 始终保证人物的抉择是推进剧情的原因，而不是被动等待命运安排；必要时给出他们做出选择的心理或外部压力来源。\n\n");
+        sb.append("# 核心原则（必须遵守）\n")
+          .append("1. **爽点密度**：每章至少1个爽点（打脸/逆袭/获得/碾压）或痛点（损失/危机/被压制），不能是纯过场章。\n")
+          .append("2. **紧凑节奏**：同一冲突不要一次解决，用\"解决一半+暴露新问题\"的方式一环扣一环，让读者必须看下去。\n")
+          .append("3. **章末钩子**：每章结尾必须留悬念（未解决的危机/必须做的选择/突然出现的威胁），不能平淡收尾。\n")
+          .append("4. **逻辑自洽**：人物行动基于已知信息，能力前后一致，对手不降智，因果链完整（触发→行动→结果→后果）。\n")
+          .append("5. **人物驱动**：事件由人物欲望/恐惧/立场推动，不是巧合或上帝视角安排。\n")
+          .append("6. **开篇吸引**：前3章必须快速切入冲突，让主角面临不可逆的选择和代价，不能慢热铺垫。\n\n");
 
-        sb.append("# 章纲生成目标\n")
-          .append("- 数量：恰好").append(count).append("章（不可多也不可少）。\n")
-          .append("- 黄金三章：本卷最前面的若干章（至少前三个章纲）必须承担“拉读者入坑”的职责：从打破平静或打破惯性的位置切入，而不是平铺日常介绍；让主角在早期就面对清晰的欲望或目标，并被迫做出难以轻易撤回的选择；这些选择要带来实际代价或风险（例如失去某种资源、关系矛盾被抬高、局势明显恶化等）；每一章结尾都要留下尚未解决的问题、危险或情绪张力，形成继续阅读的动力。在不破坏全书大方向的前提下，黄金三章可以适度偏离原始规划，以换取更强的吸引力，后续章节再逐步校正走向。\n")
-          .append("- 节奏波浪：整卷必须存在明显的起伏，而不是匀速推进。要有高压推进的章节，也要有短暂缓冲或蓄势的章节，还要有阶段性的翻盘/崩盘节点；同一条主线可以经历多轮起落，而不是一次性解决。在每章的 direction 和 keyPlotPoints 中，用自然语言体现这一章大致处于“加压推进”“短暂缓和”还是“阶段翻盘/崩塌”，但不要输出专门的标签或编号。若发现整卷被蓝图草率概述，应主动拆分节奏层次，防止“快速略写”导致内容空心。\n")
-          .append("- 人物与动机：每一章的关键事件尽量由人物的欲望、恐惧或立场推动，而不是纯粹的外部巧合。章纲里要点出人物在本章“想要什么/害怕什么”，以便后续写作时围绕人物驱动剧情。\n")
-          .append("- 反直线发展：在不牺牲逻辑自洽的前提下，优先考虑比“最直接解法”略微出乎意料的推进方式，如绕行、延迟、误判后反噬等，但不要为了“反转而反转”。\n")
-          .append("- 适配任意题材：不要假定具体世界观或题材，只基于输入的大纲和蓝图来判断冲突强度与节奏位置，使设计对任何题材都成立。\n")
-          .append("- 世界与知识边界：不得让角色掌握其不应知道的信息，不得临时创造改变世界规则走向的关键设定。存在不确定性时，更倾向于通过PLANT/DEEPEN埋伏笔或加深，而不是直接RESOLVE完全解释。\n")
-          .append("- 伏笔管理：允许PLANT(埋)、REFERENCE(提及/提醒)、DEEPEN(加深/升级)、RESOLVE(回收)四类动作。若本卷已存在大量未回收伏笔，应收敛新增PLANT，多用REFERENCE/DEEPEN；只有当剧情节点成熟、证据和铺垫充足时才考虑RESOLVE。\n")
-          .append("  - 新埋长期伏笔时，请在 foreshadowDetail 中给出大致回收窗口（如最早/最晚大致卷或章节区间），避免在一卷内全部解决。\n")
-          .append("- 角色命名规则：若在【小说信息】【全书大纲】【本卷信息】中已经出现了明确的人名（主角、重要配角等），本卷章纲中继续使用这些姓名，不得为同一角色改名或另起新名；对于仅以关系/身份存在而未命名的角色（如“继母”“父亲”等），章纲中只使用这类称谓指代，不要新起具体姓名。\n\n");
-
-        sb.append("# 逻辑自洽（章内）\n")
-          .append("- 因果闭环：本章关键事件需具备“触发→行动→结果→后果”的链条，避免无因果跳跃或凭空获得关键资源。\n")
-          .append("- 知识边界：角色只能基于其已知或合理可获得的信息行动，必要时在章纲中简要说明信息来源，不使用上帝视角。\n")
-          .append("- 能力边界：人物能力与限制前后一致；如需突破，章纲中要体现相应的铺垫或代价（例如资源消耗、负面后果等）。\n")
-          .append("- 对手不降智：对立方的策略与其资源、性格和信息边界相匹配，避免为了推动剧情而做明显不合逻辑的决定。\n")
-          .append("- 时间承接：注意承接上一卷/上一章的状态，如有较大跳变，需在章纲中用一句话说明发生了什么过渡。\n")
-          .append("- 剧情不平淡：每章至少应在目标推进、冲突升级、重要发现或付出代价四者之一上有实质进展，避免纯过场或流水账。\n\n");
-
-        sb.append("# 节奏提示\n")
-          .append("- 避免“一碰就赢”或“一味挨打”的直线节奏，多考虑拉锯、反复试探和阶段性停顿，让读者能感到波动而不是匀速。\n")
-          .append("- 如需设置某章为节奏缓和段，章纲里仍应保留至少一个信息点、情绪转折点或人物关系变化点，避免成为完全可删章节。\n")
-          .append("- 章末尽量安排情绪或信息上的“未完待续”（未解决的问题、悬而未决的选择、隐隐加重的危机等），增强续读意愿。\n\n")
-          .append("# 爽感与钩子强化\n")
-          .append("- 每一章至少设计一个清晰的“爽点”（逆袭、扳回局面、打脸、获得关键资源等）或“痛点”（重大损失、反噬、被狠狠压制），并通过后续章节的补偿或反转形成波动，让读者始终觉得有东西在输赢；\n")
-          .append("- 同一冲突不要一次性解决干净，优先采用“部分兑现+新的更大问题暴露”的方式，让剧情一环扣一环，而不是简单结束；\n")
-          .append("- 尽量让人物的选择带来不可逆或代价巨大的后果，让读者在每个关键节点都本能地想：接下来会怎样？他们真的扛得住吗？\n")
-          .append("- 章末的钩子要具体而可感知，例如：一个尚未拆解的阴谋、一个必须做出的艰难决定、一个刚刚出现且来历成谜的威胁，而不是抽象的“故事还在继续”。\n\n");
+        sb.append("# 节奏设计\n")
+          .append("- 总数：恰好").append(count).append("章。\n")
+          .append("- 起伏波动：高压推进章、短暂缓冲章、翻盘/崩塌章交替出现，避免匀速。冲突分多轮起落，不一次性解决。\n")
+          .append("- 蓄力爆发：蓝图内容如果过于概括，主动拆分为铺垫→拉扯→兑现，防止空洞。\n\n")
+          .append("# 伏笔管理\n")
+          .append("- 动作类型：PLANT(埋新)、REFERENCE(提醒)、DEEPEN(加深)、RESOLVE(回收)。\n")
+          .append("- 控制密度：已有大量未回收伏笔时，少用PLANT，多用REFERENCE/DEEPEN；只在铺垫充足时才RESOLVE。\n")
+          .append("- 回收窗口：新埋长期伏笔时，在foreshadowDetail中注明大致回收区间，避免一卷内全解决。\n\n");
 
         sb.append("# 输出格式（严格JSON数组，不含任何多余文本）\n")
           .append("数组长度必须为").append(count).append("。每个元素是一个对象，字段如下：\n")

@@ -265,7 +265,20 @@ public class StructuredMessageBuilder {
         String wordCountLimit = buildWordCountLimitSimple(novel);
         messages.add(createMessage("system", wordCountLimit));
 
-
+        // 作者本次特别构思 / 用户调整指令（放在最底部）
+        if (context != null && StringUtils.isNotBlank(context.getUserAdjustment())) {
+            String userAdj = context.getUserAdjustment().trim();
+            // 如果是"开始"，跳过不添加
+            if (!"开始".equals(userAdj)) {
+                StringBuilder ua = new StringBuilder();
+                ua.append("【作者本次特别构思 / 临时要求】\n");
+                ua.append(context.getUserAdjustment()).append("\n\n");
+                messages.add(createMessage("system", ua.toString()));
+                logger.info("已添加用户调整指令（放在最底部）");
+            } else {
+                logger.info("用户调整指令为'开始'，跳过不添加");
+            }
+        }
 
         logger.info("意图驱动写作消息构建完成: 共{}条消息", messages.size());
 

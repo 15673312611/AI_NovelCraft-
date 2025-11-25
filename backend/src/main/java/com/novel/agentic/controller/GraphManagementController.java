@@ -100,6 +100,56 @@ public class GraphManagementController {
         }
     }
 
+    /**
+     * 删除一个角色的最新状态记录
+     */
+    @DeleteMapping("/character-state")
+    public Map<String, Object> deleteCharacterState(
+            @RequestParam("novelId") Long novelId,
+            @RequestParam("characterName") String characterName) {
+        if (graphService == null) {
+            return CollectionUtils.mapOf("status", "error", "message", "图谱服务未启用");
+        }
+        try {
+            graphService.deleteCharacterState(novelId, characterName);
+            return CollectionUtils.mapOf("status", "success", "message", "角色状态已删除");
+        } catch (Exception e) {
+            logger.error("删除角色状态失败: novelId={}, characterName={}", novelId, characterName, e);
+            return CollectionUtils.mapOf("status", "error", "message", e.getMessage());
+        }
+    }
+
+    /**
+     * 更新角色状态（位置 / 境界 / 存活状态）
+     */
+    @PutMapping("/character-state")
+    public Map<String, Object> updateCharacterState(@RequestBody Map<String, Object> request) {
+        if (graphService == null) {
+            return CollectionUtils.mapOf("status", "error", "message", "图谱服务未启用");
+        }
+        try {
+            Long novelId = ((Number) request.get("novelId")).longValue();
+            String characterName = (String) request.get("name");
+            String location = (String) request.get("location");
+            String realm = (String) request.get("realm");
+
+            Boolean alive = null;
+            Object aliveObj = request.get("alive");
+            if (aliveObj instanceof Boolean) {
+                alive = (Boolean) aliveObj;
+            }
+
+            Number chapterNum = request.get("chapter") instanceof Number ? (Number) request.get("chapter") : null;
+            Integer chapterNumber = chapterNum != null ? chapterNum.intValue() : 0;
+
+            graphService.upsertCharacterState(novelId, characterName, location, realm, alive, chapterNumber);
+            return CollectionUtils.mapOf("status", "success", "message", "角色状态已更新");
+        } catch (Exception e) {
+            logger.error("更新角色状态失败", e);
+            return CollectionUtils.mapOf("status", "error", "message", e.getMessage());
+        }
+    }
+
     private AIConfigRequest extractAIConfig(Map<String, Object> request) {
         if (request == null) {
             return null;
@@ -252,7 +302,105 @@ public class GraphManagementController {
             return CollectionUtils.mapOf("status", "error", "message", e.getMessage());
         }
     }
+
+    /**
+     * 删除一条关系状态（CharacterState之间的摘要关系）
+     */
+    @DeleteMapping("/relationship-state")
+    public Map<String, Object> deleteRelationshipState(
+            @RequestParam("novelId") Long novelId,
+            @RequestParam("a") String characterA,
+            @RequestParam("b") String characterB) {
+        if (graphService == null) {
+            return CollectionUtils.mapOf("status", "error", "message", "图谱服务未启用");
+        }
+        try {
+            graphService.deleteRelationshipState(novelId, characterA, characterB);
+            return CollectionUtils.mapOf("status", "success", "message", "关系已删除");
+        } catch (Exception e) {
+            logger.error("删除关系状态失败: novelId={}, a={}, b={}", novelId, characterA, characterB, e);
+            return CollectionUtils.mapOf("status", "error", "message", e.getMessage());
+        }
+    }
+
+    /**
+     * 更新关系状态（关系类型 / 强度）
+     */
+    @PutMapping("/relationship-state")
+    public Map<String, Object> updateRelationshipState(@RequestBody Map<String, Object> request) {
+        if (graphService == null) {
+            return CollectionUtils.mapOf("status", "error", "message", "图谱服务未启用");
+        }
+        try {
+            Long novelId = ((Number) request.get("novelId")).longValue();
+            String characterA = (String) request.get("a");
+            String characterB = (String) request.get("b");
+            String type = (String) request.get("type");
+
+            Number strengthNum = request.get("strength") instanceof Number ? (Number) request.get("strength") : null;
+            Double strength = strengthNum != null ? strengthNum.doubleValue() : null;
+
+            Number chapterNum = request.get("chapter") instanceof Number ? (Number) request.get("chapter") : null;
+            Integer chapterNumber = chapterNum != null ? chapterNum.intValue() : 0;
+
+            graphService.upsertRelationshipState(novelId, characterA, characterB, type, strength, chapterNumber);
+            return CollectionUtils.mapOf("status", "success", "message", "关系已更新");
+        } catch (Exception e) {
+            logger.error("更新关系状态失败", e);
+            return CollectionUtils.mapOf("status", "error", "message", e.getMessage());
+        }
+    }
     
+    /**
+     * 删除一个开放任务
+     */
+    @DeleteMapping("/open-quest")
+    public Map<String, Object> deleteOpenQuest(
+            @RequestParam("novelId") Long novelId,
+            @RequestParam("id") String questId) {
+        if (graphService == null) {
+            return CollectionUtils.mapOf("status", "error", "message", "图谱服务未启用");
+        }
+        try {
+            graphService.deleteOpenQuest(novelId, questId);
+            return CollectionUtils.mapOf("status", "success", "message", "任务已删除");
+        } catch (Exception e) {
+            logger.error("删除任务失败: novelId={}, questId={}", novelId, questId, e);
+            return CollectionUtils.mapOf("status", "error", "message", e.getMessage());
+        }
+    }
+
+    /**
+     * 更新开放任务（描述 / 状态 / 截止章节）
+     */
+    @PutMapping("/open-quest")
+    public Map<String, Object> updateOpenQuest(@RequestBody Map<String, Object> request) {
+        if (graphService == null) {
+            return CollectionUtils.mapOf("status", "error", "message", "图谱服务未启用");
+        }
+        try {
+            Long novelId = ((Number) request.get("novelId")).longValue();
+            String questId = (String) request.get("id");
+            String description = (String) request.get("description");
+            String status = (String) request.get("status");
+
+            Number introducedNum = request.get("introduced") instanceof Number ? (Number) request.get("introduced") : null;
+            Integer introducedChapter = introducedNum != null ? introducedNum.intValue() : null;
+
+            Number dueNum = request.get("due") instanceof Number ? (Number) request.get("due") : null;
+            Integer dueByChapter = dueNum != null ? dueNum.intValue() : null;
+
+            Number lastNum = request.get("lastUpdated") instanceof Number ? (Number) request.get("lastUpdated") : null;
+            Integer lastUpdatedChapter = lastNum != null ? lastNum.intValue() : null;
+
+            graphService.upsertOpenQuest(novelId, questId, description, status, introducedChapter, dueByChapter, lastUpdatedChapter);
+            return CollectionUtils.mapOf("status", "success", "message", "任务已更新");
+        } catch (Exception e) {
+            logger.error("更新任务失败", e);
+            return CollectionUtils.mapOf("status", "error", "message", e.getMessage());
+        }
+    }
+
     /**
      * 重新生成指定章节范围的概要和图谱数据
      * @param request {novelId, startChapter, endChapter, aiConfig}
@@ -416,18 +564,7 @@ public class GraphManagementController {
                 return CollectionUtils.mapOf("error", "AI配置无效");
             }
 
-            // 1. 先清空当前小说的图谱数据（不动章节和概要）
-            if (graphService != null) {
-                graphService.clearGraph(novelId);
-                logger.info("✅ 已清空小说 {} 的图谱数据（只重建图谱模式）", novelId);
-            } else if (graphInitService != null) {
-                graphInitService.clearGraph(novelId);
-                logger.info("✅ 已清空小说 {} 的图谱数据（内存模式，只重建图谱）", novelId);
-            } else {
-                return CollectionUtils.mapOf("error", "图谱服务未启用");
-            }
-
-            // 2. 按章节范围重建图谱：核心状态 + 结构化实体
+            // 1. 计算需要重建的章节范围
             List<Chapter> chapters;
             if (endChapter != null) {
                 chapters = chapterRepository.findByNovelIdAndChapterNumberBetween(novelId, startChapter, endChapter);
@@ -444,6 +581,50 @@ public class GraphManagementController {
 
             logger.info("🔄 开始重新生成图谱: novelId={}, 章节范围={}-{}, 共{}章",
                 novelId, startChapter, endChapter, chapters.size());
+
+            // 2. 强制清理传入章节范围的所有图谱数据（不做历史章节保护判断）
+            if (graphService != null) {
+                try {
+                    logger.info("🗑️ 强制清理小说{} 第{}-{}章的所有图谱节点...", novelId, startChapter, endChapter != null ? endChapter : "最后");
+                    
+                    // 获取需要清理的章节号列表
+                    java.util.List<Integer> chapterNumbersToDelete = chapters.stream()
+                        .filter(c -> c != null && c.getChapterNumber() != null)
+                        .map(Chapter::getChapterNumber)
+                        .collect(java.util.stream.Collectors.toList());
+                    
+                    if (!chapterNumbersToDelete.isEmpty()) {
+                        // 直接调用底层 Neo4j 强制删除方法
+                        if (graphService instanceof com.novel.agentic.service.graph.Neo4jGraphService) {
+                            com.novel.agentic.service.graph.Neo4jGraphService neo4jService = 
+                                (com.novel.agentic.service.graph.Neo4jGraphService) graphService;
+                            neo4jService.forceDeleteChapterRangeEntities(novelId, chapterNumbersToDelete);
+                            logger.info("✅ 已强制清理小说{} 指定章节范围的图谱数据", novelId);
+                        } else {
+                            // 内存模式退化处理：逐章调用删除
+                            for (Chapter chapter : chapters) {
+                                try {
+                                    Integer chapterNumber = chapter.getChapterNumber();
+                                    if (chapterNumber != null) {
+                                        graphService.deleteChapterEntities(novelId, chapterNumber);
+                                        logger.info("🗑️ 已清理小说{} 第{}章的旧图谱数据", novelId, chapterNumber);
+                                    }
+                                } catch (Exception e) {
+                                    logger.warn("清理第{}章图谱数据时出错（忽略，继续重建）", chapter.getChapterNumber(), e);
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.error("强制清理图谱数据失败（忽略，继续重建）", e);
+                }
+            } else if (graphInitService != null) {
+                // 退化模式：仍然可以全量清空（兼容旧实现），但这是最后兜底
+                graphInitService.clearGraph(novelId);
+                logger.info("✅ 已清空小说 {} 的图谱数据（内存模式，只重建图谱，无法按章节精细清理）", novelId);
+            } else {
+                return CollectionUtils.mapOf("error", "图谱服务未启用");
+            }
 
             int successCount = 0;
             int failCount = 0;

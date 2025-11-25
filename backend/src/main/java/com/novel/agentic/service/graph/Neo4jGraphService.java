@@ -1084,6 +1084,29 @@ public class Neo4jGraphService implements IGraphService {
     }
 
     @Override
+    public void deleteCharacterState(Long novelId, String characterName) {
+        logger.info("🗑️ 删除角色状态: novelId={}, name={}", novelId, characterName);
+        try (Session session = driver.session()) {
+            String cypher =
+                "MATCH (s:CharacterState {novelId: $novelId, characterName: $characterName}) " +
+                "DETACH DELETE s " +
+                "WITH $novelId AS novelId, $characterName AS characterName " +
+                "OPTIONAL MATCH (h:CharacterStateHistory {novelId: novelId, characterName: characterName}) " +
+                "DETACH DELETE h";
+
+            Map<String, Object> params = new HashMap<>();
+            params.put("novelId", novelId);
+            params.put("characterName", characterName);
+
+            session.run(cypher, params);
+            logger.info("✅ 角色状态已删除: {}", characterName);
+        } catch (Exception e) {
+            logger.error("deleteCharacterState失败", e);
+            throw new RuntimeException("删除角色状态失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
     public void upsertRelationshipState(Long novelId, String characterA, String characterB, String type, Double strength, Integer chapterNumber) {
         try (Session session = driver.session()) {
             // 🆕 步骤1：保存当前状态到历史快照（如果存在）
@@ -1127,6 +1150,31 @@ public class Neo4jGraphService implements IGraphService {
             logger.info("🤝 upsertRelationshipState: {}—{} type={} strength={}", characterA, characterB, type, strength);
         } catch (Exception e) {
             logger.error("upsertRelationshipState失败", e);
+        }
+    }
+
+    @Override
+    public void deleteRelationshipState(Long novelId, String characterA, String characterB) {
+        logger.info("🗑️ 删除关系状态: novelId={}, a={}, b={}", novelId, characterA, characterB);
+        try (Session session = driver.session()) {
+            String cypher =
+                "WITH CASE WHEN $a < $b THEN $a ELSE $b END AS a, CASE WHEN $a < $b THEN $b ELSE $a END AS b " +
+                "OPTIONAL MATCH (r:RelationshipState {novelId: $novelId, a: a, b: b}) " +
+                "DETACH DELETE r " +
+                "WITH a, b " +
+                "OPTIONAL MATCH (h:RelationshipStateHistory {novelId: $novelId, a: a, b: b}) " +
+                "DETACH DELETE h";
+
+            Map<String, Object> params = new HashMap<>();
+            params.put("novelId", novelId);
+            params.put("a", characterA);
+            params.put("b", characterB);
+
+            session.run(cypher, params);
+            logger.info("✅ 关系状态已删除: {}—{}", characterA, characterB);
+        } catch (Exception e) {
+            logger.error("deleteRelationshipState失败", e);
+            throw new RuntimeException("删除关系状态失败: " + e.getMessage(), e);
         }
     }
 
@@ -1203,6 +1251,29 @@ public class Neo4jGraphService implements IGraphService {
             logger.info("✅ resolveOpenQuest: {}@{}", questId, resolvedChapter);
         } catch (Exception e) {
             logger.error("resolveOpenQuest失败", e);
+        }
+    }
+
+    @Override
+    public void deleteOpenQuest(Long novelId, String questId) {
+        logger.info("🗑️ 删除OpenQuest: novelId={}, id={}", novelId, questId);
+        try (Session session = driver.session()) {
+            String cypher =
+                "MATCH (q:OpenQuest {novelId: $novelId, id: $id}) " +
+                "DETACH DELETE q " +
+                "WITH $novelId AS novelId, $id AS questId " +
+                "OPTIONAL MATCH (h:OpenQuestHistory {novelId: novelId, questId: questId}) " +
+                "DETACH DELETE h";
+
+            Map<String, Object> params = new HashMap<>();
+            params.put("novelId", novelId);
+            params.put("id", questId);
+
+            session.run(cypher, params);
+            logger.info("✅ OpenQuest已删除: {}", questId);
+        } catch (Exception e) {
+            logger.error("deleteOpenQuest失败", e);
+            throw new RuntimeException("删除OpenQuest失败: " + e.getMessage(), e);
         }
     }
 
@@ -1730,6 +1801,123 @@ public class Neo4jGraphService implements IGraphService {
     }
     
     /**
+     * 强制删除指定章节范围的所有图谱数据（用于 regenerate-graph 接口）
+     * 不做历史章节保护判断，直接删除传入章节号对应的所有节点
+     * 
+     * @param novelId 小说ID
+     * @param chapterNumbers 要删除的章节号列表
+     */
+    public void forceDeleteChapterRangeEntities(Long novelId, java.util.List<Integer> chapterNumbers) {
+        if (novelId == null || chapterNumbers == null || chapterNumbers.isEmpty()) {
+            logger.warn("⚠️ forceDeleteChapterRangeEntities: 参数为空，跳过删除");
+            return;
+        }
+        
+        logger.info("🗑️ 强制删除小说{} 章节{} 的所有图谱节点", novelId, chapterNumbers);
+        
+        try (Session session = driver.session()) {
+            int totalDeleted = 0;
+            
+            // 1. 删除 CharacterState（lastUpdatedChapter 在指定范围内的）
+            String deleteCharStateQuery = 
+                "MATCH (s:CharacterState {novelId: $novelId}) " +
+                "WHERE s.lastUpdatedChapter IN $chapterNumbers " +
+                "DETACH DELETE s";
+            Result charStateResult = session.run(deleteCharStateQuery, 
+                Map.of("novelId", novelId, "chapterNumbers", chapterNumbers));
+            int deletedCharStates = charStateResult.consume().counters().nodesDeleted();
+            totalDeleted += deletedCharStates;
+            if (deletedCharStates > 0) {
+                logger.info("  🗑️ 删除了 {} 个 CharacterState 节点", deletedCharStates);
+            }
+            
+            // 2. 删除 RelationshipState（lastUpdatedChapter 在指定范围内的）
+            String deleteRelStateQuery = 
+                "MATCH (r:RelationshipState {novelId: $novelId}) " +
+                "WHERE r.lastUpdatedChapter IN $chapterNumbers " +
+                "DETACH DELETE r";
+            Result relStateResult = session.run(deleteRelStateQuery, 
+                Map.of("novelId", novelId, "chapterNumbers", chapterNumbers));
+            int deletedRelStates = relStateResult.consume().counters().nodesDeleted();
+            totalDeleted += deletedRelStates;
+            if (deletedRelStates > 0) {
+                logger.info("  🗑️ 删除了 {} 个 RelationshipState 节点", deletedRelStates);
+            }
+            
+            // 3. 删除 OpenQuest（introducedChapter 或 lastUpdatedChapter 在指定范围内的）
+            String deleteQuestQuery = 
+                "MATCH (q:OpenQuest {novelId: $novelId}) " +
+                "WHERE q.introducedChapter IN $chapterNumbers OR q.lastUpdatedChapter IN $chapterNumbers " +
+                "DETACH DELETE q";
+            Result questResult = session.run(deleteQuestQuery, 
+                Map.of("novelId", novelId, "chapterNumbers", chapterNumbers));
+            int deletedQuests = questResult.consume().counters().nodesDeleted();
+            totalDeleted += deletedQuests;
+            if (deletedQuests > 0) {
+                logger.info("  🗑️ 删除了 {} 个 OpenQuest 节点", deletedQuests);
+            }
+            
+            // 4. 删除 Event（chapterNumber 在指定范围内的）
+            String deleteEventQuery = 
+                "MATCH (e:Event {novelId: $novelId}) " +
+                "WHERE e.chapterNumber IN $chapterNumbers " +
+                "DETACH DELETE e";
+            Result eventResult = session.run(deleteEventQuery, 
+                Map.of("novelId", novelId, "chapterNumbers", chapterNumbers));
+            int deletedEvents = eventResult.consume().counters().nodesDeleted();
+            totalDeleted += deletedEvents;
+            if (deletedEvents > 0) {
+                logger.info("  🗑️ 删除了 {} 个 Event 节点", deletedEvents);
+            }
+            
+            // 5. 删除 Foreshadowing（introducedChapter 或 resolvedChapter 在指定范围内的）
+            String deleteForeshadowQuery = 
+                "MATCH (f:Foreshadowing {novelId: $novelId}) " +
+                "WHERE f.introducedChapter IN $chapterNumbers OR f.resolvedChapter IN $chapterNumbers " +
+                "DETACH DELETE f";
+            Result foreshadowResult = session.run(deleteForeshadowQuery, 
+                Map.of("novelId", novelId, "chapterNumbers", chapterNumbers));
+            int deletedForeshadows = foreshadowResult.consume().counters().nodesDeleted();
+            totalDeleted += deletedForeshadows;
+            if (deletedForeshadows > 0) {
+                logger.info("  🗑️ 删除了 {} 个 Foreshadowing 节点", deletedForeshadows);
+            }
+            
+            // 6. 删除 NarrativeBeat（chapterNumber 在指定范围内的）
+            String deleteBeatQuery = 
+                "MATCH (b:NarrativeBeat {novelId: $novelId}) " +
+                "WHERE b.chapterNumber IN $chapterNumbers " +
+                "DETACH DELETE b";
+            Result beatResult = session.run(deleteBeatQuery, 
+                Map.of("novelId", novelId, "chapterNumbers", chapterNumbers));
+            int deletedBeats = beatResult.consume().counters().nodesDeleted();
+            totalDeleted += deletedBeats;
+            if (deletedBeats > 0) {
+                logger.info("  🗑️ 删除了 {} 个 NarrativeBeat 节点", deletedBeats);
+            }
+            
+            // 7. 删除 ConflictArc 和 CharacterArc（lastUpdatedChapter 在指定范围内的）
+            String deleteArcQuery = 
+                "MATCH (a) " +
+                "WHERE (a:ConflictArc OR a:CharacterArc) AND a.novelId = $novelId AND a.lastUpdatedChapter IN $chapterNumbers " +
+                "DETACH DELETE a";
+            Result arcResult = session.run(deleteArcQuery, 
+                Map.of("novelId", novelId, "chapterNumbers", chapterNumbers));
+            int deletedArcs = arcResult.consume().counters().nodesDeleted();
+            totalDeleted += deletedArcs;
+            if (deletedArcs > 0) {
+                logger.info("  🗑️ 删除了 {} 个 Arc 节点", deletedArcs);
+            }
+            
+            logger.info("✅ 强制删除完成: 共删除 {} 个节点（章节范围：{}）", totalDeleted, chapterNumbers);
+            
+        } catch (Exception e) {
+            logger.error("❌ 强制删除章节图谱数据失败", e);
+            throw new RuntimeException("强制删除章节图谱数据失败: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
      * 检查服务可用性
      */
     @Override
@@ -2051,20 +2239,32 @@ public class Neo4jGraphService implements IGraphService {
             return;
         }
 
-        Object participantsObj = props.get("participants");
+        // 优先使用onSceneParticipants（真正出现在当前场景的角色），否则退回到participants
+        Object participantsObj = props.get("onSceneParticipants");
+        if (participantsObj == null) {
+            participantsObj = props.get("participants");
+        }
         if (participantsObj == null) {
             return;
         }
+
         List<String> participants = new java.util.ArrayList<>();
         if (participantsObj instanceof List) {
             for (Object p : (List<?>) participantsObj) {
-                if (p != null) participants.add(p.toString());
+                if (p != null) {
+                    String t = p.toString().trim();
+                    if (!t.isEmpty()) {
+                        participants.add(t);
+                    }
+                }
             }
         } else if (participantsObj instanceof String) {
             String[] parts = participantsObj.toString().split("[,，、]");
             for (String part : parts) {
                 String t = part.trim();
-                if (!t.isEmpty()) participants.add(t);
+                if (!t.isEmpty()) {
+                    participants.add(t);
+                }
             }
         }
         if (participants.isEmpty()) {

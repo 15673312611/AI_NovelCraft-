@@ -56,6 +56,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .antMatchers("/agentic/**").permitAll() // 词库挖掘接口放开
                 .antMatchers("/volumes/*/modify-blueprint-stream").permitAll() // 修改卷蓝图接口放开（暂时忽略token验证）
                 .antMatchers("/volumes/*/chapter-outlines/generate").permitAll() // 修改卷蓝图接口放开（暂时忽略token验证）
+                .antMatchers("/volumes/*/chapter-outlines/generate-remaining").permitAll() // 修改卷蓝图接口放开（暂时忽略token验证）
                 .anyRequest().authenticated() // 其他请求需要认证
             .and()
             .formLogin().disable()

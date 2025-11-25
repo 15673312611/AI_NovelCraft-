@@ -61,7 +61,7 @@ public class CoreStateExtractor {
             logger.info("   章节内容长度: {} 字", chapterContent != null ? chapterContent.length() : 0);
 
             // 1. 调用AI抽取轻量JSON
-            String extractedJson = callAIForExtraction(chapterContent, chapterTitle, chapterNumber, aiConfig);
+            String extractedJson = callAIForExtraction(novelId, chapterContent, chapterTitle, chapterNumber, aiConfig);
             if (extractedJson == null || extractedJson.trim().isEmpty()) {
                 logger.warn("❌ AI抽取返回空，跳过状态更新");
                 return;
@@ -106,8 +106,8 @@ public class CoreStateExtractor {
     /**
      * 调用AI抽取轻量JSON（主角+Top3配角+任务）
      */
-    private String callAIForExtraction(String content, String title, Integer chapterNumber, AIConfigRequest aiConfig) throws Exception {
-        String prompt = buildExtractionPrompt(content, title, chapterNumber);
+    private String callAIForExtraction(Long novelId, String content, String title, Integer chapterNumber, AIConfigRequest aiConfig) throws Exception {
+        String prompt = buildExtractionPrompt(novelId, content, title, chapterNumber);
 
         List<Map<String, String>> messages = new ArrayList<>();
         messages.add(Map.of("role", "system", "content",
@@ -125,38 +125,138 @@ public class CoreStateExtractor {
     }
     
     /**
-     * 构建抽取提示词（极简、只抽主角+Top3+任务）
+     * 构建抽取提示词（极简、只抽主角+Top3+任务），并注入已有图谱记忆
      */
-    private String buildExtractionPrompt(String content, String title, Integer chapterNumber) {
-        return "从本章抽取核心状态信息，输出严格JSON（无多余文字）：\n\n" +
-            "{\n" +
-            "  \"protagonist\": {\n" +
-            "    \"name\": \"主角名\",\n" +
-            "    \"location\": \"当前所在地（精确到具体地点）\",\n" +
-            "    \"realm\": \"当前境界/实力（如有变化必须标注）\",\n" +
-            "    \"inventory\": [\"关键物品1\", \"关键物品2\"],\n" +
-            "    \"alive\": true\n" +
-            "  },\n" +
-            "  \"keyCharacters\": [\n" +
-            "    {\"name\": \"配角名\", \"location\": \"所在地\", \"relation\": \"与主角关系（敌对/互援/跟踪等）\"}\n" +
-            "  ],\n" +
-            "  \"questProgress\": {\n" +
-            "    \"任务简称\": \"触发线索/推进/受阻/完成\"\n" +
-            "  }\n" +
-            "}\n\n" +
-            "要求：\n" +
-            "- keyCharacters只保留本章出现的Top3重要配角（次要路人不要）\n" +
-            "- inventory只记录\"关键物品\"（武器/宝物/线索物），不记录普通消耗品\n" +
-            "- questProgress只记录\"长期任务\"的推进（如\"收集材料\"\"寻找仇人\"），不记录琐事\n" +
-            "- location必须具体（\"南疆黑市\"而非\"南疆\"；\"瘴海边缘\"而非\"野外\"）\n" +
-            "- 如果本章无关键配角或任务推进，对应字段可为空数组/空对象\n\n" +
-            "---\n" +
-            "章节标题：" + title + "\n" +
-            "章节号：第" + chapterNumber + "章\n" +
-            "章节内容：\n" +
-            content + "\n" +
-            "---\n" +
-            "请输出JSON：";
+    private String buildExtractionPrompt(Long novelId, String content, String title, Integer chapterNumber) {
+        StringBuilder sb = new StringBuilder();
+
+        // 注入已有角色状态与未决任务，帮助AI做“更新”而不是“新建”
+        if (graphService != null && novelId != null) {
+            try {
+                java.util.List<java.util.Map<String, Object>> __charStates = graphService.getCharacterStates(novelId, 200);
+                java.util.List<java.util.Map<String, Object>> __openQuests = graphService.getOpenQuests(novelId, chapterNumber);
+
+                boolean hasChars = __charStates != null && !__charStates.isEmpty();
+                boolean hasQuests = __openQuests != null && !__openQuests.isEmpty();
+
+                if (hasChars || hasQuests) {
+                    sb.append("【已有角色状态与未决任务（用于对照和更新，避免重复创建）】\n");
+
+                    if (hasChars) {
+                        sb.append("人物状态（最近若干章节）：\n");
+                        for (java.util.Map<String, Object> state : __charStates) {
+                            if (state == null) continue;
+                            Object nameObj = state.get("name");
+                            if (nameObj == null) continue;
+                            String name = nameObj.toString().trim();
+                            if (name.isEmpty()) continue;
+
+                            Object loc = state.get("location");
+                            Object realm = state.get("realm");
+                            Object lastChapter = state.get("lastChapter");
+
+                            sb.append("- 角色：").append(name);
+                            if (loc != null && !loc.toString().trim().isEmpty()) {
+                                sb.append(" | 最近位置：").append(loc);
+                            }
+                            if (realm != null && !realm.toString().trim().isEmpty()) {
+                                sb.append(" | 实力/境界：").append(realm);
+                            }
+                            if (lastChapter != null) {
+                                sb.append(" | 最近出现章节：第").append(lastChapter).append("章");
+                            }
+                            sb.append("\n");
+                        }
+                        sb.append("\n");
+                    }
+
+                    if (hasQuests) {
+                        sb.append("未决任务（OpenQuest）：\n");
+                        for (java.util.Map<String, Object> q : __openQuests) {
+                            if (q == null) continue;
+                            Object idObj = q.get("id");
+                            if (idObj == null) continue;
+                            String id = idObj.toString().trim();
+                            if (id.isEmpty()) continue;
+
+                            Object desc = q.get("description");
+                            Object status = q.get("status");
+                            Object introduced = q.get("introduced");
+                            Object due = q.get("due");
+
+                            sb.append("- 任务简称/ID：").append(id);
+                            if (desc != null && !desc.toString().trim().isEmpty()) {
+                                sb.append(" | 简述：").append(desc);
+                            }
+                            if (status != null && !status.toString().trim().isEmpty()) {
+                                sb.append(" | 当前状态：").append(status);
+                            }
+                            if (introduced != null) {
+                                sb.append(" | 引入章节：第").append(introduced).append("章");
+                            }
+                            if (due != null) {
+                                sb.append(" | 计划完成章节：第").append(due).append("章");
+                            }
+                            sb.append("\n");
+                        }
+                        sb.append("\n");
+                    }
+
+                    sb.append("在输出本章的 keyCharacters 和 questProgress 时，请尽量复用上述角色名字和任务简称，\n");
+                    sb.append("对同一角色/任务进行\"更新\"而不是\"新建\"。\n\n");
+                }
+            } catch (Exception e) {
+                logger.warn("构建核心状态抽取上下文失败（忽略）: {}", e.getMessage());
+            }
+        }
+
+        sb.append("从本章抽取核心状态信息，输出严格JSON（无多余文字）：\n\n")
+            .append("{\n")
+            .append("  \"protagonist\": {\n")
+            .append("    \"name\": \"主角名\",\n")
+            .append("    \"location\": \"当前所在地（精确到具体地点）\",\n")
+            .append("    \"realm\": \"当前境界/实力（如有变化必须标注）\",\n")
+            .append("    \"inventory\": [\"关键物品1\", \"关键物品2\"],\n")
+            .append("    \"alive\": true\n")
+            .append("  },\n")
+            .append("  \"keyCharacters\": [\n")
+            .append("    {\"name\": \"配角名\", \"location\": \"所在地\", \"relation\": \"与主角的身份+情感关系（例如：主角继母,敌对 / 同门师兄,表面友好,内心敌对）\"}\n")
+            .append("  ],\n")
+            .append("  \"questProgress\": {\n")
+            .append("    \"任务简称\": \"触发线索/推进/受阻/完成\"\n")
+            .append("  }\n")
+            .append("}\n\n")
+            .append("要求：\n")
+            .append("- keyCharacters筛选原则（严格执行）：\n")
+            .append("  · **必须同时满足**：(1) 本章在场景中真实出现，(2) 有明确的姓名或固定称谓，(3) 是会反复出现或对后续剧情有持续影响的核心角色。\n")
+            .append("  · **一律排除无名龙套**：只在单章出现、没有姓名、只有职业/身份描述的角色（无论台词多少）不要写。\n")
+            .append("  · **判断方法**：问自己这个角色在后续章节是否还会被提及或出现？如果答案是否定或不确定，那就不要写。\n")
+            .append("  · **电话/回忆中的角色**：只在首次出现且明显是重要剧情人物时记录；已在【已有角色状态】中的不要重复写。\n")
+            .append("- keyCharacters[].relation 必须包含身份和情感两部分，用逗号分隔。\n")
+            .append("- **人物身份识别与统一命名（极重要）**：\n")
+            .append("  · 仔细识别文中是否有**同一角色**在不同位置被用不同方式指称（可能是：身份称谓、姓名、代词、昵称、关系描述等）。\n")
+            .append("  · 识别线索包括但不限于：明确说明（'X就是那个Y'）、代词指代、情节连续性、角色间对话的指向等。\n")
+            .append("  · 一旦确认是同一人物，必须在本JSON的所有字段中**统一使用同一个标准名称**。\n")
+            .append("  · **标准名称选择优先级**：姓名全称 > 单姓/单名 > 身份称谓 > 代词/昵称。即：如果文中揭示了该角色的姓名，就统一用姓名；如果只有身份称谓，就用身份称谓；总是选择信息量最大、最明确的那个名字。\n")
+            .append("  · 优先复用上文【已有角色状态】中已经存在的标准名字，避免为同一角色创建不同名称的多个条目。\n")
+            .append("- inventory只记录\\\"关键物品\\\"（武器/宝物/线索物），不记录普通消耗品\n")
+            .append("- questProgress识别与记录原则：\n")
+            .append("  · **什么是任务**：会影响多章的主角目标、困境、待解决的冲突、外部施加的压力或威胁。包括但不限于：主动追求的目标、被迫应对的麻烦、尚未解开的谜团、持续存在的敌对关系等。\n")
+            .append("  · **记录标准**：只要这个问题/目标在本章被提及或推进，且不是当章就解决的一次性小事，就应该记录。\n")
+            .append("  · **key命名**：用简短稳定的动宾短语或名词短语概括任务核心，不要带 Q- 或 Q_ 前缀（系统会自动加）；后续章节继续推进同一任务时必须复用完全相同的key。\n")
+            .append("  · **progress描述**：简要说明本章该任务的状态变化（触发、推进、受阻、完成等），如果本章明确完成则必须写\\\"完成\\\"或\\\"解决\\\"。\n")
+            .append("  · **去重**：同一任务在本章只输出一次，不要因为多次提及而创建多个条目；上文【已有未决任务】中存在的任务，本章有推进时才写，没推进就不写。\n")
+            .append("- location必须具体（\\\"南疆黑市\\\"而非\\\"南疆\\\"；\\\"瘴海边缘\\\"而非\\\"野外\\\"）\n")
+            .append("- 如果本章无关键配角或任务推进，对应字段可为空数组/空对象\n\n")
+            .append("---\n")
+            .append("章节标题：").append(title).append("\n")
+            .append("章节号：第").append(chapterNumber).append("章\n")
+            .append("章节内容：\n")
+            .append(content).append("\n")
+            .append("---\n")
+            .append("请输出JSON：");
+
+        return sb.toString();
     }
     
     /**
@@ -348,8 +448,25 @@ public class CoreStateExtractor {
                 continue;
             }
 
-            // 生成questId（简化：用questName作为ID）
-            String questId = "Q-" + questName.replaceAll("[\\s\\-]+", "_");
+            // 生成稳定的questId：
+            // 1）去掉AI可能带上的前缀（如 "Q-" "Q_"）
+            // 2）去掉开头的空格/下划线/短横线
+            // 3）将中间的空格和短横线统一为下划线
+            String normalizedName = questName;
+            if (normalizedName != null) {
+                normalizedName = normalizedName.trim();
+                // 去掉前缀 Q- / Q_（多次叠加时循环去掉）
+                while (normalizedName.startsWith("Q-") || normalizedName.startsWith("Q_")
+                    || normalizedName.startsWith("q-") || normalizedName.startsWith("q_")) {
+                    normalizedName = normalizedName.substring(2).trim();
+                }
+                // 去掉开头多余的分隔符
+                normalizedName = normalizedName.replaceFirst("^[\\s_\\-]+", "");
+            } else {
+                normalizedName = "";
+            }
+
+            String questId = "Q-" + normalizedName.replaceAll("[\\s\\-]+", "_");
 
             logger.info("📝 准备更新任务: questId={}, questName={}, progress={}", questId, questName, progress);
 
@@ -364,7 +481,7 @@ public class CoreStateExtractor {
                 int dueWindow = progress.contains("受阻") ? 10 : 5;
                 logger.info("📝 任务{}标记为进行中，due窗口={}章，调用upsertOpenQuest", questId, dueWindow);
                 graphService.upsertOpenQuest(
-                    novelId, questId, questName, status,
+                    novelId, questId, normalizedName, status,
                     chapterNumber, chapterNumber + dueWindow, chapterNumber
                 );
             }

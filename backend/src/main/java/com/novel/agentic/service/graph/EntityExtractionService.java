@@ -2,6 +2,7 @@ package com.novel.agentic.service.graph;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.novel.agentic.model.GraphEntity;
+import com.novel.domain.entity.Chapter;
 import com.novel.dto.AIConfigRequest;
 import com.novel.service.AIWritingService;
 import org.slf4j.Logger;
@@ -10,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 实体抽取服务
@@ -31,6 +33,8 @@ public class EntityExtractionService {
     
     @Autowired
     private ObjectMapper objectMapper;
+
+    private static final int MAX_CHAPTER_SNIPPET = 5000;
     
     /**
      * 从章节内容中抽取实体并入图
@@ -94,6 +98,93 @@ public class EntityExtractionService {
             logger.error("❌ 实体抽取失败: chapter={}", chapterNumber, e);
         }
     }
+
+    /**
+     * 批量抽取实体：将多章正文一次性送入AI，返回成功处理的章节号
+     */
+    public List<Integer> extractAndSaveBatch(Long novelId, List<Chapter> chapters, AIConfigRequest aiConfig) {
+        if (chapters == null || chapters.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        if (aiConfig == null || !aiConfig.isValid()) {
+            throw new IllegalArgumentException("实体抽取AI配置无效，请检查设置");
+        }
+
+        if (graphService == null) {
+            throw new IllegalStateException("图谱服务未启用，无法保存批量抽取结果");
+        }
+
+        try {
+            List<Chapter> orderedChapters = chapters.stream()
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparingInt(Chapter::getChapterNumber))
+                .collect(Collectors.toList());
+
+            if (orderedChapters.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            String prompt = buildBatchExtractionPrompt(novelId, orderedChapters);
+            String aiResponse = callAIForExtraction(prompt, aiConfig);
+
+            Map<String, Object> parsed = parseExtractedEntities(aiResponse);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> chapterPayloads = (List<Map<String, Object>>) parsed.getOrDefault("chapters", Collections.emptyList());
+
+            Map<Integer, Map<String, Object>> extractedByChapter = new HashMap<>();
+            for (Map<String, Object> payload : chapterPayloads) {
+                if (payload == null) {
+                    continue;
+                }
+                Object chapterNumberObj = payload.get("chapterNumber");
+                Integer chapterNumber = chapterNumberObj instanceof Number
+                        ? ((Number) chapterNumberObj).intValue()
+                        : parseChapterNumberFromString(chapterNumberObj);
+                if (chapterNumber == null) {
+                    continue;
+                }
+                extractedByChapter.put(chapterNumber, payload);
+            }
+
+            List<Integer> processed = new ArrayList<>();
+            for (Chapter chapter : orderedChapters) {
+                Integer chapterNumber = chapter.getChapterNumber();
+                if (chapterNumber == null) {
+                    continue;
+                }
+                Map<String, Object> payload = extractedByChapter.get(chapterNumber);
+                if (payload == null) {
+                    logger.warn("⚠️ 批量抽取结果缺少第{}章数据", chapterNumber);
+                    continue;
+                }
+
+                List<GraphEntity> entities = convertToGraphEntities(payload, novelId, chapterNumber);
+                graphService.addEntities(novelId, entities);
+
+                if (payload.containsKey("causalRelations")) {
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> causalRelations = (List<Map<String, Object>>) payload.get("causalRelations");
+                    addCausalRelations(novelId, causalRelations);
+                }
+
+                if (payload.containsKey("characterRelations")) {
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> characterRelations = (List<Map<String, Object>>) payload.get("characterRelations");
+                    addCharacterRelations(novelId, characterRelations);
+                }
+
+                logger.info("🎉 批量实体抽取完成: novelId={}, chapter={}, count={}", novelId, chapterNumber, entities.size());
+                processed.add(chapterNumber);
+            }
+
+            return processed;
+
+        } catch (Exception e) {
+            logger.error("❌ 批量实体抽取失败", e);
+            throw new RuntimeException("批量实体抽取失败", e);
+        }
+    }
     
     /**
      * 构建抽取提示词
@@ -120,6 +211,8 @@ public class EntityExtractionService {
             "      \"description\": \"事件详细描述\",\n" +
             "      \"location\": \"事件发生地点\",\n" +
             "      \"participants\": [\"角色A\", \"角色B\"],\n" +
+            "      \"onSceneParticipants\": [\"真正出现在当前场景的角色（不包括电话那头、回忆里、只被提到的人）\"],\n" +
+            "      \"mentionedOnlyParticipants\": [\"在对话/电话/回忆中被提到，但不在当前场景的角色\"],\n" +
             "      \"emotionalTone\": \"positive/negative/neutral/tense\",\n" +
             "      \"tags\": [\"战斗\", \"对话\", \"决策\"],\n" +
             "      \"importance\": 0.8\n" +
@@ -247,24 +340,209 @@ public class EntityExtractionService {
             "4. worldRules只抽取新引入的设定规则\n" +
             "5. importance范围0-1，越重要值越大\n" +
             "6. causalRelations抽取事件间的因果关系（如某事件导致另一事件）\n" +
-            "7. characterRelations抽取角色间关系的变化（如产生矛盾、建立友谊等），至少包含主角与关键角色之间的重要关系变动。\n" +
+            "7. **characterRelations抽取角色关系网络（极重要）**：\n" +
+            "   - 提取本章中**所有重要角色之间的关系**，不只是关系发生变化的，已有的稳定关系也要记录。\n" +
+            "   - 包括：主角与配角、配角与配角之间的关系（如敌对派系的首领之间、盟友之间、师徒关系等）。\n" +
+            "   - type类型：CONFLICT(冲突/敌对)、COOPERATION(合作/盟友)、ROMANCE(恋爱/亲密)、MENTORSHIP(师徒/指导)、RIVALRY(竞争)、FAMILY(亲属)、SUBORDINATE(上下级)等。\n" +
+            "   - strength范围0-1：0.9-1.0=生死仇敌或至亲，0.7-0.9=重要关系，0.5-0.7=一般关系，0.3-0.5=弱关系。\n" +
+            "   - 只记录对剧情有影响的角色关系，路人与路人之间的关系不要写。\n" +
             "8.  **characters提取规则（严格执行）**：\n" +
             "   -  必须是具名角色（有明确的姓名，如：林晨、张伟、李教授）\n" +
             "   -  必须是有台词、有动作、有性格描写的独立角色\n" +
             "   -  预计后续章节会再次出现的重要角色\n" +
             "   -  不要提取：一次性龙套角色（只有一句台词或只是背景板）\n" +
             "   - 示例对比：正确提取[林晨、苏婉] 错误提取[记者、群众]\n" +
+            "   - 对同一角色在不同表述中的称呼（如“继母”“苏苏的继母”“后妈”），在输出时必须统一为一个标准名称（例如统一写成“继母”）。\n" +
+            "   - 所有涉及角色名的字段（events[].participants、events[].onSceneParticipants、characterRelations[].from/to、stateChanges.characters[].name、characters数组）都要使用这个标准名称；如需保留别称，可以在characters数组里增加aliases字段记录别名。\n" +
             "9. **stateChanges（极重要！）**必须抽取所有状态变更：\n" +
             "   - characters: 角色生死(alive)、位置(location)、实力(realm)、势力(affiliation)\n" +
             "   - factions: 势力状态(status)、领袖生死(leaderAlive)、伤亡(casualties)\n" +
             "   - locations: 地点当前占据者(currentOccupants)、控制者(controlledBy)\n" +
             "   这些状态对后续章节一致性至关重要，如有变化必须详细记录！\n" +
             "10. narrativeBeat用于总结本章节奏意图；conflictArcs/characterArcs仅列出本章推进的弧线。如果某项不存在，请返回空对象或空数组。\n" +
-            "11. 只返回JSON，不要有其他解释\n",
+            "11. 只返回JSON，不要有其他解释\n" +
+            "12. 对于电话那头、回忆中或只是被提到而不在当前场景的人物：可以出现在events[].participants或mentionedOnlyParticipants中，但不要出现在events[].onSceneParticipants和stateChanges.characters中；如果无法确定该角色的具体位置，请不要随意填写location。\n",
             chapterNumber, chapterTitle, 
             content.length() > 3000 ? content.substring(0, 3000) + "..." : content,
             chapterNumber, chapterNumber, chapterNumber + 5, chapterNumber, chapterNumber,
             chapterNumber, chapterNumber, chapterNumber, chapterNumber);
+    }
+
+    private String buildBatchExtractionPrompt(Long novelId, List<Chapter> chapters) {
+        StringBuilder builder = new StringBuilder();
+
+        // 🧠 先注入跨章节图谱记忆，帮助AI复用/更新已有角色与任务，避免重复创建
+        if (graphService != null && novelId != null) {
+            try {
+                int currentChapter = chapters.stream()
+                    .filter(Objects::nonNull)
+                    .filter(c -> c.getChapterNumber() != null)
+                    .mapToInt(Chapter::getChapterNumber)
+                    .max()
+                    .orElse(0);
+
+                List<Map<String, Object>> characterStates = graphService.getCharacterStates(novelId, 200);
+                List<Map<String, Object>> relationships = graphService.getTopRelationships(novelId, 200);
+                List<Map<String, Object>> openQuests = graphService.getOpenQuests(novelId, currentChapter);
+
+                boolean hasCharStates = characterStates != null && !characterStates.isEmpty();
+                boolean hasRels = relationships != null && !relationships.isEmpty();
+                boolean hasQuests = openQuests != null && !openQuests.isEmpty();
+
+                if (hasCharStates || hasRels || hasQuests) {
+                    builder.append("【已有图谱记忆（用于对照和更新，避免重复创建）】\n");
+
+                    if (hasCharStates) {
+                        builder.append("人物状态：\n");
+                        for (Map<String, Object> state : characterStates) {
+                            if (state == null) continue;
+                            Object nameObj = state.get("name");
+                            if (nameObj == null) continue;
+                            String name = nameObj.toString().trim();
+                            if (name.isEmpty()) continue;
+
+                            Object loc = state.get("location");
+                            Object realm = state.get("realm");
+                            Object lastChapter = state.get("lastChapter");
+
+                            builder.append("- 角色：").append(name);
+                            if (loc != null && !loc.toString().trim().isEmpty()) {
+                                builder.append(" | 最近位置：").append(loc);
+                            }
+                            if (realm != null && !realm.toString().trim().isEmpty()) {
+                                builder.append(" | 实力/境界：").append(realm);
+                            }
+                            if (lastChapter != null) {
+                                builder.append(" | 最近出现章节：第").append(lastChapter).append("章");
+                            }
+                            builder.append("\n");
+                        }
+                        builder.append("\n");
+                    }
+
+                    if (hasRels) {
+                        builder.append("重要关系（RelationshipState）：\n");
+                        for (Map<String, Object> rel : relationships) {
+                            if (rel == null) continue;
+                            Object aObj = rel.get("a");
+                            Object bObj = rel.get("b");
+                            if (aObj == null || bObj == null) continue;
+                            String a = aObj.toString().trim();
+                            String b = bObj.toString().trim();
+                            if (a.isEmpty() || b.isEmpty()) continue;
+
+                            Object type = rel.get("type");
+                            Object strength = rel.get("strength");
+
+                            builder.append("- ").append(a).append(" ↔ ").append(b);
+                            if (type != null && !type.toString().trim().isEmpty()) {
+                                builder.append(" | 关系类型：").append(type);
+                            }
+                            if (strength != null) {
+                                builder.append(" | 强度：").append(strength);
+                            }
+                            builder.append("\n");
+                        }
+                        builder.append("\n");
+                    }
+
+                    if (hasQuests) {
+                        builder.append("未决任务（OpenQuest）：\n");
+                        for (Map<String, Object> q : openQuests) {
+                            if (q == null) continue;
+                            Object idObj = q.get("id");
+                            if (idObj == null) continue;
+                            String id = idObj.toString().trim();
+                            if (id.isEmpty()) continue;
+
+                            Object desc = q.get("description");
+                            Object status = q.get("status");
+                            Object introduced = q.get("introduced");
+                            Object due = q.get("due");
+
+                            builder.append("- 任务ID：").append(id);
+                            if (desc != null && !desc.toString().trim().isEmpty()) {
+                                builder.append(" | 简述：").append(desc);
+                            }
+                            if (status != null && !status.toString().trim().isEmpty()) {
+                                builder.append(" | 状态：").append(status);
+                            }
+                            if (introduced != null) {
+                                builder.append(" | 引入章节：第").append(introduced).append("章");
+                            }
+                            if (due != null) {
+                                builder.append(" | 计划完成章节：第").append(due).append("章");
+                            }
+                            builder.append("\n");
+                        }
+                        builder.append("\n");
+                    }
+
+                    builder.append("在为下面这些章节抽取实体时，请严格遵守以下规则：\n")
+                        .append("- **跨章节人物身份识别与统一（极重要）**：\n")
+                        .append("  · 在处理多个章节时，仔细识别**同一角色在不同章节中是否被用不同方式指称**（如：身份称谓、姓名全称、单名、代词、昵称、关系描述等）。\n")
+                        .append("  · 识别线索包括但不限于：文中明确说明某两个称呼指向同一人、代词指代、情节连续性、角色对话的上下文指向、身份与姓名的对应关系等。\n")
+                        .append("  · 一旦确认是同一人物（无论跨越多少章节），必须在所有章节的输出中**统一使用同一个标准名称**。\n")
+                        .append("  · **标准名称选择优先级**：姓名全称 > 单姓/单名 > 身份称谓 > 代词/昵称。即：如果后续章节揭示了该角色的姓名，就将所有章节中该角色的名字统一为姓名；如果只有身份称谓，就用身份称谓；总是选择信息量最大、最明确的名字。\n")
+                        .append("  · 在所有章节的 characters[] / events[].participants / stateChanges.characters[].name / characterRelations[].from/to 中，都要使用这个统一的标准名字。\n")
+                        .append("  · 旧的不完整称呼可以记录在该角色的 characters[].aliases 数组中作为别名。\n")
+                        .append("  · 对于上文【已有图谱记忆】中的角色名，如果与本批次章节中的角色能确认为同一人，优先复用图谱中已有的标准名。\n")
+                        .append("  · 不要为同一人物创建多个角色节点。\n")
+                        .append("- **角色筛选原则（stateChanges.characters）**：\n")
+                        .append("  · **必须同时满足**：(1) 在场景中真实出现，(2) 有明确的姓名或固定称谓，(3) 会反复出现或对后续剧情有持续影响。\n")
+                        .append("  · **一律排除无名龙套**：只在单章出现、没有姓名、只有职业/身份描述的角色（无论台词多少）不要写进 stateChanges.characters。\n")
+                        .append("  · **判断方法**：问自己这个角色在后续章节是否还会被提及或出现？如果答案是否定或不确定，那就不要写。\n")
+                        .append("  · **电话/回忆中提到的角色**：只在以下情况写进 stateChanges.characters：(1) 首次出现 且 (2) 看起来对剧情很重要（如幕后BOSS、关键线索人物）；如果该角色已在上文【已有图谱记忆】中存在，本批次就不要再写进 stateChanges.characters，避免重复更新。\n")
+                        .append("  · 只是被简单提及、没有实质内容的角色，只能出现在 events[].participants 中（如果该事件值得记录的话），不要写进 stateChanges.characters。\n")
+                        .append("- 遇到与上述未决任务含义相同/明显延续的任务，复用原任务ID（去掉其中的 Q- 前缀后的简称部分）并更新状态/描述，而不是新建一个新的任务；**任务简称不要自己带 Q- 或 Q_ 前缀**。\n")
+                        .append("- 新的事件和关系要尽量基于已有角色名来描述，避免因为称呼差异把同一人物拆成多份。\n\n");
+                }
+            } catch (Exception e) {
+                logger.warn("构建批量抽取上下文失败（忽略）: {}", e.getMessage());
+            }
+        }
+
+        builder.append("你是一位专业的小说分析助手。下面会一次提供多章正文，请为每一章分别抽取关键实体。\n")
+            .append("请严格输出如下JSON结构：\n")
+            .append("{\n  \"chapters\": [\n    {\n      \"chapterNumber\": 12,\n      \"title\": \"章节标题\",\n      \"events\": [],\n      \"foreshadows\": [],\n      \"plotlines\": [],\n      \"worldRules\": [],\n      \"characters\": [],\n      \"locations\": [],\n      \"causalRelations\": [],\n      \"characterRelations\": [],\n      \"stateChanges\": {\n        \"characters\": [],\n        \"factions\": [],\n        \"locations\": []\n      },\n      \"narrativeBeat\": {},\n      \"conflictArcs\": [],\n      \"characterArcs\": [],\n      \"perspectiveUsage\": {}\n    }\n  ]\n}\n\n")
+            .append("要求：\n")
+            .append("1. chapters数组中每个元素对应一章，chapterNumber必须与输入一致。\n")
+            .append("2. 其余字段含义与单章抽取时完全相同，字段缺失请返回空数组/对象。\n")
+            .append("3. 禁止输出额外解释或markdown围栏。\n\n");
+
+        for (Chapter chapter : chapters) {
+            if (chapter == null || chapter.getChapterNumber() == null) {
+                continue;
+            }
+            builder.append("### 第").append(chapter.getChapterNumber()).append("章\n")
+                .append("标题: ").append(chapter.getTitle() == null ? "" : chapter.getTitle()).append("\n")
+                .append("正文: \n")
+                .append(truncateContent(chapter.getContent()))
+                .append("\n\n");
+        }
+
+        return builder.toString();
+    }
+
+    private String truncateContent(String content) {
+        if (content == null) {
+            return "";
+        }
+        if (content.length() <= MAX_CHAPTER_SNIPPET) {
+            return content;
+        }
+        return content.substring(0, MAX_CHAPTER_SNIPPET) + "...";
+    }
+
+    private Integer parseChapterNumberFromString(Object chapterNumberObj) {
+        if (chapterNumberObj == null) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(String.valueOf(chapterNumberObj).replaceAll("[^0-9]", ""));
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
     
     /**

@@ -663,6 +663,24 @@ public class InMemoryGraphService implements IGraphService {
         // 内存版：简化存储，不实现查询功能
     }
 
+    @Override
+    public void deleteRelationshipState(Long novelId, String characterA, String characterB) {
+        logger.info("🗑️ 内存版deleteRelationshipState: {}—{} (noop)", characterA, characterB);
+        // 内存版：不存储关系状态，此处为空实现
+    }
+
+    @Override
+    public void deleteCharacterState(Long novelId, String characterName) {
+        logger.info("🗑️ 内存版deleteCharacterState: {} (noop)", characterName);
+        // 内存版：不存储角色状态，此处为空实现
+    }
+
+    @Override
+    public void deleteOpenQuest(Long novelId, String questId) {
+        logger.info("🗑️ 内存版deleteOpenQuest: {} (noop)", questId);
+        // 内存版：不存储任务状态，此处为空实现
+    }
+
     // 🆕 核心记忆账本查询（内存版空实现）
     @Override
     public List<Map<String, Object>> getCharacterStates(Long novelId, Integer limit) {

@@ -185,6 +185,10 @@ public interface IGraphService {
     void resolveOpenQuest(Long novelId, String questId, Integer resolvedChapter);
     void addSummarySignals(Long novelId, Integer chapterNumber, Map<String, String> signals);
 
+    void deleteRelationshipState(Long novelId, String characterA, String characterB);
+    void deleteCharacterState(Long novelId, String characterName);
+    void deleteOpenQuest(Long novelId, String questId);
+
     // 🆕 核心记忆账本查询（State Guard生成用）
     List<Map<String, Object>> getCharacterStates(Long novelId, Integer limit);
     List<Map<String, Object>> getTopRelationships(Long novelId, Integer limit);

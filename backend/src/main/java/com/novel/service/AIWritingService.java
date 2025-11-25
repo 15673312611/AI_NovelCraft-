@@ -541,6 +541,13 @@ public class AIWritingService {
                 params.put("frequency_penalty", 0.2);  // 大幅减少重复
                 params.put("presence_penalty", 0.2);   // 大幅增加多样性
                 break;
+            case "volume_chapter_outlines_generation":
+            case "chapter_outline_from_content":
+                params.put("temperature", 1.5);  // 最大创造性，拉满温度
+                params.put("top_p", 0.98);
+                params.put("frequency_penalty", 0.3);  // 大幅减少重复，避免套路
+                params.put("presence_penalty", 0.3);   // 大幅增加多样性和意外性
+                break;
             default:
                 params.put("temperature", 0.7);
                 params.put("top_p", 0.9);
