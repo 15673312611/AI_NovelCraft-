@@ -148,4 +148,17 @@ public class AuthController {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
     }
+
+    /**
+     * 获取用户统计信息
+     */
+    @GetMapping("/statistics")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> getUserStatistics() {
+        try {
+            java.util.Map<String, Object> stats = authService.getUserStatistics();
+            return ResponseEntity.ok(ApiResponse.success(stats));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
 }

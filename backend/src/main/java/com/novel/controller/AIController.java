@@ -28,6 +28,7 @@ public class AIController {
     private final AIPolishService aiPolishService;
     private final com.novel.service.AIStreamlineService streamlineService;
     private final AIProofreadService aiProofreadService;
+    private final com.novel.service.AISmartSuggestionService smartSuggestionService;
 
     @Autowired
     public AIController(
@@ -35,13 +36,15 @@ public class AIController {
             com.novel.service.AIManuscriptReviewService manuscriptReviewService,
             AIPolishService aiPolishService,
             com.novel.service.AIStreamlineService streamlineService,
-            AIProofreadService aiProofreadService
+            AIProofreadService aiProofreadService,
+            com.novel.service.AISmartSuggestionService smartSuggestionService
     ) {
         this.aiTraceRemovalService = aiTraceRemovalService;
         this.manuscriptReviewService = manuscriptReviewService;
         this.aiPolishService = aiPolishService;
         this.streamlineService = streamlineService;
         this.aiProofreadService = aiProofreadService;
+        this.smartSuggestionService = smartSuggestionService;
     }
 
     @PostMapping("/polish-selection")
@@ -455,5 +458,64 @@ public class AIController {
         }
         
         return emitter;
+    }
+
+    /**
+     * AI智能建议接口
+     * 对小说内容进行全面诊断，提供改进建议
+     */
+    @PostMapping("/smart-suggestions")
+    public Result<Map<String, Object>> getSmartSuggestions(@RequestBody Map<String, Object> request) {
+        try {
+            String content = (String) request.get("content");
+            
+            if (content == null || content.trim().isEmpty()) {
+                return Result.error("内容不能为空");
+            }
+            
+            // 解析AI配置
+            AIConfigRequest aiConfig = new AIConfigRequest();
+            if (request.containsKey("provider")) {
+                aiConfig.setProvider((String) request.get("provider"));
+                aiConfig.setApiKey((String) request.get("apiKey"));
+                aiConfig.setModel((String) request.get("model"));
+                aiConfig.setBaseUrl((String) request.get("baseUrl"));
+                
+                logger.info("✅ AI智能建议 - 收到AI配置: provider={}, model={}", 
+                    aiConfig.getProvider(), aiConfig.getModel());
+            } else if (request.get("aiConfig") instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
+                aiConfig.setProvider(aiConfigMap.get("provider"));
+                aiConfig.setApiKey(aiConfigMap.get("apiKey"));
+                aiConfig.setModel(aiConfigMap.get("model"));
+                aiConfig.setBaseUrl(aiConfigMap.get("baseUrl"));
+                
+                logger.info("✅ AI智能建议 - 收到AI配置(嵌套): provider={}, model={}", 
+                    aiConfig.getProvider(), aiConfig.getModel());
+            }
+            
+            if (!aiConfig.isValid()) {
+                return Result.error("AI配置无效，请先在设置页面配置AI服务");
+            }
+            
+            logger.info("🔍 开始AI智能建议诊断，内容长度: {}", content.length());
+            
+            // 调用智能建议服务
+            java.util.List<com.novel.service.AISmartSuggestionService.SmartSuggestion> suggestions = 
+                smartSuggestionService.analyzeSuggestions(content, aiConfig);
+            
+            Map<String, Object> data = new java.util.HashMap<>();
+            data.put("suggestions", suggestions);
+            data.put("total", suggestions.size());
+            
+            logger.info("✅ AI智能建议完成，共 {} 条建议", suggestions.size());
+            
+            return Result.success(data);
+            
+        } catch (Exception e) {
+            logger.error("❌ AI智能建议失败", e);
+            return Result.error("AI智能建议失败: " + e.getMessage());
+        }
     }
 }

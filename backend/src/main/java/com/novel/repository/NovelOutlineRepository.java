@@ -31,7 +31,7 @@ public interface NovelOutlineRepository extends BaseMapper<NovelOutline> {
     default Optional<NovelOutline> findByNovelIdAndStatus(Long novelId, NovelOutline.OutlineStatus status) {
         QueryWrapper<NovelOutline> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("novel_id", novelId);
-        queryWrapper.eq("status", status);
+//        queryWrapper.eq("status", status);
         queryWrapper.orderByDesc("updated_at"); // 取最新的
         queryWrapper.last("LIMIT 1");
         NovelOutline outline = selectOne(queryWrapper);

@@ -48,15 +48,10 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
             .and()
             .authorizeRequests()
                 .antMatchers("/auth/**").permitAll() // 认证相关接口允许访问
-                .antMatchers("/test/**").permitAll() // 测试接口允许访问
+                .antMatchers("/api/auth/**").permitAll() // API认证相关接口允许访问
                 .antMatchers("/error").permitAll() // 错误页面允许访问
-                .antMatchers("/actuator/**").permitAll() // 健康检查等监控接口允许访问
+                .antMatchers("/actuator/health", "/actuator/info").permitAll() // 基本健康检查允许访问
                 .antMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll() // API文档允许访问
-                .antMatchers("/ai-adjectives/**").permitAll() // 词库挖掘接口放开
-                .antMatchers("/agentic/**").permitAll() // 词库挖掘接口放开
-                .antMatchers("/volumes/*/modify-blueprint-stream").permitAll() // 修改卷蓝图接口放开（暂时忽略token验证）
-                .antMatchers("/volumes/*/chapter-outlines/generate").permitAll() // 修改卷蓝图接口放开（暂时忽略token验证）
-                .antMatchers("/volumes/*/chapter-outlines/generate-remaining").permitAll() // 修改卷蓝图接口放开（暂时忽略token验证）
                 .anyRequest().authenticated() // 其他请求需要认证
             .and()
             .formLogin().disable()
@@ -87,7 +82,13 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(Arrays.asList("http://localhost:*", "http://127.0.0.1:*"));
+        // 限制CORS到具体端口，避免安全风险
+        config.setAllowedOrigins(Arrays.asList(
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:5173"
+        ));
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(Arrays.asList("*"));
         config.setAllowCredentials(true);

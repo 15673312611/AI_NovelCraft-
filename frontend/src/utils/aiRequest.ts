@@ -1,107 +1,57 @@
 /**
  * AI请求工具
- * 在请求体中自动附加AI配置
+ * 简化版 - 不再需要前端配置AI服务
+ * AI配置由后端统一管理，前端只需要发送请求即可
  */
 
-import { loadAIConfig, isAIConfigValid, getActiveCustomConfig } from './aiConfigStorage';
-import { AIConfig } from '../types/aiConfig';
-
 /**
- * 获取当前AI配置，如果无效则抛出错误
- * 优先使用自定义API配置，其次使用预设的AI服务配置
- */
-export const getAIConfigOrThrow = (): AIConfig => {
-  // 1. 优先检查自定义API配置
-  const customConfig = getActiveCustomConfig();
-  if (customConfig) {
-    return {
-      provider: 'custom',
-      apiKey: customConfig.apiKey,
-      model: customConfig.model,
-      baseUrl: customConfig.baseUrl
-    };
-  }
-
-  // 2. 使用传统的AI服务配置
-  const config = loadAIConfig();
-  if (!isAIConfigValid(config)) {
-    throw new Error('请先在设置页面配置AI服务');
-  }
-  return config;
-};
-
-/**
- * 为请求体添加AI配置（嵌套结构）
- * @param body 原始请求体
- * @returns 添加了AI配置字段的请求体
- */
-export const withAIConfig = (body: any = {}, overrides?: { model?: string }): any => {
-  const aiConfig = getAIConfigOrThrow();
-  const effectiveModel = overrides?.model || aiConfig.model;
-  return {
-    ...body,
-    aiConfig: {
-      provider: aiConfig.provider,
-      apiKey: aiConfig.apiKey,
-      model: effectiveModel,
-      baseUrl: aiConfig.baseUrl || getDefaultApiUrl(aiConfig.provider)
-    }
-  };
-};
-
-/**
- * 获取默认API URL
- */
-const getDefaultApiUrl = (provider: string): string => {
-  const urls: Record<string, string> = {
-    'deepseek': 'https://api.deepseek.com/v1/chat/completions',
-    'qwen': 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
-    'kimi': 'https://api.moonshot.cn/v1/chat/completions',
-    'openai': 'https://api.openai.com/v1/chat/completions'
-  };
-  return urls[provider] || 'https://api.openai.com/v1/chat/completions';
-};
-
-/**
- * 检查AI配置是否已设置
- * 检查自定义配置或传统配置
+ * 检查AI服务是否可用（通过后端检查）
+ * 现在总是返回true，因为配置在后端
  */
 export const checkAIConfig = (): boolean => {
-  // 检查是否有激活的自定义配置
-  const customConfig = getActiveCustomConfig();
-  if (customConfig) {
-    return true;
-  }
-  
-  // 检查传统配置
-  const config = loadAIConfig();
-  return isAIConfigValid(config);
+  return true;
+};
+
+/**
+ * 为请求体添加空的AI配置占位符
+ * 保持向后兼容，但实际配置由后端处理
+ * @param body 原始请求体
+ * @param overrides 可选的覆盖参数（model, temperature等）
+ * @returns 请求体（不再添加AI配置）
+ */
+export const withAIConfig = (body: any = {}, overrides?: { model?: string; temperature?: number }): any => {
+  // 不再添加AI配置，后端会使用系统配置
+  return {
+    ...body,
+    // 可选：传递模型偏好，后端会验证
+    ...(overrides?.model ? { preferredModel: overrides.model } : {}),
+    // 可选：传递温度参数
+    ...(overrides?.temperature !== undefined ? { temperature: overrides.temperature } : {})
+  };
 };
 
 /**
  * AI配置相关的错误提示
  */
-export const AI_CONFIG_ERROR_MESSAGE = '请先在设置页面配置AI服务（DeepSeek、通义千问、Kimi或自定义API）';
+export const AI_CONFIG_ERROR_MESSAGE = '字数点余额不足，请联系管理员充值';
 
 /**
  * 获取当前使用的配置名称（用于显示）
+ * 现在显示"系统配置"
  */
 export const getCurrentConfigName = (): string => {
-  const customConfig = getActiveCustomConfig();
-  if (customConfig) {
-    return `自定义: ${customConfig.name}`;
-  }
-  
-  const config = loadAIConfig();
-  if (isAIConfigValid(config)) {
-    const providerNames: Record<string, string> = {
-      'deepseek': 'DeepSeek',
-      'qwen': '通义千问',
-      'kimi': 'Kimi',
-      'custom': '自定义'
-    };
-    return providerNames[config.provider] || config.provider;
-  }
-  
-  return '未配置';
+  return '系统配置';
+};
+
+/**
+ * 获取AI配置（兼容旧代码）
+ * 返回空配置，实际由后端处理
+ */
+export const getAIConfigOrThrow = (): any => {
+  return {
+    provider: 'system',
+    apiKey: '',
+    model: '',
+    baseUrl: ''
+  };
 };

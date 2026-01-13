@@ -2,7 +2,9 @@ import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { message, Modal, Input, Button, Spin } from 'antd'
 import { SearchOutlined, EditOutlined, FormOutlined, HighlightOutlined, BarChartOutlined, BulbOutlined, FileTextOutlined, HistoryOutlined } from '@ant-design/icons'
 import type { NovelDocument } from '@/services/documentService'
+import rewriteService from '@/services/rewriteService'
 import aiService from '@/services/aiService'
+import smartSuggestionService, { type SmartSuggestion } from '@/services/smartSuggestionService'
 import api from '@/services/api'
 import { checkAIConfig, AI_CONFIG_ERROR_MESSAGE, withAIConfig, getAIConfigOrThrow } from '@/utils/aiRequest'
 import './EditorPanel.css'
@@ -16,6 +18,7 @@ export interface EditorPanelProps {
   onTitleChange?: (title: string) => void
   onShowOutline?: () => void
   onShowVolumeOutline?: () => void
+  onShowSummary?: () => void
   onShowHistory?: () => void
   onReviewManuscript?: () => void
   onRemoveAITrace?: () => void
@@ -23,6 +26,7 @@ export interface EditorPanelProps {
   lastSaveTime?: string
   isSaving?: boolean
   onSearchReplace?: () => void
+  chapterNumber?: number | null
 }
 
 const EditorPanel: React.FC<EditorPanelProps> = ({
@@ -33,11 +37,14 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   onShowOutline,
   onShowHistory,
   onShowVolumeOutline,
+  onShowSummary,
   onReviewManuscript,
   onRemoveAITrace,
   onStreamlineContent,
   lastSaveTime,
   isSaving = false,
+  onSearchReplace,
+  chapterNumber,
 }) => {
   const [content, setContent] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -78,6 +85,16 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
     applied?: boolean
   }>>([])
   const [selectedErrorIndices, setSelectedErrorIndices] = useState<Set<number>>(new Set())
+
+  const [smartEditModalVisible, setSmartEditModalVisible] = useState(false)
+  const [smartEditInstructions, setSmartEditInstructions] = useState('')
+  const [isSmartEditing, setIsSmartEditing] = useState(false)
+
+  // AI智能建议相关状态
+  const [suggestionModalVisible, setSuggestionModalVisible] = useState(false)
+  const [isAnalyzingSuggestions, setIsAnalyzingSuggestions] = useState(false)
+  const [suggestions, setSuggestions] = useState<Array<SmartSuggestion & { applied?: boolean }>>([])
+  const [selectedSuggestionIndices, setSelectedSuggestionIndices] = useState<Set<number>>(new Set())
 
   useEffect(() => {
     if (document) {
@@ -207,6 +224,68 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
       message.error(error?.message || '润色失败，请稍后重试')
     } finally {
       setIsPolishing(false)
+    }
+  }
+
+  const handleSmartEdit = async () => {
+    if (!document || !content || !content.trim()) {
+      message.warning('请先输入或加载需要修改的内容')
+      return
+    }
+
+    const novelId = document.novelId
+    if (!novelId) {
+      message.error('缺少小说信息，无法进行智能修改')
+      return
+    }
+
+    if (!checkAIConfig()) {
+      message.error(AI_CONFIG_ERROR_MESSAGE)
+      return
+    }
+
+    const baseRule =
+      '【编辑模式】请在尽量保持原文不变的前提下，只根据“修改要求”对相关片段做最小必要修改。' +
+      '未被要求修改的句子一个字都不要改（包括标点和换行），不要增加或删减剧情和信息。'
+    const userReq = smartEditInstructions.trim()
+    const finalRequirements = userReq ? `${baseRule}\n修改要求：${userReq}` : baseRule
+
+    setIsSmartEditing(true)
+    try {
+      let accumulated = ''
+
+      await rewriteService.rewriteChapterStream(
+        novelId,
+        {
+          content,
+          requirements: finalRequirements,
+          chapterNumber: chapterNumber ?? undefined,
+        },
+        (chunk) => {
+          accumulated += chunk
+          setContent(accumulated)
+          onChangeContent(accumulated)
+        },
+        (errorMessage) => {
+          message.error(errorMessage || '智能修改失败')
+          setIsSmartEditing(false)
+        },
+        () => {
+          setIsSmartEditing(false)
+          if (accumulated.trim()) {
+            setContent(accumulated)
+            onChangeContent(accumulated)
+            message.success('智能修改完成')
+          } else {
+            message.warning('AI未返回修改结果')
+          }
+          setSmartEditModalVisible(false)
+        }
+      )
+    } catch (error: any) {
+      console.error('AI智能修改失败:', error)
+      message.error(error?.message || '智能修改失败，请稍后重试')
+      setIsSmartEditing(false)
     }
   }
 
@@ -409,6 +488,189 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
       message.success(`已应用 ${appliedCount} 处修改`)
     } else {
       message.warning('没有可应用的修改')
+    }
+  }
+
+  // AI智能建议相关函数
+  const openSuggestionModal = () => {
+    if (!content || content.trim().length < 50) {
+      message.warning('内容太少，无需智能建议')
+      return
+    }
+    setSuggestions([])
+    setSelectedSuggestionIndices(new Set())
+    setSuggestionModalVisible(true)
+  }
+
+  const closeSuggestionModal = () => {
+    setSuggestionModalVisible(false)
+    setIsAnalyzingSuggestions(false)
+  }
+
+  const handleAnalyzeSuggestions = async () => {
+    if (!checkAIConfig()) {
+      message.error(AI_CONFIG_ERROR_MESSAGE)
+      return
+    }
+
+    try {
+      setIsAnalyzingSuggestions(true)
+      const response = await smartSuggestionService.getSmartSuggestions(content)
+      
+      // 处理 Result 格式的响应
+      if (!response || (response as any).code !== 200) {
+        throw new Error((response as any)?.message || 'AI智能建议请求失败')
+      }
+
+      const suggestionList = (response as any).data?.suggestions || []
+      
+      if (suggestionList.length > 0) {
+        setSuggestions(suggestionList.map((s: any) => ({ ...s, applied: false })))
+        message.success(`发现 ${suggestionList.length} 条建议`)
+      } else {
+        message.info('未发现需要改进的地方，内容很棒！')
+      }
+    } catch (error: any) {
+      console.error('智能建议分析失败:', error)
+      message.error('智能建议分析失败: ' + (error.response?.data?.message || error.message))
+    } finally {
+      setIsAnalyzingSuggestions(false)
+    }
+  }
+
+  // 查找建议的准确位置
+  const findSuggestionPosition = (
+    fullContent: string,
+    suggestion: { position: number; original: string; length: number; action: string }
+  ): number => {
+    const { position, original, action } = suggestion
+    
+    // insert 操作不需要查找 original
+    if (action === 'insert') {
+      return position >= 0 && position <= fullContent.length ? position : 0
+    }
+    
+    if (!original) return -1
+
+    let actualPosition = position
+
+    // 优先尝试使用AI返回的position直接匹配
+    if (
+      actualPosition < 0 ||
+      actualPosition + original.length > fullContent.length ||
+      fullContent.substring(actualPosition, actualPosition + original.length) !== original
+    ) {
+      // 在position附近搜索（前后50个字符范围）
+      const searchStart = Math.max(0, position - 50)
+      actualPosition = fullContent.indexOf(original, searchStart)
+
+      if (actualPosition === -1) {
+        // 兜底：全局搜索
+        actualPosition = fullContent.indexOf(original)
+      }
+    }
+
+    return actualPosition
+  }
+
+  const handleApplySingleSuggestion = (index: number) => {
+    const suggestion = suggestions[index]
+    if (!suggestion || suggestion.applied) return
+
+    const { position, length, action, original, suggested } = suggestion
+    
+    // 查找准确位置
+    const actualPosition = findSuggestionPosition(content, suggestion)
+    
+    if (actualPosition === -1 && action !== 'insert') {
+      message.warning('未找到原文，可能已被修改')
+      return
+    }
+
+    let newContent = content
+
+    if (action === 'replace' && suggested) {
+      // 替换操作
+      const actualLength = original ? original.length : length
+      newContent = content.substring(0, actualPosition) + suggested + content.substring(actualPosition + actualLength)
+    } else if (action === 'delete') {
+      // 删除操作
+      const actualLength = original ? original.length : length
+      newContent = content.substring(0, actualPosition) + content.substring(actualPosition + actualLength)
+    } else if (action === 'insert' && suggested) {
+      // 插入操作
+      newContent = content.substring(0, actualPosition) + suggested + content.substring(actualPosition)
+    }
+
+    setContent(newContent)
+    onChangeContent(newContent)
+
+    const newSuggestions = [...suggestions]
+    newSuggestions[index] = { ...suggestion, applied: true }
+    setSuggestions(newSuggestions)
+
+    message.success('已应用建议')
+  }
+
+  const handleApplyAllSuggestions = () => {
+    if (suggestions.length === 0) return
+
+    let newContent = content
+    let appliedCount = 0
+    let skippedCount = 0
+
+    // 按position从后往前排序，避免位置偏移
+    const sortedSuggestions = suggestions
+      .map((sug, index) => ({ ...sug, originalIndex: index }))
+      .filter(sug => !sug.applied)
+      .sort((a, b) => {
+        // 先查找准确位置再排序
+        const posA = findSuggestionPosition(newContent, a)
+        const posB = findSuggestionPosition(newContent, b)
+        return posB - posA
+      })
+
+    for (const suggestion of sortedSuggestions) {
+      const { action, original, suggested, length } = suggestion
+      
+      // 查找准确位置
+      const actualPosition = findSuggestionPosition(newContent, suggestion)
+      
+      if (actualPosition === -1 && action !== 'insert') {
+        console.warn('跳过建议：未找到原文', suggestion)
+        skippedCount++
+        continue
+      }
+
+      if (action === 'replace' && suggested) {
+        const actualLength = original ? original.length : length
+        newContent = newContent.substring(0, actualPosition) + suggested + newContent.substring(actualPosition + actualLength)
+        appliedCount++
+      } else if (action === 'delete') {
+        const actualLength = original ? original.length : length
+        newContent = newContent.substring(0, actualPosition) + newContent.substring(actualPosition + actualLength)
+        appliedCount++
+      } else if (action === 'insert' && suggested) {
+        newContent = newContent.substring(0, actualPosition) + suggested + newContent.substring(actualPosition)
+        appliedCount++
+      }
+    }
+
+    if (appliedCount > 0) {
+      setContent(newContent)
+      onChangeContent(newContent)
+
+      // 标记所有为已应用
+      const newSuggestions = suggestions.map(sug => ({ ...sug, applied: true }))
+      setSuggestions(newSuggestions)
+
+      if (skippedCount > 0) {
+        message.success(`已应用 ${appliedCount} 条建议，跳过 ${skippedCount} 条（原文已变更）`)
+      } else {
+        message.success(`已应用 ${appliedCount} 条建议`)
+      }
+    } else {
+      message.warning('没有可应用的建议')
     }
   }
 
@@ -1140,6 +1402,10 @@ ${contentPreview}${content.length > 1500 ? '\n...(内容较长，已截取前150
                     <BarChartOutlined style={{ marginRight: 4, fontSize: 14 }} />
                     <span>卷大纲</span>
                   </button>
+                  <button className="outline-btn" onClick={onShowSummary}>
+                    <FileTextOutlined style={{ marginRight: 4, fontSize: 14 }} />
+                    <span>概要</span>
+                  </button>
                   {onShowHistory && (
                     <button className="outline-btn" onClick={onShowHistory}>
                       <HistoryOutlined style={{ marginRight: 4, fontSize: 14 }} />
@@ -1174,6 +1440,26 @@ ${contentPreview}${content.length > 1500 ? '\n...(内容较长，已截取前150
             >
               <SearchOutlined style={{ marginRight: 6 }} />
               智能纠错
+            </button>
+            <button
+              className="format-btn"
+              onClick={openSuggestionModal}
+              title="AI智能建议"
+            >
+              <BulbOutlined style={{ marginRight: 6 }} />
+              智能建议
+            </button>
+            <button
+              className="format-btn"
+              onClick={() => {
+                if (!content || content.trim().length < 10) {
+                  message.warning('内容太少，无需智能修改')
+                  return
+                }
+                setSmartEditModalVisible(true)
+              }}
+            >
+              智能修改
             </button>
             <button
               ref={searchButtonRef}
@@ -1384,6 +1670,70 @@ ${contentPreview}${content.length > 1500 ? '\n...(内容较长，已截取前150
               </div>
             </div>
           </div>
+        </div>
+      </Modal>
+
+      <Modal
+        title="AI智能修改"
+        open={smartEditModalVisible}
+        width={900}
+        onCancel={() => {
+          if (!isSmartEditing) {
+            setSmartEditModalVisible(false)
+          }
+        }}
+        footer={[
+          <Button
+            key="cancel"
+            onClick={() => {
+              if (!isSmartEditing) {
+                setSmartEditModalVisible(false)
+              }
+            }}
+            size="large"
+            style={{ borderRadius: '8px' }}
+          >
+            取消
+          </Button>,
+          <Button
+            key="smartEdit"
+            type="primary"
+            loading={isSmartEditing}
+            onClick={handleSmartEdit}
+            size="large"
+            style={{
+              borderRadius: '8px',
+              background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+              border: 'none',
+              fontWeight: 600,
+            }}
+          >
+            开始智能修改
+          </Button>,
+        ]}
+        centered
+        maskClosable={!isSmartEditing}
+        styles={{
+          body: { padding: '24px', maxHeight: '600px', overflowY: 'auto' },
+        }}
+      >
+        <div>
+          <div
+            style={{
+              marginBottom: 16,
+              fontSize: 14,
+              color: '#64748b',
+              lineHeight: 1.7,
+            }}
+          >
+            只会根据你填写的「修改要求」对相关片段做最小修改，其他内容一个字都不会动（包括标点和换行），不新增也不删减剧情。
+          </div>
+          <Input.TextArea
+            rows={4}
+            value={smartEditInstructions}
+            onChange={(e) => setSmartEditInstructions(e.target.value)}
+            placeholder="示例：\n- 把第一人称改成第三人称，但保留原有剧情和对白\n- 只调整错别字和明显语病，不要改动句子结构\n- 保持人物称呼、世界观设定完全不变，只加强情绪表达"
+          />
         </div>
       </Modal>
 
@@ -1765,6 +2115,267 @@ ${contentPreview}${content.length > 1500 ? '\n...(内容较长，已截取前150
               <div style={{ fontSize: '15px', marginBottom: '8px' }}>点击"开始检查"按钮</div>
               <div style={{ fontSize: '13px', color: '#cbd5e1' }}>
                 AI将检查错别字、名称错误、乱码等问题
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* AI智能建议模态框 */}
+      <Modal
+        title={
+          <div style={{
+            fontSize: '18px',
+            fontWeight: 600,
+            color: '#0f172a',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <BulbOutlined style={{ color: '#0f172a' }} />
+            <span>AI智能建议</span>
+          </div>
+        }
+        open={suggestionModalVisible}
+        width={1000}
+        onCancel={closeSuggestionModal}
+        footer={[
+          <Button
+            key="close"
+            onClick={closeSuggestionModal}
+            size="large"
+            style={{ borderRadius: '8px' }}
+          >
+            关闭
+          </Button>,
+          <Button
+            key="analyze"
+            type="primary"
+            loading={isAnalyzingSuggestions}
+            onClick={handleAnalyzeSuggestions}
+            size="large"
+            disabled={suggestions.length > 0}
+            style={{
+              borderRadius: '8px',
+              background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+              border: 'none',
+              boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)'
+            }}
+          >
+            {isAnalyzingSuggestions ? '分析中...' : '开始分析'}
+          </Button>,
+          <Button
+            key="applyAll"
+            type="primary"
+            disabled={suggestions.length === 0 || suggestions.every(s => s.applied)}
+            onClick={handleApplyAllSuggestions}
+            size="large"
+            style={{
+              borderRadius: '8px',
+              background: suggestions.length > 0 && !suggestions.every(s => s.applied)
+                ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                : undefined,
+              border: 'none',
+              boxShadow: suggestions.length > 0 && !suggestions.every(s => s.applied)
+                ? '0 4px 12px rgba(16, 185, 129, 0.3)'
+                : undefined
+            }}
+          >
+            一键应用全部
+          </Button>
+        ]}
+        styles={{
+          body: { maxHeight: '600px', overflowY: 'auto', padding: '24px' }
+        }}
+      >
+        <div>
+          {isAnalyzingSuggestions && (
+            <div style={{
+              textAlign: 'center',
+              padding: '60px 20px'
+            }}>
+              <Spin size="large" />
+              <div style={{ marginTop: '20px', color: '#64748b', fontSize: '14px' }}>
+                AI正在分析内容，寻找改进建议...
+              </div>
+            </div>
+          )}
+
+          {!isAnalyzingSuggestions && suggestions.length > 0 && (
+            <div>
+              <div style={{
+                fontSize: '14px',
+                fontWeight: 600,
+                color: '#1e293b',
+                marginBottom: '16px',
+                padding: '12px 16px',
+                background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
+                <span>发现 {suggestions.filter(s => !s.applied).length} 条建议</span>
+                <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 400 }}>
+                  已应用 {suggestions.filter(s => s.applied).length} 条
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {suggestions.map((suggestion, index) => {
+                  const typeColors: Record<string, { bg: string; text: string; label: string }> = {
+                    grammar: { bg: '#fef3c7', text: '#92400e', label: '语法' },
+                    logic: { bg: '#fecaca', text: '#991b1b', label: '逻辑' },
+                    redundant: { bg: '#ddd6fe', text: '#5b21b6', label: '冗余' },
+                    improvement: { bg: '#bfdbfe', text: '#1e40af', label: '改进' },
+                    inconsistency: { bg: '#fecdd3', text: '#9f1239', label: '矛盾' },
+                    style: { bg: '#d1fae5', text: '#065f46', label: '文风' }
+                  }
+
+                  const actionLabels: Record<string, string> = {
+                    replace: '替换',
+                    delete: '删除',
+                    insert: '插入'
+                  }
+
+                  const severityColors: Record<string, { bg: string; text: string }> = {
+                    high: { bg: '#fee2e2', text: '#dc2626' },
+                    medium: { bg: '#fed7aa', text: '#ea580c' },
+                    low: { bg: '#fef9c3', text: '#ca8a04' }
+                  }
+
+                  const typeInfo = typeColors[suggestion.type] || { bg: '#e2e8f0', text: '#475569', label: '其他' }
+                  const severityInfo = severityColors[suggestion.severity] || { bg: '#e2e8f0', text: '#475569' }
+
+                  return (
+                    <div
+                      key={index}
+                      style={{
+                        padding: '16px',
+                        background: suggestion.applied ? '#f8fafc' : '#ffffff',
+                        border: suggestion.applied ? '1px solid #e2e8f0' : '1px solid #cbd5e1',
+                        borderRadius: '8px',
+                        opacity: suggestion.applied ? 0.6 : 1,
+                        transition: 'all 0.3s ease'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                            <span style={{
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              fontSize: '12px',
+                              fontWeight: 500,
+                              background: typeInfo.bg,
+                              color: typeInfo.text
+                            }}>
+                              {typeInfo.label}
+                            </span>
+                            <span style={{
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              fontSize: '12px',
+                              background: severityInfo.bg,
+                              color: severityInfo.text
+                            }}>
+                              {suggestion.severity === 'high' ? '严重' : suggestion.severity === 'medium' ? '中等' : '轻微'}
+                            </span>
+                            <span style={{
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              fontSize: '12px',
+                              background: '#f1f5f9',
+                              color: '#475569'
+                            }}>
+                              {actionLabels[suggestion.action]}
+                            </span>
+                          </div>
+
+                          <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '8px' }}>
+                            {suggestion.context}
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '12px', marginBottom: '8px' }}>
+                            {suggestion.action !== 'insert' && (
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>原文：</div>
+                                <div style={{
+                                  padding: '8px 12px',
+                                  background: '#fef2f2',
+                                  border: '1px solid #fecaca',
+                                  borderRadius: '6px',
+                                  fontSize: '13px',
+                                  color: '#dc2626',
+                                  textDecoration: suggestion.action === 'delete' ? 'line-through' : 'none'
+                                }}>
+                                  {suggestion.original}
+                                </div>
+                              </div>
+                            )}
+                            {suggestion.suggested && (
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>
+                                  {suggestion.action === 'insert' ? '插入内容：' : '建议：'}
+                                </div>
+                                <div style={{
+                                  padding: '8px 12px',
+                                  background: '#f0fdf4',
+                                  border: '1px solid #bbf7d0',
+                                  borderRadius: '6px',
+                                  fontSize: '13px',
+                                  color: '#16a34a'
+                                }}>
+                                  {suggestion.suggested}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          <div style={{
+                            fontSize: '13px',
+                            color: '#475569',
+                            padding: '8px 12px',
+                            background: '#f8fafc',
+                            borderRadius: '6px',
+                            borderLeft: '3px solid #3b82f6'
+                          }}>
+                            💡 {suggestion.reason}
+                          </div>
+                        </div>
+
+                        <Button
+                          type="primary"
+                          size="small"
+                          disabled={suggestion.applied}
+                          onClick={() => handleApplySingleSuggestion(index)}
+                          style={{
+                            borderRadius: '6px',
+                            background: suggestion.applied ? undefined : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                            border: 'none',
+                            minWidth: '80px'
+                          }}
+                        >
+                          {suggestion.applied ? '已应用' : '应用'}
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {!isAnalyzingSuggestions && suggestions.length === 0 && (
+            <div style={{
+              textAlign: 'center',
+              padding: '60px 20px',
+              color: '#94a3b8'
+            }}>
+              <div style={{ fontSize: '48px', marginBottom: '16px' }}><BulbOutlined /></div>
+              <div style={{ fontSize: '15px', marginBottom: '8px' }}>点击"开始分析"按钮</div>
+              <div style={{ fontSize: '13px', color: '#cbd5e1' }}>
+                AI将分析内容并提供改进建议
               </div>
             </div>
           )}

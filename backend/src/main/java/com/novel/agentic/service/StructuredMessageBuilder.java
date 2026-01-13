@@ -99,19 +99,20 @@ public class StructuredMessageBuilder {
             WritingContext context,
             Map<String, Object> intent,
             Integer chapterNumber,
-            String stylePromptFile
+            String stylePromptFile,
+            Long promptTemplateId
     ) {
         List<Map<String, String>> messages = new ArrayList<>();
 
         // Message 1: System - 基础写作规则 + 风格
-        String systemPrompt = buildSystemPrompt(null, chapterNumber, stylePromptFile);
+        String systemPrompt = buildSystemPrompt(null, chapterNumber, stylePromptFile, promptTemplateId);
         if (systemPrompt == null || systemPrompt.trim().isEmpty()) {
             logger.warn("系统提示词为空！使用默认提示词");
             systemPrompt = "你是一位专业的网文小说家AI助手。请根据章节意图和上下文创作高质量的小说章节内容。";
         }
         logger.info("系统提示词长度: {}字 (使用: {})", systemPrompt.length(),
             stylePromptFile != null ? stylePromptFile : "默认");
-        messages.add(createMessage("system", systemPrompt));
+        messages.add(createMessage("user", systemPrompt));
 
 
 
@@ -119,16 +120,28 @@ public class StructuredMessageBuilder {
         String basicInfo = buildBasicInfo(novel, chapterNumber);
         messages.add(createMessage("system", basicInfo));
 
-        // Message 3: 核心设定（如果有）
-        if (context != null) {
+        // Message 3: 整体大纲（仅做参考，禁止开天眼）
+        // 原“核心设定”消息暂时改为输出整体大纲，帮助AI理解全局走向，但不能提前写后面章节内容
+        if (false) {
+//        if (novel != null && StringUtils.isNotBlank(novel.getOutline())) {
+            String outline = novel.getOutline();
+            StringBuilder sb = new StringBuilder();
+            sb.append("【整体大纲（仅供参考，禁止开天眼）】\n");
+            sb.append("下面是全书的整体大纲，用于帮助你理解全局剧情节奏和后续大致走向。\n");
+            sb.append("写本章内容时：\n");
+            sb.append("- 只能使用当前进度之前已经出现或合理铺垫过的信息；\n");
+            sb.append("- 不能提前写后面章节才会出现的设定、角色发展、伏笔回收或重大反转；\n");
+            sb.append("- 不能凭大纲“开天眼”，一次性剧透或跳跃推进剧情。\n\n");
+            sb.append(outline).append("\n");
+            messages.add(createMessage("system", sb.toString()));
+            logger.info("已添加整体大纲 ({}字)", outline.length());
+        } else if (context != null && StringUtils.isNotBlank(context.getCoreSettings())) {
             String core = context.getCoreSettings();
-            if (StringUtils.isNotBlank(core)) {
-                StringBuilder sb = new StringBuilder();
-                sb.append("【核心设定】\n");
-                sb.append(core).append("\n");
-                messages.add(createMessage("system", sb.toString()));
-                logger.info("已添加核心设定 ({}字)", core.length());
-            }
+            StringBuilder sb = new StringBuilder();
+            sb.append("【核心设定】\n");
+            sb.append(core).append("\n");
+            messages.add(createMessage("system", sb.toString()));
+            logger.info("已添加核心设定作为整体大纲 ({}字)", core.length());
         }
 
         // Message 4: 卷蓝图（如果有）
@@ -155,13 +168,13 @@ public class StructuredMessageBuilder {
         }
 
         // Message 7: 状态硬约束（核心记忆账本）
-        if (context != null) {
-            String stateConstraints = buildStateConstraints(context);
-            if (StringUtils.isNotBlank(stateConstraints)) {
-                messages.add(createMessage("system", stateConstraints));
-                logger.info("已添加状态硬约束");
-            }
-        }
+//        if (context != null) {
+//            String stateConstraints = buildStateConstraints(context);
+//            if (StringUtils.isNotBlank(stateConstraints)) {
+//                messages.add(createMessage("system", stateConstraints));
+//                logger.info("已添加状态硬约束");
+//            }
+//        }
 
         if (context != null) {
             String characterMindmap = buildCharacterMindmap(context);
@@ -184,29 +197,13 @@ public class StructuredMessageBuilder {
         StringBuilder intentMsg = new StringBuilder();
         intentMsg.append("【本章创作方向】\n");
         if (intent != null) {
+            // 使用 direction 作为本章剧情方向（包含关键剧情点）
             Object direction = intent.get("direction");
             if (direction != null) {
-                intentMsg.append("剧情方向：").append(direction).append("\n\n");
+                intentMsg.append("本章剧情方向：\n").append(direction).append("\n\n");
             }
 
-            Object kppObj = intent.get("keyPlotPoints");
-            if (kppObj instanceof java.util.List) {
-                java.util.List<?> list = (java.util.List<?>) kppObj;
-                if (!list.isEmpty()) {
-                    intentMsg.append("关键剧情点：\n");
-                    for (int i = 0; i < Math.min(list.size(), 6); i++) {
-                        Object p = list.get(i);
-                        if (p != null) intentMsg.append("- ").append(p.toString()).append("\n");
-                    }
-                    intentMsg.append("\n");
-                }
-            }
-
-            Object emotionalTone = intent.get("emotionalTone");
-            if (emotionalTone != null) {
-                intentMsg.append("情感基调：").append(emotionalTone).append("\n\n");
-            }
-
+            // 伏笔操作
             Object foreshadowAction = intent.get("foreshadowAction");
             Object foreshadowDetail = intent.get("foreshadowDetail");
             if (foreshadowAction != null && !"NONE".equals(foreshadowAction.toString())) {
@@ -217,34 +214,8 @@ public class StructuredMessageBuilder {
                     if (content != null) {
                         intentMsg.append("伏笔内容：").append(content).append("\n");
                     }
-                    Object anchorsUsed = detail.get("anchorsUsed");
-                    if (anchorsUsed instanceof java.util.List && !((java.util.List<?>) anchorsUsed).isEmpty()) {
-                        intentMsg.append("引用的证据锚点：\n");
-                        for (Object anchor : (java.util.List<?>) anchorsUsed) {
-                            if (anchor != null) intentMsg.append("- ").append(anchor.toString()).append("\n");
-                        }
-                    }
                 }
                 intentMsg.append("\n");
-            }
-
-            Object subplot = intent.get("subplot");
-            if (subplot != null && StringUtils.isNotBlank(subplot.toString())) {
-                intentMsg.append("支线剧情：").append(subplot).append("\n\n");
-            }
-
-            Object antagonism = intent.get("antagonism");
-            if (antagonism instanceof Map) {
-                Map<?, ?> antag = (Map<?, ?>) antagonism;
-                Object opponent = antag.get("opponent");
-                if (opponent != null) {
-                    intentMsg.append("对抗关系：与").append(opponent).append("的冲突\n\n");
-                }
-            }
-
-            Object adjacentHint = intent.get("adjacentOutlineHint");
-            if (adjacentHint != null && StringUtils.isNotBlank(adjacentHint.toString())) {
-                intentMsg.append(adjacentHint.toString()).append("\n");
             }
         }
         messages.add(createMessage("user", intentMsg.toString()));
@@ -259,11 +230,11 @@ public class StructuredMessageBuilder {
         // Message 10: 写作任务说明
         StringBuilder taskDesc = new StringBuilder();
         taskDesc.append("请开始创作第").append(chapterNumber).append("章。 \n");
-        taskDesc.append("遵循上面的指令,按照前面的上下文信息开始写作,保证逻辑通畅,衔接上一章剧情;如果上一章结尾和【本章创作方向】有出入 还要衔接上章为主 在慢慢按【本章创作方向】去编写;同时需要考虑逻辑性; 不能机械降神 不能引入超脱剧本的支线和设定 按照现有剧情设定去推理。");
-        messages.add(createMessage("system",taskDesc.toString()));
+//        taskDesc.append("遵循上面的指令,按照前面的上下文信息开始写作,保证逻辑通畅,衔接上一章剧情;如果上一章结尾和【本章创作方向】有出入 还要衔接上章为主 在慢慢按【本章创作方向】去编写;同时需要考虑逻辑性; 不能机械降神 不能引入超脱剧本的支线和设定 按照现有剧情设定去推理。");
+        messages.add(createMessage("user",taskDesc.toString()));
         //字数限制
         String wordCountLimit = buildWordCountLimitSimple(novel);
-        messages.add(createMessage("system", wordCountLimit));
+        messages.add(createMessage("user", wordCountLimit));
 
         // 作者本次特别构思 / 用户调整指令（放在最底部）
         if (context != null && StringUtils.isNotBlank(context.getUserAdjustment())) {
@@ -277,6 +248,15 @@ public class StructuredMessageBuilder {
                 logger.info("已添加用户调整指令（放在最底部）");
             } else {
                 logger.info("用户调整指令为'开始'，跳过不添加");
+            }
+        }
+
+        // 用户提供的关联素材（参考文件和关联文档）
+        if (context != null && context.getReferenceContents() != null && !context.getReferenceContents().isEmpty()) {
+            String refMessage = buildUserReferenceMessage(context.getReferenceContents());
+            if (StringUtils.isNotBlank(refMessage)) {
+                messages.add(createMessage("system", refMessage));
+                logger.info("已添加用户关联素材（{}项）", context.getReferenceContents().size());
             }
         }
 
@@ -298,14 +278,7 @@ public class StructuredMessageBuilder {
 
 
 
-    /**
-     * 构建执行提示
-     */
-    private String buildExecutionPrompt() {
-        return "请直接输出小说正文，不要附加任何标题、解释或元信息。"
-            + "写作时请始终从普通读者的阅读体验出发，要站在读者视角思考，不能太突兀，有些点需要思考是不是需要先交代写内容让用户了解，多思考"
-            + "现在开始创作：";
-    }
+
 
     /**
      * 构建简化的字数限制
@@ -321,8 +294,8 @@ public class StructuredMessageBuilder {
         int maxWords = base + 200; // 上下浮动约200字，这里设置硬上限为+200
 
         StringBuilder sb = new StringBuilder();
-        sb.append("【字数硬性要求】\n");
-        sb.append("- 字数范围：").append(targetWords).append(" 字（可上下浮动约 200 字）\n");
+        sb.append("【生成的小说字数范围】\n");
+        sb.append("- 范围：").append(targetWords).append(" 字（可上下浮动约 200 字）\n");
         return sb.toString();
     }
 
@@ -335,7 +308,7 @@ public class StructuredMessageBuilder {
         TokenBudget budget = TokenBudget.builder().build();
 
         // Message 1: System - 底层规则 + 单一风格
-        String systemPrompt = buildSystemPrompt(null, chapterNumber, stylePromptFile);
+        String systemPrompt = buildSystemPrompt(null, chapterNumber, stylePromptFile, null);
         if (StringUtils.isBlank(systemPrompt)) {
             logger.warn("系统提示词为空！可能是提示词文件读取失败");
             systemPrompt = "你是一位专业的网文小说家AI助手。请根据以下信息创作高质量的小说章节内容，注意保持剧情连贯、人物性格一致。";
@@ -411,8 +384,8 @@ public class StructuredMessageBuilder {
     /**
      * 构建系统提示词：底层规则 + 风格选择
      */
-    private String buildSystemPrompt(String genre, Integer chapterNumber, String stylePromptFile) {
-        return promptAssembler.assembleSystemPrompt(genre, chapterNumber, stylePromptFile);
+    private String buildSystemPrompt(String genre, Integer chapterNumber, String stylePromptFile, Long promptTemplateId) {
+        return promptAssembler.assembleSystemPrompt(genre, chapterNumber, stylePromptFile, promptTemplateId);
     }
 
     private String buildOpeningBooster(Integer chapterNumber) {
@@ -436,23 +409,12 @@ public class StructuredMessageBuilder {
     }
 
     /**
-     * Message 3: 小说基础信息（前三章包含简介）
+     * Message 3: 小说基础信息（不包含书名，避免影响AI）
      */
     private String buildBasicInfo(Novel novel, Integer chapterNumber) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("【小说基础信息】\n");
-        sb.append("书名：").append(novel.getTitle()).append("\n");
+        // 书名已移除：避免书名影响AI的创作风格
         // 题材已移除：让AI从大纲与素材中自推断风格
-
-        // 前三章加入小说简介，帮助AI理解作品卖点和开局期望
-        if (chapterNumber != null && chapterNumber <= 3 && StringUtils.isNotBlank(novel.getDescription())) {
-            sb.append("\n【作品简介】\n");
-            sb.append(novel.getDescription()).append("\n");
-            sb.append("\n⚠️ 重要：开局章节必须与简介承诺的设定、氛围、卖点保持一致，让读者感受到简介中的吸引力。\n");
-        }
-
-        sb.append("\n提示：若某项缺失，可按常识补写或直接忽略，不要生造设定。\n");
-        return sb.toString();
+        return "";
     }
 
 
@@ -467,7 +429,7 @@ public class StructuredMessageBuilder {
 
         Map<String, Object> volume = context.getVolumeBlueprint();
         StringBuilder sb = new StringBuilder();
-        sb.append("【本卷故事蓝图】\n");
+        sb.append("【本卷故事蓝图(中心围绕这这部分和后面给的【本章创作方向】)】\n");
         sb.append("卷名：").append(volume.getOrDefault("volumeTitle", "未命名卷")).append("\n");
         sb.append("章节范围：").append(volume.getOrDefault("chapterRange", "未设定")).append("\n");
 
@@ -1282,28 +1244,29 @@ public class StructuredMessageBuilder {
         }
 
         // 3. 未决任务/伏笔（本章优先级，窗口≤1章标红）
-        List<Map<String, Object>> openQuests = graphService.getOpenQuests(novelId, chapterNumber);
-        if (!openQuests.isEmpty()) {
-            sb.append("未决任务/伏笔（本章优先级）\n");
-            for (Map<String, Object> quest : openQuests) {
-                String id = (String) quest.get("id");
-                String desc = (String) quest.get("description");
-                Integer due = (Integer) quest.get("due");
-
-                // 🆕 窗口≤1章标红警告
-                if (due != null && chapterNumber != null && due <= chapterNumber + 1) {
-                    sb.append("- ⚠️ ").append(id).append("：").append(desc);
-                    sb.append("（窗口仅剩").append(Math.max(0, due - chapterNumber)).append("章，必须推进或明确受阻）");
-                } else {
-                    sb.append("- ").append(id).append("：").append(desc);
-                    if (due != null && chapterNumber != null && due <= chapterNumber + 3) {
-                        sb.append("（窗口：本章～下").append(due - chapterNumber).append("章内需推进）");
-                    }
-                }
-                sb.append("\n");
-            }
-            sb.append("\n");
-        }
+        // 🔕 注释掉未决任务：剧情按章纲发展，未决任务容易干扰AI写作
+        // List<Map<String, Object>> openQuests = graphService.getOpenQuests(novelId, chapterNumber);
+        // if (!openQuests.isEmpty()) {
+        //     sb.append("未决任务/伏笔（本章优先级）\n");
+        //     for (Map<String, Object> quest : openQuests) {
+        //         String id = (String) quest.get("id");
+        //         String desc = (String) quest.get("description");
+        //         Integer due = (Integer) quest.get("due");
+        //
+        //         // 🆕 窗口≤1章标红警告
+        //         if (due != null && chapterNumber != null && due <= chapterNumber + 1) {
+        //             sb.append("- ⚠️ ").append(id).append("：").append(desc);
+        //             sb.append("（窗口仅剩").append(Math.max(0, due - chapterNumber)).append("章，必须推进或明确受阻）");
+        //         } else {
+        //             sb.append("- ").append(id).append("：").append(desc);
+        //             if (due != null && chapterNumber != null && due <= chapterNumber + 3) {
+        //                 sb.append("（窗口：本章～下").append(due - chapterNumber).append("章内需推进）");
+        //             }
+        //         }
+        //         sb.append("\n");
+        //     }
+        //     sb.append("\n");
+        // }
 
         // 如果图谱数据全空（新小说前几章），返回fallback
         if (sb.length() < 100) {

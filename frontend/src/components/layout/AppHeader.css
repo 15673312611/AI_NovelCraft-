@@ -441,3 +441,256 @@
     gap: 8px;
   }
 }
+
+
+/* ==================== 用户下拉菜单样式 ==================== */
+.user-dropdown-overlay {
+  z-index: 1050;
+}
+
+.user-dropdown-overlay .ant-dropdown-content {
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.user-dropdown-content {
+  width: 320px;
+  background: #ffffff;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+/* 用户信息头部 */
+.dropdown-user-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dropdown-avatar {
+  flex-shrink: 0;
+}
+
+.dropdown-user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.dropdown-username {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dropdown-username .edit-icon {
+  font-size: 12px;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.dropdown-username .edit-icon:hover {
+  color: #3b82f6;
+}
+
+.dropdown-user-id {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.dropdown-user-id:hover {
+  color: #3b82f6;
+}
+
+.dropdown-user-id .copy-icon {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+/* 字数卡片通用样式 */
+.credit-card {
+  margin: 12px 16px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid;
+}
+
+.credit-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.credit-card-title {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.credit-card-value {
+  font-size: 28px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.credit-card-value .help-icon {
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.credit-card-value .help-icon:hover {
+  opacity: 1;
+}
+
+/* 每日免费字数卡片 */
+.daily-free-card {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border-color: #fcd34d;
+}
+
+.daily-free-card .credit-card-title {
+  color: #b45309;
+}
+
+.daily-free-card .daily-free-value {
+  color: #d97706;
+}
+
+.daily-refresh-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: #059669;
+  background: #d1fae5;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid #a7f3d0;
+}
+
+/* 字数包余额卡片 */
+.package-card {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border-color: #6ee7b7;
+}
+
+.package-card .credit-card-title {
+  color: #047857;
+}
+
+.package-card .package-value {
+  color: #059669;
+}
+
+/* 兑换码区域 */
+.redeem-section {
+  margin: 16px;
+  padding: 16px;
+  background: #fff7ed;
+  border-radius: 12px;
+  border: 1px solid #fed7aa;
+}
+
+.redeem-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ea580c;
+  margin-bottom: 12px;
+}
+
+.redeem-input-wrapper {
+  display: flex;
+  gap: 8px;
+}
+
+.redeem-input {
+  flex: 1;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.redeem-input:focus {
+  border-color: #f97316;
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.1);
+}
+
+.redeem-btn {
+  padding: 6px 16px;
+  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.redeem-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
+}
+
+.redeem-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* 菜单项 */
+.dropdown-menu-items {
+  padding: 8px 0;
+  border-top: 1px solid #f1f5f9;
+}
+
+.dropdown-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  font-size: 14px;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.dropdown-menu-item:hover {
+  background: #f8fafc;
+  color: #3b82f6;
+}
+
+.dropdown-menu-item .anticon {
+  font-size: 16px;
+}
+
+/* 退出登录 */
+.dropdown-footer {
+  border-top: 1px solid #f1f5f9;
+}
+
+.logout-item {
+  color: #ef4444 !important;
+}
+
+.logout-item:hover {
+  background: #fef2f2 !important;
+  color: #dc2626 !important;
+}

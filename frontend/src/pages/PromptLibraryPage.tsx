@@ -1,18 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { 
-  Tabs, Button, Modal, Form, Input, Select, message, 
-  Empty, Spin, Card
+  Button, Modal, Form, Input, Select, message, 
+  Spin, Empty
 } from 'antd';
 import { 
   PlusOutlined, StarOutlined, StarFilled, 
-  FileTextOutlined, HeartOutlined, GlobalOutlined 
+  FileTextOutlined, HeartOutlined, GlobalOutlined,
+  CheckOutlined
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import './PromptLibraryPage.css';
 
 const { TextArea } = Input;
-const { TabPane } = Tabs;
 
 interface PromptTemplate {
   id: number;
@@ -65,7 +65,8 @@ const PromptLibraryPage: React.FC = () => {
     }
   };
 
-  const handleFavorite = async (templateId: number, isFavorited: boolean) => {
+  const handleFavorite = async (templateId: number, isFavorited: boolean, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     try {
       if (isFavorited) {
         await api.delete(`/prompt-templates/${templateId}/favorite`);
@@ -75,23 +76,19 @@ const PromptLibraryPage: React.FC = () => {
         message.success('收藏成功');
       }
       
-      // 更新模板的收藏状态
       const updateTemplateStatus = (templates: PromptTemplate[]) => 
         templates.map(t => 
           t.id === templateId ? { ...t, isFavorited: !isFavorited } : t
         );
       
-      // 更新所有列表中的状态
       setPublicTemplates(prev => updateTemplateStatus(prev));
       setFavoriteTemplates(prev => updateTemplateStatus(prev));
       setCustomTemplates(prev => updateTemplateStatus(prev));
       
-      // 如果当前打开了详情弹窗，也要更新
       if (selectedTemplate && selectedTemplate.id === templateId) {
         setSelectedTemplate({ ...selectedTemplate, isFavorited: !isFavorited });
       }
       
-      // 如果是在收藏tab且取消了收藏，重新加载列表
       if (activeTab === 'favorites' && isFavorited) {
         loadTemplates();
       }
@@ -119,10 +116,14 @@ const PromptLibraryPage: React.FC = () => {
     }
   };
 
-  const handleDelete = (templateId: number) => {
+  const handleDelete = (templateId: number, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     Modal.confirm({
       title: '确认删除',
       content: '确定要删除这个提示词模板吗？',
+      okText: '删除',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
       onOk: async () => {
         try {
           await api.delete(`/prompt-templates/${templateId}`);
@@ -141,18 +142,14 @@ const PromptLibraryPage: React.FC = () => {
     setViewModalVisible(true);
   };
 
-  const handleUseTemplate = async (template: PromptTemplate) => {
+  const handleUseTemplate = async (template: PromptTemplate, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     setSelectedTemplate(template);
     setNovelSelectVisible(true);
     
-    // 加载可用于写作的书籍（由后端筛选）
     try {
       const response: any = await api.get('/novels/writable');
       const writableNovels = response || [];
-      
-      console.log('✅ 可写作书籍数量:', writableNovels.length);
-      console.log('✅ 可写作书籍:', writableNovels);
-      
       setAvailableNovels(writableNovels);
       
       if (writableNovels.length === 0) {
@@ -171,7 +168,6 @@ const PromptLibraryPage: React.FC = () => {
     }
     
     try {
-      // 获取该书籍的卷列表
       const volumes: any = await api.get(`/volumes/novel/${selectedNovelId}`);
       
       if (!volumes || volumes.length === 0) {
@@ -179,11 +175,9 @@ const PromptLibraryPage: React.FC = () => {
         return;
       }
       
-      // 找到第一卷（按volumeNumber排序）
       const sortedVolumes = [...volumes].sort((a: any, b: any) => a.volumeNumber - b.volumeNumber);
       const firstVolume = sortedVolumes[0];
       
-      // 跳转到新的writing-studio页面，通过URL参数传递templateId
       navigate(`/novels/${selectedNovelId}/writing-studio?templateId=${selectedTemplate.id}`, {
         state: { initialVolumeId: firstVolume.id }
       });
@@ -194,6 +188,12 @@ const PromptLibraryPage: React.FC = () => {
       message.error('获取卷列表失败');
     }
   };
+
+  const tabs = [
+    { key: 'public', label: '公开模板', icon: <GlobalOutlined /> },
+    { key: 'favorites', label: '我的收藏', icon: <HeartOutlined /> },
+    { key: 'custom', label: '自定义模板', icon: <FileTextOutlined /> },
+  ];
 
   const renderTemplateCard = (template: PromptTemplate) => {
     const isCustom = template.type === 'custom';
@@ -206,77 +206,46 @@ const PromptLibraryPage: React.FC = () => {
         onClick={() => handleView(template)}
       >
         <div className="prompt-card-header">
-          <div style={{ flex: 1 }}>
+          <div className="prompt-card-meta">
             <div className={`prompt-card-badge ${template.type}`}>
-              {template.type === 'official' ? '🏆 官方模板' : '✨ 自定义模板'}
+              {template.type === 'official' ? '🏆 官方' : '✨ 自定义'}
             </div>
-            <div className="prompt-card-title">{template.name}</div>
+            <h3 className="prompt-card-title">{template.name}</h3>
           </div>
           <div 
-            onClick={(e) => {
-              e.stopPropagation();
-              handleFavorite(template.id, isFavorited);
-            }}
-            style={{ 
-              cursor: 'pointer', 
-              fontSize: '20px',
-              marginLeft: '12px'
-            }}
+            className="prompt-card-favorite"
+            onClick={(e) => handleFavorite(template.id, isFavorited, e)}
           >
             {isFavorited ? (
               <StarFilled style={{ color: '#f59e0b' }} />
             ) : (
-              <StarOutlined style={{ color: '#cbd5e0' }} />
+              <StarOutlined />
             )}
           </div>
         </div>
 
-        <div className="prompt-card-description">
+        <p className="prompt-card-description">
           {template.description || '暂无描述'}
-        </div>
+        </p>
 
         <div className="prompt-card-footer">
           <Button 
             type="primary" 
             size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleUseTemplate(template);
-            }}
-            style={{
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              border: 'none',
-              borderRadius: '6px',
-              fontWeight: 500,
-              boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)',
-              transition: 'all 0.3s ease'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translateY(-1px)';
-              e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.4)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = '0 2px 8px rgba(102, 126, 234, 0.3)';
-            }}
+            className="prompt-use-btn"
+            onClick={(e) => handleUseTemplate(template, e)}
           >
-            ✨ 使用此模板
+            使用模板
           </Button>
-          <div style={{ flex: 1 }}></div>
           {isCustom && (
-            <div className="prompt-card-actions">
-              <Button 
-                type="link" 
-                size="small" 
-                danger
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDelete(template.id);
-                }}
-              >
-                删除
-              </Button>
-            </div>
+            <Button 
+              type="link" 
+              size="small" 
+              className="prompt-delete-btn"
+              onClick={(e) => handleDelete(template.id, e)}
+            >
+              删除
+            </Button>
           )}
         </div>
       </div>
@@ -291,7 +260,7 @@ const PromptLibraryPage: React.FC = () => {
 
     if (loading) {
       return (
-        <div style={{ textAlign: 'center', padding: '60px 0' }}>
+        <div className="prompt-loading">
           <Spin size="large" />
         </div>
       );
@@ -300,54 +269,16 @@ const PromptLibraryPage: React.FC = () => {
     if (templates.length === 0) {
       if (activeTab === 'custom') {
         return (
-          <div style={{
-            textAlign: 'center',
-            padding: '80px 40px',
-            background: 'linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%)',
-            borderRadius: '12px',
-            border: '2px dashed #cbd5e0'
-          }}>
-            <div style={{
-              fontSize: '72px',
-              marginBottom: '24px',
-              filter: 'grayscale(0.3)',
-              opacity: 0.6
-            }}>
-              ✨
-            </div>
-            <h3 style={{
-              fontSize: '20px',
-              fontWeight: 600,
-              color: '#2d3748',
-              marginBottom: '12px'
-            }}>
-              创建你的专属模板
-            </h3>
-            <p style={{
-              fontSize: '15px',
-              color: '#718096',
-              marginBottom: '32px',
-              lineHeight: 1.6,
-              maxWidth: '400px',
-              margin: '0 auto 32px'
-            }}>
-              自定义AI写作风格，打造独一无二的创作助手
-            </p>
+          <div className="prompt-empty-state">
+            <div className="prompt-empty-icon">✨</div>
+            <h3>创建你的专属模板</h3>
+            <p>自定义AI写作风格，打造独一无二的创作助手</p>
             <Button 
               type="primary" 
               size="large"
               icon={<PlusOutlined />}
               onClick={() => setCreateModalVisible(true)}
-              style={{
-                height: '44px',
-                padding: '0 32px',
-                fontSize: '15px',
-                fontWeight: 600,
-                borderRadius: '8px',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                border: 'none',
-                boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)'
-              }}
+              className="prompt-create-btn"
             >
               创建第一个模板
             </Button>
@@ -355,12 +286,12 @@ const PromptLibraryPage: React.FC = () => {
         );
       }
       return (
-        <div className="empty-state">
-          <FileTextOutlined />
-          <p>
-            {activeTab === 'favorites' && '还没有收藏任何模板'}
-            {activeTab === 'public' && '暂无公开模板'}
-          </p>
+        <div className="prompt-empty-state">
+          <div className="prompt-empty-icon">
+            <FileTextOutlined />
+          </div>
+          <h3>{activeTab === 'favorites' ? '还没有收藏任何模板' : '暂无公开模板'}</h3>
+          <p>{activeTab === 'favorites' ? '浏览公开模板，收藏你喜欢的' : '敬请期待更多模板'}</p>
         </div>
       );
     }
@@ -381,47 +312,43 @@ const PromptLibraryPage: React.FC = () => {
   return (
     <div className="prompt-library-page">
       <div className="prompt-library-container">
-        <div className="prompt-library-header">
-          <h1>💎 提示词模板库</h1>
-          <p>选择或创建专属的AI写作提示词</p>
-        </div>
-
-        <div className="prompt-tabs">
-          <Tabs 
-            activeKey={activeTab} 
-            onChange={setActiveTab}
-            size="large"
-            tabBarExtraContent={
-              activeTab === 'custom' && (
-                <Button 
-                  type="primary" 
-                  icon={<PlusOutlined />}
-                  onClick={() => setCreateModalVisible(true)}
-                >
-                  创建模板
-                </Button>
-              )
-            }
+        {/* 页面头部 */}
+        <div className="prompt-page-header">
+          <div className="prompt-header-left">
+            <h1>提示词模板库</h1>
+            <p>选择或创建专属的AI写作提示词，提升创作效率</p>
+          </div>
+          <Button 
+            type="primary" 
+            icon={<PlusOutlined />}
+            onClick={() => setCreateModalVisible(true)}
+            className="prompt-create-btn"
           >
-            <TabPane 
-              tab={<span><GlobalOutlined /> 公开模板</span>} 
-              key="public"
-            />
-            <TabPane 
-              tab={<span><HeartOutlined /> 我的收藏</span>} 
-              key="favorites"
-            />
-            <TabPane 
-              tab={<span><FileTextOutlined /> 自定义模板</span>} 
-              key="custom"
-            />
-          </Tabs>
-
-          {renderContent()}
+            创建模板
+          </Button>
         </div>
+
+        {/* Tab 切换 */}
+        <div className="prompt-tab-section">
+          <div className="prompt-tab-bar">
+            {tabs.map(tab => (
+              <button
+                key={tab.key}
+                className={`prompt-tab-item ${activeTab === tab.key ? 'active' : ''}`}
+                onClick={() => setActiveTab(tab.key)}
+              >
+                {tab.icon}
+                <span>{tab.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 内容区域 */}
+        {renderContent()}
       </div>
 
-      {/* 创建/编辑模板弹窗 */}
+      {/* 创建模板弹窗 */}
       <Modal
         title="创建提示词模板"
         open={createModalVisible}
@@ -430,11 +357,12 @@ const PromptLibraryPage: React.FC = () => {
           form.resetFields();
         }}
         onOk={handleCreate}
-        width={700}
+        width={640}
         okText="创建"
         cancelText="取消"
+        className="prompt-modal"
       >
-        <Form form={form} layout="vertical">
+        <Form form={form} layout="vertical" style={{ marginTop: 20 }}>
           <Form.Item
             name="name"
             label="模板名称"
@@ -469,7 +397,7 @@ const PromptLibraryPage: React.FC = () => {
             rules={[{ required: true, message: '请输入提示词内容' }]}
           >
             <TextArea
-              rows={12}
+              rows={10}
               placeholder="输入完整的提示词内容..."
             />
           </Form.Item>
@@ -478,115 +406,55 @@ const PromptLibraryPage: React.FC = () => {
 
       {/* 查看模板详情弹窗 */}
       <Modal
-        title="模板详情"
+        title={null}
         open={viewModalVisible}
         onCancel={() => setViewModalVisible(false)}
-        width={700}
+        width={640}
+        className="prompt-modal"
         footer={[
+          <Button 
+            key="favorite"
+            icon={selectedTemplate?.isFavorited ? <StarFilled /> : <StarOutlined />}
+            onClick={() => selectedTemplate && handleFavorite(selectedTemplate.id, selectedTemplate.isFavorited || false)}
+          >
+            {selectedTemplate?.isFavorited ? '取消收藏' : '收藏'}
+          </Button>,
           <Button 
             key="use" 
             type="primary" 
-            size="large"
+            className="prompt-use-btn"
             onClick={() => {
               setViewModalVisible(false);
               selectedTemplate && handleUseTemplate(selectedTemplate);
             }}
-            style={{
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              border: 'none',
-              borderRadius: '8px',
-              fontWeight: 600,
-              height: '44px',
-              padding: '0 32px',
-              fontSize: '15px',
-              boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)'
-            }}
           >
-            ✨ 使用此模板
+            使用此模板
           </Button>,
-          <Button 
-            key="close" 
-            size="large"
-            onClick={() => setViewModalVisible(false)}
-            style={{
-              height: '44px',
-              borderRadius: '8px'
-            }}
-          >
-            关闭
-          </Button>
         ]}
       >
         {selectedTemplate && (
-          <div>
-            <Card>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ marginBottom: 12 }}>
-                    <span style={{ 
-                      padding: '4px 10px',
-                      borderRadius: '4px',
-                      fontSize: '12px',
-                      fontWeight: 500,
-                      background: selectedTemplate.type === 'official' ? '#fef3c7' : '#ede9fe',
-                      color: selectedTemplate.type === 'official' ? '#92400e' : '#5b21b6'
-                    }}>
-                      {selectedTemplate.type === 'official' ? '🏆 官方模板' : '✨ 自定义模板'}
-                    </span>
-                  </div>
-                  <h3 style={{ marginBottom: 16, fontSize: '22px', fontWeight: 600, color: '#2d3748' }}>
-                    {selectedTemplate.name}
-                  </h3>
-                  
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{ 
-                      fontSize: '14px', 
-                      fontWeight: 600, 
-                      color: '#4a5568', 
-                      marginBottom: 8 
-                    }}>
-                      📝 简介
-                    </div>
-                    <p style={{ 
-                      color: '#718096', 
-                      fontSize: '15px', 
-                      lineHeight: 1.8,
-                      margin: 0,
-                      padding: '12px',
-                      background: '#f7fafc',
-                      borderRadius: '6px',
-                      border: '1px solid #e2e8f0'
-                    }}>
-                      {selectedTemplate.description || '暂无简介'}
-                    </p>
-                  </div>
-
-                  <div style={{ 
-                    padding: '12px', 
-                    background: '#fff8e1', 
-                    borderRadius: '6px',
-                    border: '1px solid #ffe082'
-                  }}>
-                    <div style={{ fontSize: '13px', color: '#f57c00', fontWeight: 500 }}>
-                      💡 提示
-                    </div>
-                    <div style={{ fontSize: '13px', color: '#e65100', marginTop: 6, lineHeight: 1.6 }}>
-                      提示词核心内容为核心资产，仅在使用时应用于AI写作，不对外展示。
-                    </div>
-                  </div>
-                </div>
-                <Button
-                  type={selectedTemplate.isFavorited ? 'default' : 'primary'}
-                  icon={selectedTemplate.isFavorited ? <StarFilled /> : <StarOutlined />}
-                  onClick={() => {
-                    handleFavorite(selectedTemplate.id, selectedTemplate.isFavorited || false);
-                  }}
-                  style={{ marginLeft: 16 }}
-                >
-                  {selectedTemplate.isFavorited ? '取消收藏' : '收藏'}
-                </Button>
+          <div className="prompt-detail-card">
+            <div className={`prompt-detail-badge ${selectedTemplate.type}`}>
+              {selectedTemplate.type === 'official' ? '🏆 官方模板' : '✨ 自定义模板'}
+            </div>
+            <h2 className="prompt-detail-title">{selectedTemplate.name}</h2>
+            
+            <div className="prompt-detail-section">
+              <div className="prompt-detail-section-title">📝 简介</div>
+              <div className="prompt-detail-description">
+                {selectedTemplate.description || '暂无简介'}
               </div>
-            </Card>
+            </div>
+
+            <div className="prompt-detail-tip">
+              <span className="prompt-detail-tip-icon">💡</span>
+              <div className="prompt-detail-tip-content">
+                <div className="prompt-detail-tip-title">提示</div>
+                <div className="prompt-detail-tip-text">
+                  提示词核心内容为核心资产，仅在使用时应用于AI写作，不对外展示。
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </Modal>
@@ -600,20 +468,24 @@ const PromptLibraryPage: React.FC = () => {
           setSelectedNovelId(null);
         }}
         onOk={handleBindTemplate}
-        width={600}
+        width={560}
+        okText="确认"
+        cancelText="取消"
         okButtonProps={{ disabled: !selectedNovelId }}
+        className="prompt-modal"
       >
         {selectedTemplate && (
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginTop: 16 }}>
             <div style={{ 
-              padding: '12px', 
-              background: '#f0f9ff', 
-              borderRadius: '6px',
-              marginBottom: 16
+              padding: '14px 18px', 
+              background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+              borderRadius: '12px',
+              marginBottom: 20,
+              fontSize: '14px',
+              color: '#1d4ed8',
+              fontWeight: 500
             }}>
-              <div style={{ fontSize: '14px', color: '#1e40af', fontWeight: 500 }}>
-                即将使用模板：{selectedTemplate.name}
-              </div>
+              即将使用模板：{selectedTemplate.name}
             </div>
             
             {availableNovels.length === 0 ? (
@@ -621,42 +493,34 @@ const PromptLibraryPage: React.FC = () => {
                 description="暂无符合条件的书籍" 
                 style={{ padding: '40px 0' }}
               >
-                <p style={{ color: '#718096', fontSize: '14px', marginTop: 8 }}>
+                <p style={{ color: '#64748b', fontSize: '14px', marginTop: 8 }}>
                   书籍需要满足：已生成大纲、卷大纲，且处于写作状态
                 </p>
               </Empty>
             ) : (
               <div>
-                <div style={{ marginBottom: 12, fontSize: '14px', color: '#4a5568' }}>
-                  选择书籍（{availableNovels.length} 本可用）：
+                <div style={{ marginBottom: 12, fontSize: '14px', color: '#64748b' }}>
+                  选择书籍（{availableNovels.length} 本可用）
                 </div>
-                <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+                <div style={{ maxHeight: 320, overflowY: 'auto' }}>
                   {availableNovels.map((novel: any) => (
-                    <Card
+                    <div
                       key={novel.id}
-                      style={{ 
-                        marginBottom: 12, 
-                        cursor: 'pointer',
-                        border: selectedNovelId === novel.id ? '2px solid #5a67d8' : '1px solid #e2e8f0',
-                        background: selectedNovelId === novel.id ? '#f0f4ff' : 'white'
-                      }}
+                      className={`novel-select-card ${selectedNovelId === novel.id ? 'selected' : ''}`}
                       onClick={() => setSelectedNovelId(novel.id)}
-                      hoverable
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                          <div style={{ fontSize: '16px', fontWeight: 600, color: '#2d3748' }}>
-                            {novel.title}
-                          </div>
-                          <div style={{ fontSize: '13px', color: '#718096', marginTop: 4 }}>
-                            {novel.genre} · {novel.status}
-                          </div>
+                          <div className="novel-select-card-title">{novel.title}</div>
+                          <div className="novel-select-card-meta">{novel.genre} · {novel.status}</div>
                         </div>
                         {selectedNovelId === novel.id && (
-                          <div style={{ color: '#5a67d8', fontSize: '20px' }}>✓</div>
+                          <div className="novel-select-check">
+                            <CheckOutlined />
+                          </div>
                         )}
                       </div>
-                    </Card>
+                    </div>
                   ))}
                 </div>
               </div>

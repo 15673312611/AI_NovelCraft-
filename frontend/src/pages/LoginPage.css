@@ -1,496 +1,391 @@
-/* ==========================================
-   高级简约黑白色系登录页面
-   设计灵感：Apple, Stripe, Linear
-   ========================================== */
-
-* {
-  box-sizing: border-box;
-}
+/*
+ * 登录页面 - 与注册页面一致的风格
+ */
 
 .login-page {
   min-height: 100vh;
   display: flex;
-  background: #ffffff;
-  overflow: hidden;
+  background: #fff;
 }
 
-/* ==========================================
-   左侧品牌区域 - 极简蓝色
-   ========================================== */
-.login-left {
+/* 左侧视觉区 */
+.login-visual {
   flex: 1;
-  background: linear-gradient(135deg, #4A90E2 0%, #5BA3F5 100%);
-  color: #ffffff;
-  padding: 80px 60px;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.brand-section {
-  position: relative;
-  z-index: 2;
-  text-align: left;
-  max-width: 560px;
-}
-
-.brand-logo {
-  display: none;
-}
-
-.brand-title {
-  font-size: 72px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  margin-bottom: 32px;
-  line-height: 1.1;
-  color: #FFFFFF;
-  animation: fadeInUp 0.8s ease-out;
-  position: relative;
-  display: inline-block;
-}
-
-.brand-title::after {
-  content: '';
-  position: absolute;
-  bottom: -12px;
-  left: 0;
-  width: 80px;
-  height: 5px;
-  background: #FFFFFF;
-  border-radius: 3px;
-  animation: fadeInUp 0.8s ease-out 0.3s backwards;
-}
-
-.brand-description {
-  font-size: 20px;
-  line-height: 1.7;
-  color: rgba(255, 255, 255, 0.95);
-  font-weight: 400;
-  margin-bottom: 0;
-  animation: fadeInUp 0.8s ease-out 0.2s backwards;
-  max-width: 460px;
-}
-
-.brand-stats {
-  display: none;
-}
-
-.stat-item {
-  display: none;
-}
-
-.stat-number {
-  display: none;
-}
-
-.stat-label {
-  display: none;
-}
-
-.geometric-bg {
-  display: none;
-}
-
-.geo-line {
-  display: none;
-}
-
-.geo-line-1 {
-  display: none;
-}
-
-.geo-line-2 {
-  display: none;
-}
-
-.geo-circle {
-  display: none;
-}
-
-.geo-circle-1 {
-  display: none;
-}
-
-.geo-circle-2 {
-  display: none;
-}
-
-/* ==========================================
-   右侧登录表单区域
-   ========================================== */
-.login-right {
-  flex: 1;
-  background: #ffffff;
+  background: linear-gradient(165deg, #f8f9ff 0%, #f0f4ff 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 60px;
+  position: relative;
+  overflow: hidden;
 }
 
-.login-container {
+/* 装饰图形 */
+.visual-shapes {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.shape {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.6;
+}
+
+.shape-1 {
+  width: 400px;
+  height: 400px;
+  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+  top: -100px;
+  right: -100px;
+}
+
+.shape-2 {
+  width: 300px;
+  height: 300px;
+  background: linear-gradient(135deg, #ddd6fe 0%, #c4b5fd 100%);
+  bottom: -50px;
+  left: -50px;
+}
+
+.shape-3 {
+  width: 200px;
+  height: 200px;
+  background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%);
+  top: 40%;
+  left: 30%;
+}
+
+/* 品牌内容 */
+.visual-content {
+  position: relative;
+  z-index: 1;
+  max-width: 420px;
+}
+
+.visual-logo {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 32px;
+  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.25);
+}
+
+.visual-logo svg {
+  width: 26px;
+  height: 26px;
+}
+
+.visual-title {
+  font-size: 40px;
+  font-weight: 700;
+  color: #1e1e2e;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin: 0 0 16px;
+}
+
+.visual-desc {
+  font-size: 17px;
+  color: #64748b;
+  line-height: 1.7;
+  margin: 0 0 40px;
+}
+
+/* 特性卡片 */
+.feature-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.feature-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  border-radius: 14px;
+  backdrop-filter: blur(10px);
+  transition: all 0.25s ease;
+}
+
+.feature-card:hover {
+  background: #fff;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  transform: translateY(-2px);
+}
+
+.feature-icon {
+  width: 38px;
+  height: 38px;
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.feature-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke: #6366f1;
+  stroke-width: 2;
+  fill: none;
+}
+
+.feature-text {
+  font-size: 14px;
+  color: #475569;
+  font-weight: 500;
+}
+
+/* 右侧表单区 */
+.login-form-section {
+  width: 580px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 60px 70px;
+  border-left: 1px solid #f1f5f9;
+}
+
+.form-container {
   width: 100%;
   max-width: 420px;
-  animation: fadeIn 0.8s ease-out;
 }
 
-.login-header {
-  margin-bottom: 48px;
+.form-header {
+  margin-bottom: 32px;
 }
 
-.login-title {
-  font-size: 36px !important;
-  font-weight: 700 !important;
-  letter-spacing: -0.02em !important;
-  color: #000000 !important;
-  margin-bottom: 12px !important;
-  line-height: 1.2 !important;
-}
-
-.login-subtitle {
-  font-size: 16px;
-  color: #666666;
-  line-height: 1.5;
-}
-
-/* ==========================================
-   表单样式
-   ========================================== */
-.login-form {
-  margin-top: 0;
-}
-
-.login-form .ant-form-item {
-  margin-bottom: 24px;
-}
-
-.input-wrapper {
-  position: relative;
-}
-
-.input-label {
-  display: block;
-  font-size: 14px;
-  font-weight: 500;
-  color: #000000;
-  margin-bottom: 8px;
+.form-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: #1e1e2e;
+  margin: 0 0 6px;
   letter-spacing: -0.01em;
 }
 
-/* 现代化输入框 */
-.modern-input,
-.modern-input.ant-input,
-.modern-input.ant-input-password {
-  height: 48px;
-  padding: 12px 16px;
+.form-subtitle {
   font-size: 15px;
-  border: 1.5px solid #e5e5e5;
-  border-radius: 8px;
-  background: #ffffff;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  color: #000000;
+  color: #94a3b8;
+  margin: 0;
 }
 
-.modern-input::placeholder,
-.modern-input.ant-input::placeholder {
-  color: #999999;
+.form-subtitle a {
+  color: #6366f1;
+  font-weight: 600;
+  text-decoration: none;
 }
 
-.modern-input:hover,
-.modern-input.ant-input:hover,
-.modern-input.ant-input-password:hover {
-  border-color: #000000;
+.form-subtitle a:hover {
+  text-decoration: underline;
 }
 
-.modern-input:focus,
-.modern-input.ant-input:focus,
-.modern-input.ant-input-password:focus,
-.modern-input.ant-input-affix-wrapper-focused {
-  border-color: #000000;
-  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
-  outline: none;
+/* 表单样式 */
+.form-container .ant-form-item {
+  margin-bottom: 20px;
 }
 
-/* 密码输入框特殊样式 */
-.modern-input.ant-input-affix-wrapper {
+.form-container .ant-input,
+.form-container .ant-input-password,
+.form-container .ant-input-affix-wrapper {
+  height: 50px;
+  background: #fff;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 12px;
+  font-size: 15px;
+  color: #1e1e2e;
+  transition: all 0.2s ease;
+  padding: 0 16px;
+}
+
+.form-container .ant-input::placeholder {
+  color: #9ca3af;
+}
+
+.form-container .ant-input:hover,
+.form-container .ant-input-affix-wrapper:hover {
+  border-color: #c7d2fe;
+}
+
+.form-container .ant-input:focus,
+.form-container .ant-input-affix-wrapper-focused {
+  border-color: #6366f1;
+  box-shadow: none;
+}
+
+.form-container .ant-input-affix-wrapper {
+  padding: 0 16px;
+}
+
+.form-container .ant-input-affix-wrapper .ant-input {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  height: 46px;
   padding: 0;
-  border: 1.5px solid #e5e5e5;
 }
 
-.modern-input.ant-input-affix-wrapper > input {
-  border: none !important;
-  box-shadow: none !important;
-  padding: 12px 16px;
+.form-container .ant-input-password-icon {
+  color: #9ca3af;
+  transition: color 0.2s;
 }
 
-.modern-input.ant-input-affix-wrapper .ant-input-suffix {
-  margin-right: 12px;
+.form-container .ant-input-password-icon:hover {
+  color: #6366f1;
 }
 
-/* ==========================================
-   选项区域
-   ========================================== */
-.login-options {
+/* 选项行 */
+.options-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 16px;
-  margin-bottom: 8px;
+  margin: -8px 0 8px;
 }
 
-.modern-checkbox.ant-checkbox-wrapper {
-  color: #666666;
+.options-row .ant-checkbox-wrapper {
+  color: #64748b;
   font-size: 14px;
-  font-weight: 500;
 }
 
-.modern-checkbox .ant-checkbox-inner {
-  width: 18px;
-  height: 18px;
-  border: 1.5px solid #d1d1d1;
-  border-radius: 4px;
-}
-
-.modern-checkbox .ant-checkbox-checked .ant-checkbox-inner {
-  background-color: #000000;
-  border-color: #000000;
-}
-
-.modern-checkbox:hover .ant-checkbox-inner {
-  border-color: #000000;
+.options-row .ant-checkbox-checked .ant-checkbox-inner {
+  background: #6366f1;
+  border-color: #6366f1;
 }
 
 .forgot-link {
-  color: #666666;
   font-size: 14px;
+  color: #6366f1;
   font-weight: 500;
   text-decoration: none;
-  transition: color 0.2s;
 }
 
 .forgot-link:hover {
-  color: #000000;
+  text-decoration: underline;
 }
 
-/* ==========================================
-   登录按钮
-   ========================================== */
-.login-button.ant-btn {
+/* 提交按钮 */
+.submit-btn {
   height: 52px;
+  background: linear-gradient(135deg, #6366f1 0%, #7c3aed 100%);
+  border: none;
+  border-radius: 12px;
   font-size: 16px;
   font-weight: 600;
-  border-radius: 8px;
-  background: #000000;
-  border: none;
-  color: #ffffff;
-  letter-spacing: -0.01em;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  margin-top: 8px;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
+  transition: all 0.25s ease;
 }
 
-.login-button.ant-btn:hover,
-.login-button.ant-btn:focus {
-  background: #1a1a1a;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+.submit-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
 }
 
-.login-button.ant-btn:active {
+.submit-btn:active {
   transform: translateY(0);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
-.login-button.ant-btn-loading {
-  opacity: 0.8;
+/* 分隔线 */
+.divider-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 28px 0;
 }
 
-/* ==========================================
-   页脚
-   ========================================== */
-.login-footer {
+.divider-row::before,
+.divider-row::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e5e7eb;
+}
+
+.divider-row span {
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+/* 第三方登录 */
+.social-login {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.social-btn {
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #fff;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.social-btn:hover {
+  border-color: #c7d2fe;
+  background: #fafaff;
+}
+
+.social-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* 页脚 */
+.terms {
   text-align: center;
-  margin-top: 32px;
-  padding-top: 32px;
-  border-top: 1px solid #f0f0f0;
-}
-
-.footer-text {
-  font-size: 14px;
-  color: #666666;
-}
-
-.register-link {
-  color: #000000;
-  font-weight: 600;
-  text-decoration: none;
-  transition: opacity 0.2s;
-}
-
-.register-link:hover {
-  opacity: 0.7;
-  text-decoration: underline;
-}
-
-.login-bottom {
-  margin-top: 32px;
-  text-align: center;
-}
-
-.bottom-text {
+  margin-top: 28px;
   font-size: 12px;
-  color: #999999;
-  line-height: 1.6;
+  color: #94a3b8;
 }
 
-.policy-link {
-  color: #666666;
+.terms a {
+  color: #64748b;
+  text-decoration: none;
+}
+
+.terms a:hover {
   text-decoration: underline;
-  margin: 0 2px;
-  transition: color 0.2s;
 }
 
-.policy-link:hover {
-  color: #000000;
-}
-
-/* ==========================================
-   动画定义
-   ========================================== */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes float {
-  0%, 100% {
-    transform: translate(0, 0);
-  }
-  33% {
-    transform: translate(20px, -20px);
-  }
-  66% {
-    transform: translate(-20px, 20px);
-  }
-}
-
-@keyframes floatVertical {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(40px);
-  }
-}
-
-/* ==========================================
-   响应式设计
-   ========================================== */
+/* 响应式 */
 @media (max-width: 1024px) {
-  .login-left {
+  .login-visual {
     display: none;
   }
-
-  .login-right {
-    flex: 1;
+  
+  .login-form-section {
+    width: 100%;
+    border-left: none;
     padding: 40px 24px;
   }
+  
+  .form-container {
+    margin: 0 auto;
+  }
+}
 
-  .login-container {
+@media (max-width: 480px) {
+  .form-container {
     max-width: 100%;
   }
-}
-
-@media (max-width: 640px) {
-  .login-right {
-    padding: 32px 20px;
-  }
-
-  .login-title {
-    font-size: 28px !important;
-  }
-
-  .login-subtitle {
-    font-size: 14px;
-  }
-
-  .modern-input,
-  .modern-input.ant-input,
-  .modern-input.ant-input-password {
-    height: 44px;
-    font-size: 14px;
-  }
-
-  .login-button.ant-btn {
-    height: 48px;
-    font-size: 15px;
-  }
-
-  .login-options {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-}
-
-/* ==========================================
-   暗色模式适配（预留）
-   ========================================== */
-@media (prefers-color-scheme: dark) {
-  /* 保持当前设计，不启用暗色模式 */
-}
-
-/* ==========================================
-   打印样式（隐藏）
-   ========================================== */
-@media print {
-  .login-page {
-    display: none;
-  }
-}
-
-/* ==========================================
-   无障碍优化
-   ========================================== */
-.login-button.ant-btn:focus-visible {
-  outline: 2px solid #000000;
-  outline-offset: 2px;
-}
-
-.forgot-link:focus-visible,
-.register-link:focus-visible,
-.policy-link:focus-visible {
-  outline: 2px solid #000000;
-  outline-offset: 2px;
-  border-radius: 2px;
-}
-
-/* ==========================================
-   性能优化
-   ========================================== */
-.login-left,
-.login-right,
-.geometric-bg {
-  will-change: transform;
-}
-
-.geo-line,
-.geo-circle {
-  will-change: transform;
 }

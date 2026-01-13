@@ -132,12 +132,19 @@ public class ChapterController {
     @PutMapping("/{id}")
     public ResponseEntity<Chapter> updateChapter(@PathVariable Long id, @RequestBody Chapter chapterData) {
         try {
-            Chapter updatedChapter = chapterService.updateChapter(id, chapterData);
-            if (updatedChapter != null) {
-                return ResponseEntity.ok(updatedChapter);
-            } else {
+            Long userId = com.novel.common.security.AuthUtils.getCurrentUserId();
+            Chapter existingChapter = chapterService.getChapter(id);
+            if (existingChapter == null) {
                 return ResponseEntity.notFound().build();
             }
+            // 通过小说验证权限
+            Novel novel = novelService.getNovel(existingChapter.getNovelId());
+            if (novel == null || novel.getAuthorId() == null || !novel.getAuthorId().equals(userId)) {
+                return ResponseEntity.status(403).build();
+            }
+            
+            Chapter updatedChapter = chapterService.updateChapter(id, chapterData);
+            return ResponseEntity.ok(updatedChapter);
         } catch (Exception e) {
             logger.error("更新章节失败: chapterId={}", id, e);
             return ResponseEntity.status(500).build();
@@ -150,12 +157,20 @@ public class ChapterController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteChapter(@PathVariable Long id) {
         try {
-            boolean deleted = chapterService.deleteChapter(id);
-            if (deleted) {
-                return ResponseEntity.ok().build();
-            } else {
+            Long userId = com.novel.common.security.AuthUtils.getCurrentUserId();
+            Chapter chapter = chapterService.getChapter(id);
+            if (chapter == null) {
                 return ResponseEntity.notFound().build();
             }
+            // 通过小说验证权限
+            Novel novel = novelService.getNovel(chapter.getNovelId());
+            if (novel == null || novel.getAuthorId() == null || !novel.getAuthorId().equals(userId)) {
+                logger.warn("用户{}尝试删除不属于自己的章节{}", userId, id);
+                return ResponseEntity.status(403).build();
+            }
+            
+            boolean deleted = chapterService.deleteChapter(id);
+            return deleted ? ResponseEntity.ok().build() : ResponseEntity.notFound().build();
         } catch (Exception e) {
             logger.error("删除章节失败: chapterId={}", id, e);
             return ResponseEntity.status(500).build();

@@ -57,18 +57,66 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
     }
 
     /**
-     * 获取所有可用的模板（官方+用户自定义）
+     * 获取模板列表（简单查询，和后台管理一致）
      */
-    public List<PromptTemplate> getAvailableTemplates(Long userId) {
+    public List<PromptTemplate> getTemplateList(String category) {
         LambdaQueryWrapper<PromptTemplate> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(PromptTemplate::getIsActive, true)
-               .and(w -> w.eq(PromptTemplate::getType, "official")
-                         .or()
-                         .eq(PromptTemplate::getUserId, userId))
-               .orderByDesc(PromptTemplate::getType) // 官方模板在前
+        
+        // 分类过滤
+        if (category != null && !category.isEmpty()) {
+            wrapper.eq(PromptTemplate::getCategory, category);
+        }
+        
+        // 排序：默认模板在前 -> 按创建时间倒序
+        wrapper.orderByDesc(PromptTemplate::getIsDefault)
                .orderByDesc(PromptTemplate::getCreatedTime);
         
         return list(wrapper);
+    }
+
+    /**
+     * 获取所有可用的模板（官方+用户自定义）
+     * @param userId 用户ID
+     * @param type 模板类型（official/custom），可选
+     * @param category 模板分类（chapter/outline/polish/remove），可选
+     */
+    public List<PromptTemplate> getAvailableTemplates(Long userId, String type, String category) {
+        LambdaQueryWrapper<PromptTemplate> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(PromptTemplate::getIsActive, true);
+        
+        // 类型过滤
+        if (type != null && !type.isEmpty()) {
+            if ("official".equals(type)) {
+                wrapper.eq(PromptTemplate::getType, "official");
+            } else if ("custom".equals(type)) {
+                wrapper.eq(PromptTemplate::getUserId, userId);
+            }
+        } else {
+            // 默认：官方模板 + 用户自定义模板
+            wrapper.and(w -> w.eq(PromptTemplate::getType, "official")
+                             .or()
+                             .eq(PromptTemplate::getUserId, userId));
+        }
+        
+        // 分类过滤
+        if (category != null && !category.isEmpty()) {
+            wrapper.eq(PromptTemplate::getCategory, category);
+        }
+        
+        // 排序：默认模板在前 -> 按sort_order升序 -> 官方模板在前 -> 按创建时间倒序
+        wrapper.orderByDesc(PromptTemplate::getIsDefault)
+               .orderByAsc(PromptTemplate::getSortOrder)
+               .orderByDesc(PromptTemplate::getType)
+               .orderByDesc(PromptTemplate::getCreatedTime);
+        
+        return list(wrapper);
+    }
+    
+    /**
+     * 获取所有可用的模板（官方+用户自定义）- 兼容旧接口
+     */
+    public List<PromptTemplate> getAvailableTemplates(Long userId) {
+        return getAvailableTemplates(userId, null, null);
     }
 
     /**
@@ -179,14 +227,25 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
     /**
      * 获取公开模板列表（官方模板）
      */
-    public List<PromptTemplate> getPublicTemplates(Long userId) {
+    public List<PromptTemplate> getPublicTemplates(Long userId, String category) {
+        logger.info("🔍 Service层: 开始查询公开模板, userId={}, category={}", userId, category);
+        
         LambdaQueryWrapper<PromptTemplate> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(PromptTemplate::getType, "official")
-               .eq(PromptTemplate::getIsActive, true)
+               .eq(PromptTemplate::getIsActive, true);
+        
+        if (category != null && !category.isEmpty()) {
+            logger.info("🔎 添加分类过滤: category={}", category);
+            wrapper.eq(PromptTemplate::getCategory, category);
+        }
+        
+        wrapper.orderByDesc(PromptTemplate::getIsDefault)
+               .orderByAsc(PromptTemplate::getSortOrder)
                .orderByDesc(PromptTemplate::getUsageCount)
                .orderByDesc(PromptTemplate::getCreatedTime);
         
         List<PromptTemplate> templates = list(wrapper);
+        logger.info("✅ 查询到 {} 个模板", templates.size());
         
         // 标记收藏状态
         if (userId != null) {
@@ -199,12 +258,17 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
     /**
      * 获取用户自定义模板列表
      */
-    public List<PromptTemplate> getUserCustomTemplates(Long userId) {
+    public List<PromptTemplate> getUserCustomTemplates(Long userId, String category) {
         LambdaQueryWrapper<PromptTemplate> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(PromptTemplate::getType, "custom")
                .eq(PromptTemplate::getUserId, userId)
-               .eq(PromptTemplate::getIsActive, true)
-               .orderByDesc(PromptTemplate::getCreatedTime);
+               .eq(PromptTemplate::getIsActive, true);
+
+        if (category != null && !category.isEmpty()) {
+            wrapper.eq(PromptTemplate::getCategory, category);
+        }
+
+        wrapper.orderByDesc(PromptTemplate::getCreatedTime);
         
         List<PromptTemplate> templates = list(wrapper);
         
@@ -217,7 +281,7 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
     /**
      * 获取用户收藏的模板列表
      */
-    public List<PromptTemplate> getUserFavoriteTemplates(Long userId) {
+    public List<PromptTemplate> getUserFavoriteTemplates(Long userId, String category) {
         // 查询用户收藏的模板ID列表
         LambdaQueryWrapper<PromptTemplateFavorite> favoriteWrapper = new LambdaQueryWrapper<>();
         favoriteWrapper.eq(PromptTemplateFavorite::getUserId, userId);
@@ -235,6 +299,10 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
         LambdaQueryWrapper<PromptTemplate> templateWrapper = new LambdaQueryWrapper<>();
         templateWrapper.in(PromptTemplate::getId, templateIds)
                       .eq(PromptTemplate::getIsActive, true);
+
+        if (category != null && !category.isEmpty()) {
+            templateWrapper.eq(PromptTemplate::getCategory, category);
+        }
         
         List<PromptTemplate> templates = list(templateWrapper);
         
@@ -313,6 +381,7 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
                          .or()
                          .eq(PromptTemplate::getUserId, userId))
                .orderByDesc(PromptTemplate::getIsDefault) // 默认模板在前
+               .orderByAsc(PromptTemplate::getSortOrder) // 按排序字段升序
                .orderByDesc(PromptTemplate::getType) // 官方模板在前
                .orderByDesc(PromptTemplate::getUsageCount);
         
@@ -442,6 +511,83 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
      */
     public Map<String, String> getPlaceholderDescriptions() {
         return new HashMap<>(PLACEHOLDER_DESCRIPTIONS);
+    }
+
+    /**
+     * 设置默认模板（同一分类只能有一个默认模板）
+     */
+    public boolean setDefaultTemplate(Long templateId) {
+        PromptTemplate template = getById(templateId);
+        if (template == null || !template.getIsActive()) {
+            logger.warn("模板不存在或已禁用: {}", templateId);
+            return false;
+        }
+        
+        // 只有官方模板可以设置为默认
+        if (!"official".equals(template.getType())) {
+            logger.warn("只有官方模板可以设置为默认: templateId={}", templateId);
+            return false;
+        }
+        
+        String category = template.getCategory();
+        
+        // 取消该分类下所有其他模板的默认状态
+        LambdaQueryWrapper<PromptTemplate> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(PromptTemplate::getCategory, category)
+               .eq(PromptTemplate::getIsDefault, true)
+               .ne(PromptTemplate::getId, templateId);
+        
+        List<PromptTemplate> oldDefaults = list(wrapper);
+        for (PromptTemplate oldDefault : oldDefaults) {
+            oldDefault.setIsDefault(false);
+            updateById(oldDefault);
+        }
+        
+        // 设置新的默认模板
+        template.setIsDefault(true);
+        boolean result = updateById(template);
+        
+        logger.info("设置默认模板: templateId={}, category={}, result={}", templateId, category, result);
+        return result;
+    }
+
+    /**
+     * 批量更新模板排序
+     */
+    public boolean updateTemplatesSortOrder(List<Long> templateIds) {
+        if (templateIds == null || templateIds.isEmpty()) {
+            return false;
+        }
+        
+        // 按照传入的顺序设置 sort_order
+        for (int i = 0; i < templateIds.size(); i++) {
+            Long templateId = templateIds.get(i);
+            PromptTemplate template = getById(templateId);
+            if (template != null) {
+                template.setSortOrder(i);
+                updateById(template);
+            }
+        }
+        
+        logger.info("批量更新模板排序: count={}", templateIds.size());
+        return true;
+    }
+
+    /**
+     * 更新单个模板的排序
+     */
+    public boolean updateTemplateSortOrder(Long templateId, Integer sortOrder) {
+        PromptTemplate template = getById(templateId);
+        if (template == null) {
+            logger.warn("模板不存在: {}", templateId);
+            return false;
+        }
+        
+        template.setSortOrder(sortOrder);
+        boolean result = updateById(template);
+        
+        logger.info("更新模板排序: templateId={}, sortOrder={}, result={}", templateId, sortOrder, result);
+        return result;
     }
 }
 

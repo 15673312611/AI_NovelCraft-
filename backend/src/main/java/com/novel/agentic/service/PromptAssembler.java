@@ -23,6 +23,7 @@ public class PromptAssembler {
     private static final String CONFIG_PATH = "classpath:prompts_output/promptModules.json";
 
     private final PromptTemplateService templateService;
+    private final com.novel.service.PromptTemplateService dbTemplateService;
     private final ObjectMapper objectMapper;
     private final ResourceLoader resourceLoader;
 
@@ -30,9 +31,11 @@ public class PromptAssembler {
 
     @Autowired
     public PromptAssembler(PromptTemplateService templateService,
+                           com.novel.service.PromptTemplateService dbTemplateService,
                            ObjectMapper objectMapper,
                            ResourceLoader resourceLoader) {
         this.templateService = templateService;
+        this.dbTemplateService = dbTemplateService;
         this.objectMapper = objectMapper;
         this.resourceLoader = resourceLoader;
     }
@@ -51,7 +54,17 @@ public class PromptAssembler {
         }
     }
 
-    public String assembleSystemPrompt(String genre, Integer chapterNumber, String stylePromptFile) {
+    public String assembleSystemPrompt(String genre, Integer chapterNumber, String stylePromptFile, Long promptTemplateId) {
+        // 优先使用数据库模板
+        if (promptTemplateId != null) {
+            String dbContent = dbTemplateService.getTemplateContent(promptTemplateId);
+            if (StringUtils.isNotBlank(dbContent)) {
+                logger.info("使用数据库提示词模板: templateId={}", promptTemplateId);
+                return dbContent;
+            }
+            logger.warn("数据库模板内容为空，回退到文件模板: templateId={}", promptTemplateId);
+        }
+        
         String base = assembleBaseRules(stylePromptFile);
         String style = assembleStylePrompt(stylePromptFile);
 

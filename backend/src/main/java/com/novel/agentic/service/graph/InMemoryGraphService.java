@@ -634,14 +634,32 @@ public class InMemoryGraphService implements IGraphService {
     }
 
     @Override
+    public void upsertCharacterStateWithInfo(Long novelId, String characterName, String location, String realm, Boolean alive, String characterInfo, Integer chapterNumber) {
+        logger.info("🧭 内存版upsertCharacterStateWithInfo: {}@{}, info={}", characterName, chapterNumber, characterInfo);
+        // 内存版：简化存储，不实现查询功能
+    }
+
+    @Override
     public void updateCharacterInventory(Long novelId, String characterName, List<String> items, Integer chapterNumber) {
         logger.info("💼 内存版updateInventory: {} 持有{}件物品", characterName, items != null ? items.size() : 0);
         // 内存版：简化存储，不实现查询功能
     }
 
     @Override
+    public void upsertCharacterStateComplete(Long novelId, String characterName, Map<String, Object> stateData, Integer chapterNumber) {
+        logger.info("🧭 内存版upsertCharacterStateComplete: {}@{}", characterName, chapterNumber);
+        // 内存版：简化存储，不实现查询功能
+    }
+
+    @Override
     public void upsertRelationshipState(Long novelId, String characterA, String characterB, String type, Double strength, Integer chapterNumber) {
         logger.info("🤝 内存版upsertRelationshipState: {}—{}", characterA, characterB);
+        // 内存版：简化存储，不实现查询功能
+    }
+
+    @Override
+    public void upsertRelationshipStateComplete(Long novelId, String characterA, String characterB, Map<String, Object> relationData, Integer chapterNumber) {
+        logger.info("🤝 内存版upsertRelationshipStateComplete: {}—{}", characterA, characterB);
         // 内存版：简化存储，不实现查询功能
     }
 

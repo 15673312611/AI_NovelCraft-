@@ -56,22 +56,34 @@ class NovelService {
     return this.getNovelById(numericId)
   }
 
+  async getAll(): Promise<Novel[]> {
+    return this.getNovels(0, 1000)
+  }
+
   async getNovels(page: number = 0, size: number = 10): Promise<Novel[]> {
-    const response = await api.get(`/novels?page=${page}&size=${size}`)
-    const data = response as unknown as any
+    try {
+      const response = await api.get(`/novels?page=${page}&size=${size}`)
+      const data = response as unknown as any
 
-    // 如果返回的是分页数据，提取content数组
-    if (data && typeof data === 'object' && 'content' in data && Array.isArray(data.content)) {
-      return data.content as Novel[]
+      console.log('getNovels response:', data)
+
+      // 如果返回的是分页数据，提取content数组
+      if (data && typeof data === 'object' && 'content' in data && Array.isArray(data.content)) {
+        return data.content as Novel[]
+      }
+
+      // 如果直接是数组，返回数组
+      if (Array.isArray(data)) {
+        return data as Novel[]
+      }
+
+      // 其他情况返回空数组
+      console.warn('Unexpected response format:', data)
+      return []
+    } catch (error) {
+      console.error('Error fetching novels:', error)
+      return []
     }
-
-    // 如果直接是数组，返回数组
-    if (Array.isArray(data)) {
-      return data as Novel[]
-    }
-
-    // 其他情况返回空数组
-    return []
   }
 
   async getNovelById(id: number): Promise<Novel> {

@@ -7,16 +7,21 @@ interface StatData {
   value: number | string
   icon: React.ReactNode
   color: 'blue' | 'purple' | 'orange'
-  trend?: {
-    value: number
-    isPositive: boolean
-  }
+  suffix?: string
 }
 
 interface EnhancedStatsCardProps {
   totalNovels: number
   totalChapters: number
   totalWords: number
+}
+
+// 格式化数字显示
+const formatNumber = (num: number): string => {
+  if (num >= 10000) {
+    return (num / 10000).toFixed(1) + '万'
+  }
+  return num.toLocaleString()
 }
 
 const EnhancedStatsCard: React.FC<EnhancedStatsCardProps> = ({
@@ -26,10 +31,25 @@ const EnhancedStatsCard: React.FC<EnhancedStatsCardProps> = ({
 }) => {
   const stats: StatData[] = [
     {
-      label: '作品数',
+      label: '作品总数',
       value: totalNovels,
       icon: <BookOutlined />,
       color: 'blue',
+      suffix: '部'
+    },
+    {
+      label: '章节总数',
+      value: totalChapters,
+      icon: <FileTextOutlined />,
+      color: 'purple',
+      suffix: '章'
+    },
+    {
+      label: '累计字数',
+      value: formatNumber(totalWords),
+      icon: <EditOutlined />,
+      color: 'orange',
+      suffix: '字'
     },
   ]
 
@@ -55,11 +75,7 @@ const EnhancedStatsCard: React.FC<EnhancedStatsCardProps> = ({
           <div className="stat-content-wrapper">
             <div className="stat-value-wrapper">
               <span className="stat-value">{stat.value}</span>
-              {stat.trend && (
-                <span className={`stat-trend ${stat.trend.isPositive ? 'positive' : 'negative'}`}>
-                  {stat.trend.isPositive ? '↑' : '↓'} {stat.trend.value}%
-                </span>
-              )}
+              {stat.suffix && <span className="stat-suffix">{stat.suffix}</span>}
             </div>
             <div className="stat-label">{stat.label}</div>
           </div>

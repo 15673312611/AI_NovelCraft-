@@ -85,5 +85,3 @@ buildNumber.properties
 *.tmp
 *.temp
 
-# Text files
-*.txt 

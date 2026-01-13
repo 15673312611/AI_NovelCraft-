@@ -3,9 +3,11 @@ package com.novel.controller;
 import com.novel.common.ApiResponse;
 import com.novel.common.Result;
 import com.novel.config.GlobalExceptionHandler.BusinessException;
+import com.novel.domain.entity.Novel;
 import com.novel.domain.entity.NovelVolume;
 import com.novel.dto.AIConfigRequest;
 import com.novel.service.VolumeService;
+import com.novel.service.NovelService;
 import com.novel.service.NovelVolumeService;
 // import com.novel.service.NovelOutlineService;
 import org.slf4j.Logger;
@@ -36,6 +38,9 @@ public class VolumeController {
 
     @Autowired
     private VolumeService volumeService;
+    
+    @Autowired
+    private NovelService novelService;
 
     // 保留注入占位，暂未在本控制器使用，后续可能扩展
     // @Autowired
@@ -75,7 +80,33 @@ public class VolumeController {
                 volumeCount = 0; // 0 表示让服务自行估算
             }
 
-            com.novel.domain.entity.AITask task = volumeService.generateVolumePlansFromConfirmedOutlineAsync(novelId, volumeCount);
+            // 解析AI配置（支持扁平化和嵌套aiConfig两种格式），以便前端携带apikey等信息
+            AIConfigRequest aiConfig = new AIConfigRequest();
+            if (body != null) {
+                if (body.containsKey("provider")) {
+                    aiConfig.setProvider((String) body.get("provider"));
+                    aiConfig.setApiKey((String) body.get("apiKey"));
+                    aiConfig.setModel((String) body.get("model"));
+                    aiConfig.setBaseUrl((String) body.get("baseUrl"));
+                } else if (body.get("aiConfig") instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, String> aiConfigMap = (Map<String, String>) body.get("aiConfig");
+                    aiConfig.setProvider(aiConfigMap.get("provider"));
+                    aiConfig.setApiKey(aiConfigMap.get("apiKey"));
+                    aiConfig.setModel(aiConfigMap.get("model"));
+                    aiConfig.setBaseUrl(aiConfigMap.get("baseUrl"));
+                }
+            }
+
+            com.novel.domain.entity.AITask task;
+            if (aiConfig != null && aiConfig.isValid()) {
+                logger.info("✅ 基于确认大纲生成卷规划 - 使用前端提供的AI配置");
+                task = volumeService.generateVolumePlansFromConfirmedOutlineAsync(novelId, volumeCount, aiConfig);
+            } else {
+                logger.warn("⚠️ 基于确认大纲生成卷规划 - 未提供有效AI配置，将使用默认AI配置");
+                task = volumeService.generateVolumePlansFromConfirmedOutlineAsync(novelId, volumeCount, null);
+            }
+
             Map<String, Object> resp = new HashMap<>();
             resp.put("async", true);
             resp.put("taskId", task != null ? task.getId() : null);
@@ -295,49 +326,49 @@ public class VolumeController {
         }
     }
 
-    /**
-     * 开始卷写作会话
-     * POST /volumes/{volumeId}/start-writing
-     */
-    @PostMapping("/{volumeId}/start-writing")
-    public Result<Map<String, Object>> startVolumeWriting(@PathVariable Long volumeId) {
-        try {
-            logger.info("✍️ 开始卷 {} 的写作会话", volumeId);
+//    /**
+//     * 开始卷写作会话
+//     * POST /volumes/{volumeId}/start-writing
+//     */
+//    @PostMapping("/{volumeId}/start-writing")
+//    public Result<Map<String, Object>> startVolumeWriting(@PathVariable Long volumeId) {
+//        try {
+//            logger.info("✍️ 开始卷 {} 的写作会话", volumeId);
+//
+//            Map<String, Object> writingSession = volumeService.startVolumeWriting(volumeId);
+//
+//            return Result.success(writingSession);
+//
+//        } catch (Exception e) {
+//            logger.error("开始写作会话失败", e);
+//            return Result.error("开始失败: " + e.getMessage());
+//        }
+//    }
 
-            Map<String, Object> writingSession = volumeService.startVolumeWriting(volumeId);
-
-            return Result.success(writingSession);
-
-        } catch (Exception e) {
-            logger.error("开始写作会话失败", e);
-            return Result.error("开始失败: " + e.getMessage());
-        }
-    }
-
-    /**
-     * 生成下一步写作指导
-     * POST /volumes/{volumeId}/next-guidance
-     */
-    @PostMapping("/{volumeId}/next-guidance")
-    public Result<Map<String, Object>> generateNextStepGuidance(
-            @PathVariable Long volumeId,
-            @RequestBody Map<String, Object> request) {
-
-        try {
-            String currentContent = (String) request.get("currentContent");
-            String userInput = (String) request.get("userInput");
-
-            logger.info("💡 为卷 {} 生成下一步指导", volumeId);
-
-            Map<String, Object> guidance = volumeService.generateNextStepGuidance(volumeId, currentContent, userInput);
-
-            return Result.success(guidance);
-
-        } catch (Exception e) {
-            logger.error("生成写作指导失败", e);
-            return Result.error("生成失败: " + e.getMessage());
-        }
-    }
+//    /**
+//     * 生成下一步写作指导
+//     * POST /volumes/{volumeId}/next-guidance
+//     */
+//    @PostMapping("/{volumeId}/next-guidance")
+//    public Result<Map<String, Object>> generateNextStepGuidance(
+//            @PathVariable Long volumeId,
+//            @RequestBody Map<String, Object> request) {
+//
+//        try {
+//            String currentContent = (String) request.get("currentContent");
+//            String userInput = (String) request.get("userInput");
+//
+//            logger.info("💡 为卷 {} 生成下一步指导", volumeId);
+//
+//            Map<String, Object> guidance = volumeService.generateNextStepGuidance(volumeId, currentContent, userInput);
+//
+//            return Result.success(guidance);
+//
+//        } catch (Exception e) {
+//            logger.error("生成写作指导失败", e);
+//            return Result.error("生成失败: " + e.getMessage());
+//        }
+//    }
 
     /**
      * AI优化卷大纲（流式）
@@ -560,6 +591,18 @@ public class VolumeController {
     @DeleteMapping("/{volumeId}")
     public Result<String> deleteVolume(@PathVariable Long volumeId) {
         try {
+            Long userId = com.novel.common.security.AuthUtils.getCurrentUserId();
+            NovelVolume volume = volumeService.getVolumeById(volumeId);
+            if (volume == null) {
+                return Result.error("卷不存在");
+            }
+            // 通过小说验证权限
+            Novel novel = novelService.getNovel(volume.getNovelId());
+            if (novel == null || novel.getAuthorId() == null || !novel.getAuthorId().equals(userId)) {
+                logger.warn("用户{}尝试删除不属于自己的卷{}", userId, volumeId);
+                return Result.error("无权删除此卷");
+            }
+            
             volumeService.deleteVolume(volumeId);
             return Result.success("删除成功");
         } catch (Exception e) {

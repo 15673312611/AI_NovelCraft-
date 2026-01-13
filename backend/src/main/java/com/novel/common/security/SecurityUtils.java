@@ -130,7 +130,7 @@ public class SecurityUtils {
         
         // 用户只能访问自己的资源
         Long currentUserId = getCurrentUserId(authentication);
-        return resourceOwnerId.equals(currentUserId);
+        return currentUserId != null && resourceOwnerId.equals(currentUserId);
     }
 
     /**

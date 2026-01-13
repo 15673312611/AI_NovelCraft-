@@ -11,7 +11,7 @@ import org.apache.ibatis.annotations.Select;
 @Mapper
 public interface NovelRepository extends BaseMapper<Novel> {
 
-    @Select("SELECT * FROM novels WHERE created_by = #{authorId}")
+    @Select("SELECT * FROM novels WHERE created_by = #{authorId} ORDER BY updated_at DESC")
     IPage<Novel> findByAuthorId(@Param("authorId") Long authorId, Page<Novel> page);
 
     @Select("SELECT * FROM novels WHERE status = #{status}")

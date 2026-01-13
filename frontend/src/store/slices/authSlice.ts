@@ -68,6 +68,12 @@ const authSlice = createSlice({
       state.isAuthenticated = true
       localStorage.setItem('token', action.payload)
     },
+    setCredentials: (state, action: PayloadAction<{ user: User; token: string }>) => {
+      state.user = action.payload.user
+      state.token = action.payload.token
+      state.isAuthenticated = true
+      localStorage.setItem('token', action.payload.token)
+    },
     clearAuth: (state) => {
       state.user = null
       state.token = null
@@ -141,5 +147,5 @@ const authSlice = createSlice({
   },
 })
 
-export const { clearError, setToken, clearAuth } = authSlice.actions
+export const { clearError, setToken, setCredentials, clearAuth } = authSlice.actions
 export default authSlice.reducer 

@@ -19,7 +19,9 @@ import novelOutlineService, { NovelOutline as OutlineModel } from '../services/n
 import { aiTaskService } from '../services/aiTaskService';
 import api from '../services/api';
 import { checkAIConfig, withAIConfig, AI_CONFIG_ERROR_MESSAGE } from '../utils/aiRequest';
+import { formatAIErrorMessage } from '../utils/errorHandler';
 import './VolumeManagementPage.css';
+import './VolumeManagementPage.apple.css';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -63,6 +65,11 @@ const VolumeManagementPage: React.FC = () => {
   // 批量异步任务：每卷任务进度
   const [volumeTasks, setVolumeTasks] = useState<Record<string, { taskId: number, progress: number, status: string, message?: string }>>({});
   const [taskStops, setTaskStops] = useState<Record<string, () => void>>({});
+  
+  // 重新生成卷状态
+  const [isRegeneratingVolumes, setIsRegeneratingVolumes] = useState(false);
+  const [regenerateProgress, setRegenerateProgress] = useState<{ percentage: number, message: string } | null>(null);
+  const [fakeProgress, setFakeProgress] = useState(0); // 假进度条
 
   // 弹窗状态
   const [generateModalVisible, setGenerateModalVisible] = useState(false);
@@ -75,8 +82,8 @@ const VolumeManagementPage: React.FC = () => {
   const [hasShownQuickStart, setHasShownQuickStart] = useState(false); // 标记是否已显示过弹窗
 
   // 总字数动态计算状态
-  const [totalWords, setTotalWords] = useState(1000000); // 默认 500章 × 2000字 (快速开始弹窗)
-  const [totalWordsGenerate, setTotalWordsGenerate] = useState(1000000); // 默认 500章 × 2000字 (生成大纲弹窗)
+  const [totalWords, setTotalWords] = useState(600000); // 默认 300章 × 2000字 (快速开始弹窗)
+  const [totalWordsGenerate, setTotalWordsGenerate] = useState(600000); // 默认 300章 × 2000字 (生成大纲弹窗)
 
   // 模板选择状态
   const [outlineTemplates, setOutlineTemplates] = useState<any[]>([]);
@@ -183,10 +190,10 @@ const VolumeManagementPage: React.FC = () => {
       // 填充表单
       outlineForm.setFieldsValue({
         basicIdea: state.initialIdea,
-        targetChapters: 500,
+        targetChapters: 300,
         wordsPerChapter: 2000,
-        targetWords: 500 * 2000, // 自动计算：500章 × 2000字/章 = 1000000字
-        volumeCount: 10
+        targetWords: 300 * 2000, // 自动计算：300章 × 2000字/章 = 600000字
+        volumeCount: 5
       });
       
       // 显示配置弹窗
@@ -228,7 +235,7 @@ const VolumeManagementPage: React.FC = () => {
       setNovel(novelData);
     } catch (error: any) {
       console.error('❌ 加载小说信息失败:', error);
-      message.error('加载小说信息失败');
+      message.error(error?.message || '加载小说信息失败');
     }
   };
 
@@ -266,7 +273,7 @@ const VolumeManagementPage: React.FC = () => {
       // 避免与状态恢复逻辑冲突
     } catch (error: any) {
       console.error('❌ 加载卷列表失败:', error);
-      message.error('加载卷列表失败');
+      message.error(error?.message || '加载卷列表失败');
     } finally {
       setLoading(false);
     }
@@ -476,6 +483,9 @@ const VolumeManagementPage: React.FC = () => {
 
   // 确认大纲并生成卷规划（前端轮询卷列表直到出现）
   const confirmSuperOutline = async () => {
+    // 立即滚动到顶部
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
     console.log('🔍 confirmSuperOutline 被调用');
     console.log('🔍 currentSuperOutline:', currentSuperOutline);
     console.log('🔍 novelId:', novelId);
@@ -542,7 +552,7 @@ const VolumeManagementPage: React.FC = () => {
       // 3) 若未触发，直接调用卷规划生成接口作为兜底
       if (!triggered) {
         // 优先使用用户设定的计划卷数，其次根据大纲长度估算
-        let volumeCount = 10; // 默认10卷
+        let volumeCount = 5; // 默认5卷
 
         if (novel && novel.plannedVolumeCount && novel.plannedVolumeCount > 0) {
           // 第一优先级：使用用户输入的计划卷数
@@ -552,18 +562,18 @@ const VolumeManagementPage: React.FC = () => {
           // 第二优先级：根据大纲长度动态调整卷数
           const outlineLength = outlineText.length;
           if (outlineLength > 10000) {
-            volumeCount = 15; // 长大纲分15卷
+            volumeCount = 8; // 长大纲分8卷
           } else if (outlineLength > 5000) {
-            volumeCount = 12; // 中等大纲分12卷
+            volumeCount = 7; // 中等大纲分7卷
           } else if (outlineLength > 2000) {
-            volumeCount = 10; // 标准大纲分10卷
+            volumeCount = 5; // 标准大纲分5卷
           } else {
-            volumeCount = 8; // 短大纲分8卷
+            volumeCount = 3; // 短大纲分3卷
           }
           console.log('[confirmSuperOutline] 根据大纲长度估算卷数，大纲长度=', outlineLength, ', volumeCount=', volumeCount);
         }
 
-        await api.post(`/volumes/${novelId}/generate-from-outline`, { volumeCount });
+        await api.post(`/volumes/${novelId}/generate-from-outline`, withAIConfig({ volumeCount }));
         message.success(`大纲确认成功，已触发卷规划生成（约${volumeCount}卷）！`);
       }
 
@@ -576,7 +586,11 @@ const VolumeManagementPage: React.FC = () => {
       console.log('[confirmSuperOutline] 已切换到步骤1（生成卷中）');
 
       // 启动轮询等待卷生成完成
-      pollForVolumeGeneration();
+      pollForVolumeGeneration().catch(error => {
+        console.error('[confirmSuperOutline] 轮询失败:', error);
+        setIsConfirmingOutline(false);
+        setTaskProgress(null);
+      });
 
     } catch (error: any) {
       console.error('❌ 确认大纲失败:', error);
@@ -590,6 +604,8 @@ const VolumeManagementPage: React.FC = () => {
   const pollForVolumeGeneration = async () => {
     let attempts = 0;
     const maxAttempts = 120; // 最多轮询4分钟（120次 * 4秒 = 480秒）
+    let consecutiveErrors = 0; // 连续错误计数
+    const maxConsecutiveErrors = 3; // 最多允许3次连续错误
 
     // 标记正在生成卷（持久化到 localStorage）
     localStorage.setItem(`novel_${novelId}_generating_volumes`, Date.now().toString());
@@ -599,19 +615,82 @@ const VolumeManagementPage: React.FC = () => {
       const intervalId = setInterval(async () => {
         attempts++;
         try {
-          // 更新进度
-          const progress = Math.min(90, 10 + (attempts * 0.7));
-          setTaskProgress({ percentage: progress, message: '生成卷规划中...' });
+          // 更新进度 - 优化为3分钟模拟曲线，前期快后期慢，分段增长
+          let progress = 0;
+          if (attempts <= 8) { // 前32秒: 5% -> 30%
+             progress = 5 + (attempts / 8) * 25; 
+          } else if (attempts <= 25) { // 32-100秒: 30% -> 70%
+             progress = 30 + ((attempts - 8) / 17) * 40;
+          } else if (attempts <= 45) { // 100-180秒: 70% -> 95%
+             progress = 70 + ((attempts - 25) / 20) * 25;
+          } else { // >180秒: 95% -> 99%
+             progress = 95 + Math.min(4, (attempts - 45) * 0.1);
+          }
+          
+          setTaskProgress({ percentage: Math.floor(progress), message: '生成卷规划中...' });
 
-          // 检查小说的创作阶段，而不是简单地检查卷数量
-          // 这样可以避免在卷还在插入过程中就返回结果
+          // 1. 首先检查是否有失败的 AI 任务
+          try {
+            const tasksResponse = await aiTaskService.getAITasks(0, 5, undefined, 'VOLUME_GENERATION', parseInt(novelId!));
+            const tasks = tasksResponse?.content || [];
+            
+            // 查找最近的任务
+            const latestTask = tasks.sort((a: any, b: any) => {
+              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            })[0];
+
+            // 检查任务状态
+            if (latestTask) {
+              console.log('[轮询] 最新任务状态:', latestTask.status, '错误信息:', latestTask.errorMessage);
+              
+              if (latestTask.status === 'FAILED') {
+                clearInterval(intervalId);
+                localStorage.removeItem(`novel_${novelId}_generating_volumes`);
+                setTaskProgress(null);
+                setIsConfirmingOutline(false);
+                
+                const errorMsg = latestTask.errorMessage || '未知错误';
+                message.error({
+                  content: `卷规划生成失败：${errorMsg}`,
+                  duration: 8
+                });
+                
+                console.error('[轮询] 任务失败，错误信息:', errorMsg);
+                reject(new Error(errorMsg));
+                return;
+              }
+            }
+          } catch (taskError) {
+            console.warn('[轮询] 查询AI任务状态失败:', taskError);
+            // 不阻断主流程，继续检查小说状态
+          }
+
+          // 2. 检查小说的创作阶段
           let novelInfo: any = null;
           try {
             const res: any = await api.get(`/novels/${novelId}?_=${Date.now()}`);
             novelInfo = res?.data || res;
             console.log('[轮询] 小说创作阶段:', novelInfo?.creationStage);
+            consecutiveErrors = 0; // 请求成功，重置错误计数
           } catch (e) {
             console.warn('[轮询] 获取小说信息失败:', e);
+            consecutiveErrors++;
+            
+            // 如果连续多次获取失败，可能是网络问题或服务异常
+            if (consecutiveErrors >= maxConsecutiveErrors) {
+              clearInterval(intervalId);
+              localStorage.removeItem(`novel_${novelId}_generating_volumes`);
+              setTaskProgress(null);
+              setIsConfirmingOutline(false);
+              
+              message.error({
+                content: '无法连接到服务器，请检查网络连接或稍后重试',
+                duration: 8
+              });
+              
+              reject(new Error('连续多次请求失败'));
+              return;
+            }
           }
 
           // 只有当创作阶段为 VOLUMES_GENERATED 时，才认为卷生成完成
@@ -656,6 +735,23 @@ const VolumeManagementPage: React.FC = () => {
           }
         } catch (error) {
           console.warn('轮询失败:', error);
+          consecutiveErrors++;
+          
+          // 连续错误处理
+          if (consecutiveErrors >= maxConsecutiveErrors) {
+            clearInterval(intervalId);
+            localStorage.removeItem(`novel_${novelId}_generating_volumes`);
+            setTaskProgress(null);
+            setIsConfirmingOutline(false);
+            
+            message.error({
+              content: '生成过程中出现异常，请刷新页面重试',
+              duration: 8
+            });
+            
+            reject(new Error('连续多次轮询失败'));
+            return;
+          }
         }
 
         // 超时处理
@@ -664,7 +760,13 @@ const VolumeManagementPage: React.FC = () => {
           localStorage.removeItem(`novel_${novelId}_generating_volumes`);
           console.log('[轮询] 轮询超时，已清除 localStorage 标记');
           setTaskProgress(null);
-          message.warning('卷规划生成超时，请刷新查看是否已生成');
+          setIsConfirmingOutline(false);
+          
+          message.warning({
+            content: '卷规划生成超时，请刷新页面查看是否已生成，或重新尝试',
+            duration: 8
+          });
+          
           reject(new Error('卷规划生成超时'));
         }
       }, 4000); // 每次轮询间隔4秒
@@ -722,6 +824,9 @@ const VolumeManagementPage: React.FC = () => {
 
   // 生成卷规划（第一步改为流式生成大纲）
   const handleGenerateVolumes = async (values: any) => {
+    // 立即滚动到顶部以便用户看到进度条
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
     if (!novelId) return;
 
     // 防止重复提交
@@ -813,7 +918,7 @@ const VolumeManagementPage: React.FC = () => {
       const generationParams = {
         templateId: selectedTemplateId || values.templateId,
         outlineWordLimit: values.outlineWordLimit || 2000,
-        volumeCount: values.volumeCount || 10
+        volumeCount: values.volumeCount || 5
       };
       localStorage.setItem(`novel_${novelId}_generation_params`, JSON.stringify(generationParams));
 
@@ -827,7 +932,7 @@ const VolumeManagementPage: React.FC = () => {
           novelId: novelId,
           basicIdea: values.basicIdea,
           targetWordCount: values.targetWords || 1000000,
-          targetChapterCount: values.targetChapters || 500,
+          targetChapterCount: values.targetChapters || 300,
           templateId: generationParams.templateId,
           outlineWordLimit: generationParams.outlineWordLimit,
           volumeCount: generationParams.volumeCount
@@ -903,7 +1008,7 @@ const VolumeManagementPage: React.FC = () => {
               worldSetting: '',
               keyElements: '',
               conflictTypes: '',
-              targetChapterCount: values.targetChapters || 500,
+              targetChapterCount: values.targetChapters || 300,
               targetWordCount: values.targetWords || 1000000,
               status: 'DRAFT',
               feedbackHistory: '',
@@ -916,9 +1021,8 @@ const VolumeManagementPage: React.FC = () => {
       }
     } catch (error: any) {
       console.error('[生成大纲失败]', error);
-      const errorMsg = error.response?.data?.message || error.message || '生成大纲失败';
       message.error({
-        content: errorMsg,
+        content: formatAIErrorMessage(error),
         duration: 5,
         style: { marginTop: '20vh' }
       });
@@ -1108,29 +1212,29 @@ const VolumeManagementPage: React.FC = () => {
   };
 
   // 从后端获取创作状态
-  const fetchCreationStageFromBackend = async () => {
+  const fetchCreationStageFromBackend = async (): Promise<number | null> => {
     try {
-      // 暂时跳过后端API调用，因为存在权限问题
-      // const response = await fetch(`/api/novels/${novelId}/creation-stage`);
-      // if (response.ok) {
-      //   const data = await response.json();
-      //   console.log('[fetchCreationStageFromBackend] 后端创作状态:', data);
-      //
-      //   // 根据后端状态映射到前端步骤
-      //   const stageToStepMap = {
-      //     'OUTLINE_PENDING': 0,
-      //     'OUTLINE_CONFIRMED': 1,
-      //     'VOLUMES_GENERATED': 2,
-      //     'DETAILED_OUTLINE_GENERATED': 2,
-      //     'WRITING_IN_PROGRESS': 2,
-      //     'WRITING_COMPLETED': 2
-      //   };
-      //
-      //   const backendStep = stageToStepMap[data.creationStage] || 0;
-      //   console.log(`[fetchCreationStageFromBackend] 映射步骤: ${data.creationStage} -> ${backendStep}`);
-      //   return backendStep;
-      // }
-      console.log('[fetchCreationStageFromBackend] 暂时跳过后端API调用');
+      // 直接使用已加载的小说信息，或重新获取
+      const res: any = await api.get(`/novels/${novelId}?_=${Date.now()}`);
+      const novelInfo = res?.data || res;
+      
+      if (novelInfo && novelInfo.creationStage) {
+        console.log('[fetchCreationStageFromBackend] 后端创作状态:', novelInfo.creationStage);
+        
+        // 根据后端状态映射到前端步骤
+        const stageToStepMap: Record<string, number> = {
+          'OUTLINE_PENDING': 0,
+          'OUTLINE_CONFIRMED': 1,
+          'VOLUMES_GENERATED': 2,
+          'DETAILED_OUTLINE_GENERATED': 2,
+          'WRITING_IN_PROGRESS': 2,
+          'WRITING_COMPLETED': 2
+        };
+        
+        const backendStep = stageToStepMap[novelInfo.creationStage] ?? 0;
+        console.log(`[fetchCreationStageFromBackend] 映射步骤: ${novelInfo.creationStage} -> ${backendStep}`);
+        return backendStep;
+      }
     } catch (error) {
       console.warn('[fetchCreationStageFromBackend] 获取后端创作状态失败:', error);
     }
@@ -1285,7 +1389,7 @@ const VolumeManagementPage: React.FC = () => {
           // 使用之前保存的模板ID和大纲字数限制
           templateId: savedParams.templateId,
           outlineWordLimit: savedParams.outlineWordLimit || 2000,
-          volumeCount: savedParams.volumeCount || 10
+          volumeCount: savedParams.volumeCount || 5
         }))
       });
 
@@ -1346,7 +1450,7 @@ const VolumeManagementPage: React.FC = () => {
       }
     } catch (error: any) {
       console.error('[重新生成大纲失败]', error);
-      message.error(error.message || '重新生成大纲失败');
+      message.error(formatAIErrorMessage(error));
       setIsGeneratingOutline(false);
     }
   };
@@ -1401,7 +1505,7 @@ ${advice || '请按照标准网文节奏生成详细大纲，确保每章都有�
       // 重新加载卷信息
       loadVolumes();
     } catch (error: any) {
-      message.error(error.message || '生成卷详细大纲失败');
+      message.error(formatAIErrorMessage(error));
     } finally {
       setGeneratingVolumeIds(prev => {
         const next = new Set(prev);
@@ -1606,7 +1710,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
         throw new Error(result?.message || '批量生成卷详细大纲失败');
       }
     } catch (error: any) {
-      message.error(error.message || '批量生成卷详细大纲失败');
+      message.error(formatAIErrorMessage(error));
     } finally {
       setIsGeneratingVolumeOutlines(false);
     }
@@ -1649,11 +1753,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
   };
 
   return (
-    <div className="volume-management-page" style={{
-      background: 'linear-gradient(180deg, #f7f9ff 0%, #ffffff 60%)',
-      minHeight: '100%',
-      padding: '8px 8px 24px'
-    }}>
+    <div className="volume-management-page">
       {/* 顶部操作区已按需求删除，避免占用视野 */}
 
       {/* 顶部统计信息 */}
@@ -1666,23 +1766,27 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
       {currentStep === 0 && (
         <Card
           title={
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '50%',
+                width: '28px',
+                height: '28px',
+                borderRadius: '8px',
                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: 'white',
-                fontSize: '16px'
+                fontSize: '14px',
+                fontWeight: 700,
+                boxShadow: '0 4px 10px rgba(118, 75, 162, 0.3)'
               }}>
                 1
               </div>
-              <span>📝 第一步：生成大纲</span>
-                  </div>
-                }
+              <span style={{ fontSize: '18px', fontWeight: 600, color: '#1f2937' }}>
+                生成小说大纲
+              </span>
+            </div>
+          }
           style={{
             marginBottom: 24,
             border: 'none',
@@ -1690,32 +1794,83 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
             borderRadius: '16px'
           }}
         >
-          {/* 任务进度条 */}
+          {/* 任务进度条 - 美化版 */}
           {taskProgress && (
-            <Alert
-              message="任务进行中"
-              description={
-                <div>
-                  <Progress
-                    percent={taskProgress.percentage}
-                    status={taskProgress.percentage === 100 ? 'success' : 'active'}
-                    strokeColor={{
-                      '0%': '#108ee9',
-                      '100%': '#87d068',
-                    }}
-                  />
-                  <div style={{ marginTop: 8, color: '#666' }}>
-                    {taskProgress.message}
+            <div style={{
+              marginBottom: 24,
+              background: '#ffffff',
+              borderRadius: '16px',
+              padding: '24px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
+              border: '1px solid rgba(226, 232, 240, 0.8)',
+              position: 'relative',
+              overflow: 'hidden'
+            }}>
+              {/* 背景装饰 */}
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                width: '150px',
+                height: '150px',
+                background: 'radial-gradient(circle, rgba(99, 102, 241, 0.05) 0%, rgba(255,255,255,0) 70%)',
+                pointerEvents: 'none'
+              }} />
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '8px',
+                    background: 'rgba(99, 102, 241, 0.1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#6366f1'
+                  }}>
+                    <ReloadOutlined spin style={{ fontSize: '16px' }} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, color: '#1f2937', fontSize: '15px' }}>任务进行中</div>
+                    <div style={{ fontSize: '12px', color: '#6b7280' }}>AI 正在全力处理您的请求</div>
                   </div>
                 </div>
-              }
-              type="info"
-              showIcon
-              style={{
-                marginBottom: 24,
-                borderRadius: '12px'
-              }}
-            />
+                <div style={{ 
+                  fontWeight: 700, 
+                  color: '#6366f1', 
+                  fontSize: '18px',
+                  fontVariantNumeric: 'tabular-nums'
+                }}>
+                  {taskProgress.percentage}%
+                </div>
+              </div>
+              
+              <Progress
+                percent={taskProgress.percentage}
+                status="active"
+                strokeColor={{ '0%': '#6366f1', '100%': '#8b5cf6' }}
+                showInfo={false}
+                trailColor="#f3f4f6"
+                strokeWidth={10}
+                style={{ marginBottom: '12px' }}
+              />
+              
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px', 
+                fontSize: '13px', 
+                color: '#4b5563',
+                background: '#f8fafc',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                border: '1px solid #f1f5f9'
+              }}>
+                <span style={{ color: '#6366f1' }}>⚡</span>
+                {taskProgress.message}
+              </div>
+            </div>
           )}
 
           {!hasSuperOutline ? (
@@ -1727,48 +1882,48 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
               {/* 生成中状态 */}
               {isGeneratingOutline ? (
                 <div>
-                  {/* 精简的顶部提示 */}
+                  {/* 精简的顶部提示 - 苹果简约风格 */}
                   <div style={{ 
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '12px',
-                    marginBottom: '24px',
-                    padding: '16px 24px',
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    borderRadius: '12px',
+                    gap: '16px',
+                    marginBottom: '28px',
+                    padding: '20px 28px',
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                    borderRadius: '16px',
                     color: 'white',
-                    boxShadow: '0 4px 16px rgba(102, 126, 234, 0.25)'
+                    boxShadow: '0 4px 20px rgba(59, 130, 246, 0.25)'
                   }}>
                     <div style={{
-                      width: '32px',
-                      height: '32px',
-                borderRadius: '50%',
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '12px',
                       background: 'rgba(255, 255, 255, 0.2)',
                       backdropFilter: 'blur(10px)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                      fontSize: '18px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '20px',
                       animation: 'pulse 2s infinite'
-              }}>
+                    }}>
                       ✨
-              </div>
+                    </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '2px' }}>
+                      <div style={{ fontSize: '17px', fontWeight: 600, marginBottom: '4px' }}>
                         AI 正在为您生成大纲
                       </div>
-                      <div style={{ fontSize: '13px', opacity: 0.9 }}>
+                      <div style={{ fontSize: '14px', opacity: 0.9 }}>
                         请稍候，精彩的故事即将呈现...
                       </div>
                     </div>
                     <div style={{
-                      width: '6px',
-                      height: '6px',
+                      width: '8px',
+                      height: '8px',
                       borderRadius: '50%',
-                      background: '#52c41a',
+                      background: '#22c55e',
                       animation: 'blink 1.5s infinite',
-                      boxShadow: '0 0 12px #52c41a'
+                      boxShadow: '0 0 16px #22c55e'
                     }} />
                   </div>
 
@@ -1796,7 +1951,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                         width: '36px',
                         height: '36px',
                         borderRadius: '10px',
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        background: 'var(--primary-600)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -1870,7 +2025,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                     width: '120px',
                     height: '120px',
                     borderRadius: '50%',
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    background: 'var(--primary-600)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -2099,7 +2254,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                         height: '48px',
                         padding: '0 32px',
                         borderRadius: '12px',
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        background: 'var(--primary-600)',
                         border: 'none',
                         boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)',
                         fontSize: '15px',
@@ -2180,7 +2335,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                   gap: '12px',
                   marginBottom: '24px',
                   padding: '16px 24px',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              background: 'var(--primary-600)',
                   borderRadius: '12px',
                   color: 'white',
                   boxShadow: '0 4px 16px rgba(102, 126, 234, 0.25)'
@@ -2241,7 +2396,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                       width: '36px',
                       height: '36px',
                       borderRadius: '10px',
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      background: 'var(--primary-600)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -2332,7 +2487,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                   width: '120px',
                   height: '120px',
                   borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  background: 'var(--primary-600)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -2379,43 +2534,204 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
 
       {/* 第二步：卷列表和写作 */}
       {currentStep === 2 && volumes.length > 0 && (
-        <div style={{ position: 'relative', paddingBottom: '120px' }}>
+        <div style={{ position: 'relative', paddingBottom: '100px' }}>
           <Card
             title={null}
             style={{
-              marginBottom: 24,
-              border: 'none',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-              borderRadius: '16px'
+              marginBottom: 20,
+              border: '1px solid rgba(226, 232, 240, 0.8)',
+              boxShadow: '0 4px 20px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.02)',
+              borderRadius: '16px',
+              background: 'linear-gradient(135deg, #ffffff 0%, #fefefe 100%)'
             }}
+            bodyStyle={{ padding: '20px 24px' }}
           >
             {/* 卷列表 */}
-            <div style={{ marginBottom: 32 }}>
+            <div style={{ marginBottom: 20 }}>
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                marginBottom: 24
+                marginBottom: 20,
+                paddingBottom: 16,
+                borderBottom: '2px solid #f1f5f9'
               }}>
-                <Title level={4} style={{ margin: 0, color: '#1f2937', fontWeight: 600 }}>
-                  📖 卷列表
-                </Title>
-                <Text type="secondary" style={{ fontSize: '14px' }}>
-                  共 {volumes.length} 卷
-                </Text>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div style={{
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '20px',
+                    boxShadow: '0 4px 14px rgba(59, 130, 246, 0.3)'
+                  }}>
+                    📚
+                  </div>
+                  <div>
+                    <Title level={4} style={{ margin: 0, color: '#0f172a', fontWeight: 700, fontSize: '18px', letterSpacing: '-0.02em' }}>
+                      卷列表
+                    </Title>
+                    <Text type="secondary" style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>
+                      共 {volumes.length} 卷，点击卡片查看详情
+                    </Text>
+                  </div>
+                </div>
+                <Button
+                  icon={<ReloadOutlined spin={isRegeneratingVolumes} />}
+                  loading={isRegeneratingVolumes}
+                  disabled={isRegeneratingVolumes}
+                  style={{
+                    borderRadius: '8px',
+                    height: '36px',
+                    padding: '0 16px',
+                    border: '1.5px solid #e2e8f0',
+                    fontWeight: 500,
+                    fontSize: '13px',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isRegeneratingVolumes) {
+                      e.currentTarget.style.borderColor = '#3b82f6';
+                      e.currentTarget.style.color = '#2563eb';
+                      e.currentTarget.style.background = 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isRegeneratingVolumes) {
+                      e.currentTarget.style.borderColor = '#e2e8f0';
+                      e.currentTarget.style.color = '';
+                      e.currentTarget.style.background = '';
+                    }
+                  }}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    Modal.confirm({
+                      title: '重新生成卷规划',
+                      content: '确定要重新生成所有卷的规划吗？这将清除现有卷及其章纲数据，并基于当前大纲重新拆分卷。',
+                      okText: '确认重新生成',
+                      cancelText: '取消',
+                      okButtonProps: { danger: true },
+                      onOk: async () => {
+                        try {
+                          setIsRegeneratingVolumes(true);
+                          setFakeProgress(0);
+                          setRegenerateProgress({ percentage: 0, message: '正在提交重新生成任务...' });
+                          
+                          // 启动假进度条动画：每500ms增加5-10%，最多到85%
+                          const fakeProgressInterval = setInterval(() => {
+                            setFakeProgress(prev => {
+                              if (prev >= 85) {
+                                clearInterval(fakeProgressInterval);
+                                return prev;
+                              }
+                              const increment = Math.floor(Math.random() * 6) + 5; // 5-10%
+                              return Math.min(prev + increment, 85);
+                            });
+                          }, 500);
+                          
+                          const response = await api.post(`/volumes/${novelId}/generate-from-outline`, withAIConfig({
+                            volumeCount: volumes.length
+                          }));
+                          
+                          if (response.data?.taskId) {
+                            const taskId = response.data.taskId;
+                            setRegenerateProgress({ percentage: 10, message: '已提交任务，正在清理旧数据...' });
+                            
+                            // 开始轮询任务状态
+                            const pollInterval = setInterval(async () => {
+                              try {
+                                const taskResp = await api.get(`/ai-tasks/${taskId}`);
+                                const task = taskResp.data || taskResp;
+                                
+                                // 更新进度：使用真实进度和假进度的较大值
+                                if (task.progress !== undefined) {
+                                  const realProgress = task.progress;
+                                  setFakeProgress(prev => Math.max(prev, realProgress));
+                                  setRegenerateProgress({
+                                    percentage: Math.max(fakeProgress, realProgress),
+                                    message: task.message || '正在重新生成卷规划...'
+                                  });
+                                }
+                                
+                                if (task.status === 'COMPLETED') {
+                                  clearInterval(pollInterval);
+                                  clearInterval(fakeProgressInterval);
+                                  setFakeProgress(100);
+                                  setRegenerateProgress({ percentage: 100, message: '重新生成完成！' });
+                                  message.success('卷规划重新生成完成');
+                                  
+                                  // 延迟一下再刷新，让用户看到100%
+                                  setTimeout(() => {
+                                    setIsRegeneratingVolumes(false);
+                                    setRegenerateProgress(null);
+                                    setFakeProgress(0);
+                                    loadVolumes();
+                                  }, 1000);
+                                } else if (task.status === 'FAILED') {
+                                  clearInterval(pollInterval);
+                                  clearInterval(fakeProgressInterval);
+                                  setIsRegeneratingVolumes(false);
+                                  setRegenerateProgress(null);
+                                  setFakeProgress(0);
+                                  message.error('卷规划生成失败: ' + (task.error || '未知错误'));
+                                }
+                              } catch (err) {
+                                console.error('轮询任务状态失败:', err);
+                              }
+                            }, 2000);
+                            
+                            // 10分钟后停止轮询
+                            setTimeout(() => {
+                              clearInterval(pollInterval);
+                              clearInterval(fakeProgressInterval);
+                              if (isRegeneratingVolumes) {
+                                setIsRegeneratingVolumes(false);
+                                setRegenerateProgress(null);
+                                setFakeProgress(0);
+                                message.warning('任务超时，请刷新页面查看结果');
+                              }
+                            }, 600000);
+                          } else {
+                            clearInterval(fakeProgressInterval);
+                            setFakeProgress(100);
+                            setRegenerateProgress({ percentage: 100, message: '重新生成完成！' });
+                            setTimeout(() => {
+                              setIsRegeneratingVolumes(false);
+                              setRegenerateProgress(null);
+                              setFakeProgress(0);
+                              loadVolumes();
+                            }, 1000);
+                          }
+                        } catch (error: any) {
+                          console.error('重新生成卷规划失败:', error);
+                          setIsRegeneratingVolumes(false);
+                          setRegenerateProgress(null);
+                          setFakeProgress(0);
+                          message.error(formatAIErrorMessage(error));
+                        }
+                      }
+                    });
+                  }}
+                >
+                  {isRegeneratingVolumes ? '重新生成中...' : '重新生成卷'}
+                </Button>
               </div>
 
-              {/* 卷列表容器 - 添加最大高度和滚动 */}
+              {/* 卷列表容器 - 优化布局，一行4个 */}
               <div style={{
-                maxHeight: 'calc(100vh - 400px)',
+                maxHeight: 'calc(100vh - 350px)',
                 overflowY: 'auto',
                 paddingRight: '8px',
+                paddingTop: '8px',
                 marginBottom: '24px'
               }}>
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                  gap: '20px'
+                  gridTemplateColumns: 'repeat(4, 1fr)',
+                  gap: '24px'
                 }}>
               {volumes.map((volume) => (
                 <Card
@@ -2423,87 +2739,104 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                   hoverable
                   onClick={() => handleViewDetails(volume)}
                   style={{
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '16px',
-                    background: '#ffffff',
-                    transition: 'all 0.3s ease',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                    border: '1px solid rgba(226, 232, 240, 0.8)',
+                    borderRadius: '14px',
+                    background: 'linear-gradient(145deg, #ffffff 0%, #fafbfc 100%)',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)',
                     cursor: 'pointer',
-                    height: '100%'
+                    height: '100%',
+                    position: 'relative',
+                    overflow: 'hidden'
                   }}
-                  bodyStyle={{ padding: '20px' }}
+                  bodyStyle={{ padding: '16px' }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(102,126,234,0.15)';
+                    e.currentTarget.style.boxShadow = '0 12px 24px rgba(59, 130, 246, 0.12)';
                     e.currentTarget.style.transform = 'translateY(-4px)';
-                    e.currentTarget.style.borderColor = '#667eea';
+                    e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.3)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
+                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(15, 23, 42, 0.04)';
                     e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.borderColor = '#e5e7eb';
+                    e.currentTarget.style.borderColor = 'rgba(226, 232, 240, 0.8)';
                   }}
                 >
-                  {/* 标题行 */}
-                  <div style={{ marginBottom: 16 }}>
+                  {/* 顶部装饰条 */}
+                  <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: '3px',
+                    background: 'linear-gradient(90deg, #3b82f6 0%, #8b5cf6 50%, #ec4899 100%)'
+                  }} />
+
+                  {/* 标题行 - 紧凑版 */}
+                  <div style={{ marginBottom: 12 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
                       <div style={{
                         width: 36,
                         height: 36,
-                        borderRadius: '50%',
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        borderRadius: '10px',
+                        background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
                         color: '#fff',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        fontSize: 16,
+                        fontSize: 15,
                         fontWeight: 700,
                         flexShrink: 0,
-                        boxShadow: '0 4px 12px rgba(102,126,234,0.3)'
+                        boxShadow: '0 3px 10px rgba(59, 130, 246, 0.25)'
                       }}>
                         {volume.volumeNumber}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{
-                          fontSize: '16px',
-                          fontWeight: 600,
-                          color: '#1f2937',
+                          fontSize: '14px',
+                          fontWeight: 700,
+                          color: '#0f172a',
                           marginBottom: 4,
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap'
+                          whiteSpace: 'nowrap',
+                          letterSpacing: '-0.01em'
                         }}>
                           {volume.title}
                         </div>
                         <Tag
-                          color="success"
                           style={{
+                            background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+                            color: '#059669',
+                            border: '1px solid #a7f3d0',
                             borderRadius: '6px',
-                            padding: '2px 8px',
-                            fontSize: '12px',
-                            border: 'none'
+                            padding: '1px 8px',
+                            fontSize: '11px',
+                            fontWeight: 600
                           }}
                         >
-                          已生成
+                          ✓ 已生成
                         </Tag>
                       </div>
                     </div>
                   </div>
 
-                  {/* 内容区域 */}
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={{ marginBottom: 12 }}>
+                  {/* 内容区域 - 紧凑版 */}
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ marginBottom: 10 }}>
                       <div style={{
-                        fontSize: '13px',
-                        color: '#6b7280',
+                        fontSize: '11px',
+                        color: '#64748b',
                         marginBottom: 4,
-                        fontWeight: 500
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em'
                       }}>
                         主题
                       </div>
                       <div style={{
-                        fontSize: '14px',
-                        color: '#374151',
-                        lineHeight: '1.6',
+                        fontSize: '12px',
+                        color: '#334155',
+                        lineHeight: '1.5',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         display: '-webkit-box',
@@ -2516,21 +2849,23 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
 
                     <div>
                       <div style={{
-                        fontSize: '13px',
-                        color: '#6b7280',
+                        fontSize: '11px',
+                        color: '#64748b',
                         marginBottom: 4,
-                        fontWeight: 500
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em'
                       }}>
-                        大纲
+                        大纲预览
                       </div>
                       <div style={{
-                        fontSize: '14px',
-                        color: '#6b7280',
-                        lineHeight: '1.6',
+                        fontSize: '11px',
+                        color: '#64748b',
+                        lineHeight: '1.5',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         display: '-webkit-box',
-                        WebkitLineClamp: 3,
+                        WebkitLineClamp: 2,
                         WebkitBoxOrient: 'vertical'
                       }}>
                         {volume.contentOutline || '暂无大纲'}
@@ -2538,20 +2873,91 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                     </div>
                   </div>
 
-                  {/* 底部信息 */}
+                  {/* 底部信息 - 紧凑版 */}
                   <div style={{
-                    paddingTop: 12,
-                    borderTop: '1px solid #f3f4f6',
+                    paddingTop: 10,
+                    borderTop: '1px solid #f1f5f9',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between'
+                    justifyContent: 'space-between',
+                    marginBottom: 10
                   }}>
-                    <Text style={{ fontSize: '13px', color: '#9ca3af' }}>
+                    <Text style={{ fontSize: '11px', color: '#64748b', fontWeight: 500 }}>
                       预计字数
                     </Text>
-                    <Text strong style={{ fontSize: '14px', color: '#667eea' }}>
-                      {volume.estimatedWordCount || 0} 字
+                    <Text strong style={{ fontSize: '13px', color: '#3b82f6', fontWeight: 700 }}>
+                      {(volume.estimatedWordCount || 0).toLocaleString()} 字
                     </Text>
+                  </div>
+
+                  {/* 操作按钮 - 紧凑版 */}
+                  <div style={{
+                    display: 'flex',
+                    gap: '8px'
+                  }}>
+                    <Button
+                      size="small"
+                      icon={<EyeOutlined />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleViewDetails(volume);
+                      }}
+                      style={{
+                        flex: 1,
+                        borderRadius: '8px',
+                        border: '1.5px solid #e2e8f0',
+                        height: '32px',
+                        fontSize: '12px',
+                        fontWeight: 500,
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.stopPropagation();
+                        e.currentTarget.style.borderColor = '#3b82f6';
+                        e.currentTarget.style.color = '#2563eb';
+                        e.currentTarget.style.background = 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.stopPropagation();
+                        e.currentTarget.style.borderColor = '#e2e8f0';
+                        e.currentTarget.style.color = '';
+                        e.currentTarget.style.background = '';
+                      }}
+                    >
+                      查看
+                    </Button>
+                    <Button
+                      size="small"
+                      type="primary"
+                      icon={<EditOutlined />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        enterWriting(volume);
+                      }}
+                      style={{
+                        flex: 1,
+                        borderRadius: '8px',
+                        height: '32px',
+                        fontSize: '12px',
+                        background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                        border: 'none',
+                        fontWeight: 600,
+                        boxShadow: '0 3px 8px rgba(59, 130, 246, 0.2)',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.stopPropagation();
+                        e.currentTarget.style.background = 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)';
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.3)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.stopPropagation();
+                        e.currentTarget.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+                        e.currentTarget.style.boxShadow = '0 3px 8px rgba(59, 130, 246, 0.2)';
+                      }}
+                    >
+                      写作
+                    </Button>
                   </div>
                 </Card>
               ))}
@@ -2560,10 +2966,109 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
             </div>
           </Card>
 
-          {/* 开始创作按钮 - 固定在底部中间 */}
+          {/* 重新生成中的遮罩层 - 背景虚化 + 弹窗 */}
+          {isRegeneratingVolumes && (
+            <>
+              {/* 背景虚化层 */}
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'rgba(0, 0, 0, 0.5)',
+                backdropFilter: 'blur(8px)',
+                WebkitBackdropFilter: 'blur(8px)',
+                zIndex: 998,
+                animation: 'fadeIn 0.3s ease-in-out'
+              }} />
+              
+              {/* 中心弹窗 */}
+              <div style={{
+                position: 'fixed',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: 999,
+                background: 'rgba(255, 255, 255, 0.98)',
+                borderRadius: '20px',
+                boxShadow: '0 25px 80px rgba(0, 0, 0, 0.4)',
+                border: '1px solid rgba(102, 126, 234, 0.3)',
+                minWidth: '520px',
+                maxWidth: '600px',
+                animation: 'slideIn 0.4s ease-out'
+              }}>
+                <div style={{
+                  textAlign: 'center',
+                  padding: '48px 40px'
+                }}>
+                  <ReloadOutlined spin style={{ 
+                    fontSize: '64px', 
+                    color: '#667eea', 
+                    marginBottom: '28px',
+                    filter: 'drop-shadow(0 4px 12px rgba(102, 126, 234, 0.3))'
+                  }} />
+                  <Title level={3} style={{ 
+                    marginBottom: '20px', 
+                    color: '#1f2937', 
+                    fontWeight: 600,
+                    fontSize: '24px'
+                  }}>
+                    正在重新生成卷规划
+                  </Title>
+                  <Text type="secondary" style={{ 
+                    display: 'block', 
+                    marginBottom: '36px', 
+                    fontSize: '15px', 
+                    lineHeight: '1.6',
+                    color: '#6b7280'
+                  }}>
+                    {regenerateProgress?.message || '正在处理中，请稍候...'}
+                  </Text>
+                  
+                  {/* 使用假进度条，平滑动画 */}
+                  <Progress
+                    percent={Math.max(fakeProgress, regenerateProgress?.percentage || 0)}
+                    strokeColor={{
+                      '0%': '#667eea',
+                      '50%': '#764ba2',
+                      '100%': '#f093fb'
+                    }}
+                    strokeWidth={12}
+                    style={{ marginBottom: '28px' }}
+                    strokeLinecap="round"
+                    trailColor="#e5e7eb"
+                  />
+                  
+                  <div style={{
+                    background: 'linear-gradient(135deg, #f0f4ff 0%, #e8edff 100%)',
+                    padding: '18px 24px',
+                    borderRadius: '12px',
+                    border: '1px solid #d0d9ff',
+                    boxShadow: '0 2px 8px rgba(102, 126, 234, 0.1)'
+                  }}>
+                    <Text style={{ 
+                      fontSize: '13px', 
+                      color: '#4b5563', 
+                      lineHeight: '1.8',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px'
+                    }}>
+                      <span style={{ fontSize: '16px' }}>💡</span>
+                      正在清理旧卷数据并基于当前大纲重新拆分，请勿关闭页面
+                    </Text>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* 开始创作按钮 - 固定在底部中间，美化版 */}
           <div style={{
             position: 'fixed',
-            bottom: '24px',
+            bottom: '32px',
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 1000,
@@ -2572,40 +3077,36 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
             <Button
               type="primary"
               size="large"
-              icon={<EditOutlined />}
+              icon={<PlayCircleOutlined />}
               onClick={startWritingFromFirstVolume}
               disabled={volumes.length === 0}
               style={{
-                height: '56px',
-                padding: '0 48px',
-                fontSize: '18px',
+                height: '52px',
+                padding: '0 40px',
+                fontSize: '16px',
                 fontWeight: 600,
-                borderRadius: '28px',
-                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                borderRadius: '26px',
+                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%)',
                 border: 'none',
-                boxShadow: '0 8px 30px rgba(59, 130, 246, 0.5)',
-                transition: 'all 0.3s ease'
+                boxShadow: '0 8px 24px rgba(59, 130, 246, 0.35), 0 4px 12px rgba(37, 99, 235, 0.2)',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-3px)';
-                e.currentTarget.style.boxShadow = '0 12px 40px rgba(59, 130, 246, 0.6)';
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 12px 32px rgba(59, 130, 246, 0.45), 0 6px 16px rgba(37, 99, 235, 0.25)';
+                e.currentTarget.style.background = 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 50%, #1e40af 100%)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 8px 30px rgba(59, 130, 246, 0.5)';
+                e.currentTarget.style.boxShadow = '0 8px 24px rgba(59, 130, 246, 0.35), 0 4px 12px rgba(37, 99, 235, 0.2)';
+                e.currentTarget.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%)';
               }}
             >
-              🚀 开始创作
+              ✨ 开始创作
             </Button>
-            <div style={{
-              marginTop: '12px',
-              fontSize: '13px',
-              color: '#64748b',
-              fontWeight: 500,
-              textShadow: '0 1px 2px rgba(255,255,255,0.8)'
-            }}>
-              将从第一卷开始，您可以在写作页面随时切换卷
-            </div>
           </div>
         </div>
       )}
@@ -2669,7 +3170,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
               <Form.Item
                 name="targetChapters"
                 label="目标章数"
-                initialValue={500}
+                initialValue={300}
               >
                 <InputNumber
                   min={50}
@@ -2678,7 +3179,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                   addonAfter="章"
                   onChange={(value) => {
                     const wordsPerChapter = generateForm.getFieldValue('wordsPerChapter') || 2000;
-                    const total = (value || 500) * wordsPerChapter;
+                    const total = (value || 300) * wordsPerChapter;
                     setTotalWordsGenerate(total);
                     generateForm.setFieldValue('targetWords', total);
                   }}
@@ -2697,7 +3198,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                   style={{ width: '100%' }}
                   addonAfter="字/章"
                   onChange={(value) => {
-                    const chapters = generateForm.getFieldValue('targetChapters') || 500;
+                    const chapters = generateForm.getFieldValue('targetChapters') || 300;
                     const total = (value || 2000) * chapters;
                     setTotalWordsGenerate(total);
                     generateForm.setFieldValue('targetWords', total);
@@ -2736,44 +3237,24 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
             name="volumeCount"
             label="预期卷数"
             rules={[{ required: true, message: '请选择卷数' }]}
-            initialValue={10}
+            initialValue={5}
           >
             <InputNumber
-              min={1}
-              max={50}
+              min={3}
+              max={8}
               style={{ width: '100%' }}
-                placeholder="建议10卷"
+                placeholder="建议3-8卷，默认5卷"
             />
           </Form.Item>
         </Form>
       </Modal>
 
-      {/* 快速开始模态框 - 配置创作参数 */}
+      {/* 快速开始模态框 - 配置创作参数 - 苹果简约风格 */}
       <Modal
-        title={
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '20px'
-            }}>
-              🚀
-            </div>
-            <div>
-              <div style={{ fontSize: '18px', fontWeight: 600, color: '#1f2937' }}>开始您的创作之旅</div>
-              <div style={{ fontSize: '13px', fontWeight: 400, color: '#6b7280', marginTop: '2px' }}>AI 将根据您的构思生成完整大纲</div>
-            </div>
-          </div>
-        }
+        title={null}
         open={quickStartVisible}
         onCancel={() => {
           setQuickStartVisible(false);
-          // 如果正在生成中被取消，需要重置状态
           if (isGeneratingOutline) {
             setIsGeneratingOutline(false);
             setLoading(false);
@@ -2783,13 +3264,14 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
         }}
         onOk={() => outlineForm.submit()}
         confirmLoading={isGeneratingOutline}
-        okText={isGeneratingOutline ? '正在生成...' : '确认并生成大纲'}
+        okText={isGeneratingOutline ? '生成中...' : '开始生成'}
         cancelText="取消"
-        width={680}
+        width={580}
+        centered
         okButtonProps={{
           size: 'large',
           style: {
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: 'var(--primary-600)',
             border: 'none',
             height: '42px',
             fontSize: '15px',
@@ -2801,52 +3283,66 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
           style: { height: '42px' }
         }}
       >
-        <div style={{ padding: '8px 0 16px' }}>
-          <Alert
-            message={
-              <span style={{ fontSize: '14px', fontWeight: 500 }}>
-                💡 设置您的创作目标
-              </span>
-            }
-            description={
-              <span style={{ fontSize: '13px' }}>
-                请确认以下参数，AI将据此生成大纲和卷规划。您可以使用默认值，也可以根据需要调整。
-              </span>
-            }
-            type="info"
-            showIcon={false}
-            style={{
-              marginBottom: '24px',
-              borderRadius: '8px',
-              background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-              border: '1px solid #bfdbfe'
-            }}
-          />
+        <div style={{ padding: '0' }}>
+          {/* 苹果风格头部 */}
+          <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+            <div style={{
+              width: '72px',
+              height: '72px',
+              borderRadius: '18px',
+              background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 20px',
+              fontSize: '32px',
+              boxShadow: '0 8px 24px rgba(59, 130, 246, 0.25)'
+            }}>
+              🚀
+            </div>
+            <h2 style={{ 
+              fontSize: '24px', 
+              fontWeight: 700, 
+              color: '#0f172a', 
+              margin: '0 0 8px',
+              letterSpacing: '-0.02em'
+            }}>
+              配置创作参数
+            </h2>
+            <p style={{ 
+              fontSize: '15px', 
+              color: '#64748b', 
+              margin: 0,
+              lineHeight: 1.5
+            }}>
+              AI 将根据这些参数生成大纲和分卷规划
+            </p>
+          </div>
 
           <Form
             form={outlineForm}
             layout="vertical"
             onFinish={(values) => {
               handleGenerateVolumes(values);
-                  setQuickStartVisible(false);
+              setQuickStartVisible(false);
             }}
           >
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item
                   name="targetChapters"
-                  label={<span style={{ fontSize: '14px', fontWeight: 500 }}>目标章数</span>}
+                  label={<span style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>目标章数</span>}
+                  initialValue={300}
                 >
                   <InputNumber
                     min={50}
                     max={1000}
-                    style={{ width: '100%', fontSize: '15px' }}
+                    style={{ width: '100%' }}
                     addonAfter="章"
                     size="large"
                     onChange={(value) => {
-                      // 自动计算总字数
                       const wordsPerChapter = outlineForm.getFieldValue('wordsPerChapter') || 2000;
-                      const total = (value || 500) * wordsPerChapter;
+                      const total = (value || 300) * wordsPerChapter;
                       setTotalWords(total);
                       outlineForm.setFieldValue('targetWords', total);
                     }}
@@ -2856,18 +3352,17 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
               <Col span={12}>
                 <Form.Item
                   name="wordsPerChapter"
-                  label={<span style={{ fontSize: '14px', fontWeight: 500 }}>每章字数</span>}
+                  label={<span style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>每章字数</span>}
                   initialValue={2000}
                 >
                   <InputNumber
                     min={2000}
                     max={10000}
-                    style={{ width: '100%', fontSize: '15px' }}
+                    style={{ width: '100%' }}
                     addonAfter="字/章"
                     size="large"
                     onChange={(value) => {
-                      // 自动计算总字数
-                      const chapters = outlineForm.getFieldValue('targetChapters') || 500;
+                      const chapters = outlineForm.getFieldValue('targetChapters') || 300;
                       const total = (value || 2000) * chapters;
                       setTotalWords(total);
                       outlineForm.setFieldValue('targetWords', total);
@@ -2877,76 +3372,73 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
               </Col>
             </Row>
 
-            {/* 显示计算出的总字数 */}
+            {/* 统计显示 - 苹果风格 */}
             <div style={{
-              marginTop: '-8px',
-              marginBottom: '16px',
-              padding: '12px 16px',
-              background: 'linear-gradient(135deg, #e0e7ff 0%, #f0f4ff 100%)',
-              borderRadius: '8px',
-              border: '1px solid #c7d2fe',
-              fontSize: '14px',
-              color: '#4338ca',
               display: 'flex',
               alignItems: 'center',
-              gap: '8px'
+              justifyContent: 'center',
+              gap: '12px',
+              padding: '18px 24px',
+              background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+              borderRadius: '14px',
+              marginBottom: '20px'
             }}>
-              <span style={{ fontWeight: 600 }}>📊 预计总字数：</span>
-              <span style={{ fontSize: '18px', fontWeight: 700, color: '#4f46e5' }}>
+              <span style={{ fontSize: '20px' }}>📊</span>
+              <span style={{ fontSize: '14px', fontWeight: 500, color: '#0369a1' }}>预计总字数</span>
+              <span style={{ fontSize: '26px', fontWeight: 700, color: '#0284c7' }}>
                 {(totalWords / 10000).toFixed(1)}
               </span>
-              <span style={{ fontWeight: 600 }}>万字</span>
-              <span style={{ marginLeft: '8px', fontSize: '12px', color: '#6366f1' }}>
+              <span style={{ fontSize: '14px', fontWeight: 600, color: '#0369a1' }}>万字</span>
+              <span style={{ fontSize: '12px', color: '#0ea5e9', marginLeft: '8px' }}>
                 ({totalWords.toLocaleString()}字)
               </span>
             </div>
 
-            {/* 隐藏的总字数字段，用于提交 */}
+            {/* 隐藏的总字数字段 */}
             <Form.Item name="targetWords" hidden initialValue={1000000}>
               <InputNumber />
             </Form.Item>
 
             <Form.Item
               name="templateId"
-              label={<span style={{ fontSize: '14px', fontWeight: 500 }}>选择模板</span>}
-              tooltip="选择不同的大纲生成模板，将影响生成的大纲风格和结构"
+              label={<span style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>选择模板（可选）</span>}
             >
-              {/* 自定义下拉选择器 */}
+              {/* 自定义下拉选择器 - 苹果风格 */}
               <div style={{ position: 'relative' }}>
-                {/* 选择框 */}
                 <div
                   onClick={() => setTemplateDropdownOpen(!templateDropdownOpen)}
                   style={{
                     width: '100%',
-                    height: '40px',
-                    padding: '4px 11px',
+                    height: '48px',
+                    padding: '0 16px',
                     fontSize: '15px',
-                    border: '1px solid #d9d9d9',
+                    border: templateDropdownOpen ? '1.5px solid #3b82f6' : '1.5px solid #e2e8f0',
+                    boxShadow: templateDropdownOpen ? '0 0 0 3px rgba(59, 130, 246, 0.1)' : 'none',
                     borderRadius: '6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    borderRadius: '12px',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     background: '#fff',
-                    transition: 'all 0.3s',
-                    ...(templateDropdownOpen ? {
-                      borderColor: '#1890ff',
-                      boxShadow: '0 0 0 2px rgba(24, 144, 255, 0.2)'
-                    } : {})
+                    transition: 'all 0.2s'
                   }}
                   onMouseEnter={(e) => {
                     if (!templateDropdownOpen) {
-                      e.currentTarget.style.borderColor = '#40a9ff';
+                      e.currentTarget.style.borderColor = '#cbd5e1';
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (!templateDropdownOpen) {
-                      e.currentTarget.style.borderColor = '#d9d9d9';
+                      e.currentTarget.style.borderColor = '#e2e8f0';
                     }
                   }}
                 >
                   <span style={{
-                    color: selectedTemplateId ? '#000' : '#bfbfbf',
+                    color: selectedTemplateId ? '#0f172a' : '#94a3b8',
+                    fontWeight: selectedTemplateId ? 500 : 400,
                     flex: 1,
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
@@ -2954,11 +3446,11 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                   }}>
                     {loadingTemplates ? '加载中...' : (
                       selectedTemplateId
-                        ? outlineTemplates.find(t => t.id === selectedTemplateId)?.name || '选择模板（可选，默认使用系统模板）'
-                        : '选择模板（可选，默认使用系统模板）'
+                        ? outlineTemplates.find(t => t.id === selectedTemplateId)?.name || '默认模板'
+                        : '默认使用系统模板'
                     )}
                   </span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     {selectedTemplateId && (
                       <span
                         onClick={(e) => {
@@ -2967,26 +3459,26 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                           outlineForm.setFieldValue('templateId', undefined);
                         }}
                         style={{
-                          fontSize: '12px',
-                          color: '#999',
+                          fontSize: '14px',
+                          color: '#94a3b8',
                           cursor: 'pointer',
-                          padding: '0 4px'
+                          padding: '4px'
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.color = '#666';
+                          e.currentTarget.style.color = '#64748b';
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.color = '#999';
+                          e.currentTarget.style.color = '#94a3b8';
                         }}
                       >
                         ✕
                       </span>
                     )}
                     <span style={{
-                      fontSize: '12px',
-                      color: '#999',
+                      fontSize: '10px',
+                      color: '#94a3b8',
                       transform: templateDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                      transition: 'transform 0.3s',
+                      transition: 'transform 0.2s',
                       display: 'inline-block'
                     }}>
                       ▼
@@ -2994,10 +3486,9 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                   </div>
                 </div>
 
-                {/* 下拉选项列表 */}
+                {/* 下拉选项列表 - 苹果风格 */}
                 {templateDropdownOpen && (
                   <>
-                    {/* 遮罩层 */}
                     <div
                       onClick={() => setTemplateDropdownOpen(false)}
                       style={{
@@ -3087,12 +3578,13 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
             <Form.Item
               name="volumeCount"
               label={<span style={{ fontSize: '14px', fontWeight: 500 }}>预期卷数</span>}
+              initialValue={5}
             >
               <InputNumber
-                min={1}
-                max={50}
+                min={3}
+                max={8}
                 style={{ width: '100%', fontSize: '15px' }}
-                placeholder="建议 10 卷"
+                placeholder="建议 3-8 卷，默认 5 卷"
                 size="large"
                 addonAfter="卷"
               />
@@ -3137,7 +3629,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
           <div>
             {/* 头部区域 - 精简现代 */}
             <div style={{
-              background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+              background: 'var(--gradient-primary)',
               padding: '32px',
               borderRadius: '16px 16px 0 0'
             }}>
@@ -3348,9 +3840,17 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                     fontSize: '14px',
                     lineHeight: 1.8,
                     color: '#334155',
-                    whiteSpace: 'pre-wrap'
+                    whiteSpace: 'pre-wrap',
+                    wordWrap: 'break-word',
+                    wordBreak: 'break-word',
+                    maxHeight: '400px',
+                    overflowY: 'auto',
+                    padding: '12px',
+                    background: '#f8fafc',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0'
                   }}>
-                    {selectedVolume.contentOutline}
+                    {selectedVolume.contentOutline || '暂无大纲'}
                   </div>
                 </div>
               </div>
@@ -3478,10 +3978,53 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
 
           <Alert
             message="提示"
-            description="如果您想修改构思或模板后再生成，请先编辑大纲或在快速开始中重新配置。"
+            description="如果您想修改构思或模板后再生成，可以点击下方“修改模板和参数”按钮，打开配置弹窗。"
             type="info"
             showIcon
           />
+
+          <div style={{ marginTop: 16, textAlign: 'right' }}>
+            <Button
+              type="link"
+              size="small"
+              onClick={() => {
+                try {
+                  const paramsStr = localStorage.getItem(`novel_${novelId}_generation_params`);
+                  let savedParams: any = {};
+                  if (paramsStr) {
+                    savedParams = JSON.parse(paramsStr);
+                  }
+
+                  const basicIdea = (currentSuperOutline as any)?.basicIdea || novel?.description || '';
+                  const targetChapters = (novel as any)?.targetTotalChapters || savedParams.targetChapters || 300;
+                  const wordsPerChapter = (novel as any)?.wordsPerChapter || savedParams.wordsPerChapter || 2000;
+                  const targetWords = (novel as any)?.totalWordTarget || savedParams.targetWords || (targetChapters * wordsPerChapter);
+                  const volumeCount = (novel as any)?.plannedVolumeCount || savedParams.volumeCount || 5;
+
+                  outlineForm.setFieldsValue({
+                    basicIdea,
+                    targetChapters,
+                    wordsPerChapter,
+                    targetWords,
+                    volumeCount,
+                    templateId: savedParams.templateId
+                  });
+
+                  if (savedParams.templateId) {
+                    setSelectedTemplateId(savedParams.templateId);
+                  }
+                } catch (e) {
+                  console.warn('预填快速开始参数失败', e);
+                }
+
+                setOutlineGenerationVisible(false);
+                setQuickStartVisible(true);
+                loadOutlineTemplates();
+              }}
+            >
+              修改模板和参数（打开配置弹窗）
+            </Button>
+          </div>
         </div>
       </Modal>
 

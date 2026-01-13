@@ -7,10 +7,12 @@ import {
   SettingOutlined,
   DashboardOutlined,
   FileTextOutlined,
+  ExperimentOutlined,
   BulbOutlined,
   RobotOutlined,
   StarOutlined,
   CommentOutlined,
+  BarChartOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useSelector } from 'react-redux'
@@ -47,10 +49,24 @@ const AppSider: React.FC = () => {
       hidden: !isAuthenticated,
     },
     {
+      key: '/prompt-lab',
+      icon: <ExperimentOutlined />,
+      label: '提示词实验室',
+      onClick: () => navigate('/prompt-lab'),
+      hidden: !isAuthenticated,
+    },
+    {
       key: '/ai-generators',
       icon: <RobotOutlined />,
       label: '生成器',
       onClick: () => navigate('/ai-generators'),
+      hidden: !isAuthenticated,
+    },
+    {
+      key: '/qimao-dashboard',
+      icon: <BarChartOutlined />,
+      label: '七猫数据',
+      onClick: () => navigate('/qimao-dashboard'),
       hidden: !isAuthenticated,
     },
     {

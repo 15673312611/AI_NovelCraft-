@@ -1,7 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import { Layout, Spin, message, Modal, List, Button, Tag, Drawer } from 'antd'
+import { Layout, Spin, message, Modal, List, Button, Tag, Drawer, Progress } from 'antd'
+import {
+  ExportOutlined,
+  FileTextOutlined,
+  RocketOutlined,
+  CompassOutlined,
+  ThunderboltOutlined,
+  BookOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  SaveOutlined,
+  EnvironmentOutlined,
+  AimOutlined
+} from '@ant-design/icons'
 import FileTree from '@/components/writing/FileTree'
+import ExportModal from '@/components/writing/ExportModal'
 import EditorPanel from '@/components/writing/EditorPanel'
 import ToolPanel from '@/components/writing/ToolPanel'
 import type { NovelFolder } from '@/services/folderService'
@@ -44,12 +58,15 @@ import {
   getChapterOutline,
   getChapterOutlinesByVolume,
   updateChapterOutline as updateVolumeChapterOutline,
+  createChapterOutline,
+  generateVolumeChapterOutlines,
   type VolumeChapterOutlineSummary,
   type VolumeChapterOutline,
 } from '@/services/volumeChapterOutlineService'
 import { getChapterHistory, getDocumentHistory, type WritingVersionHistory } from '@/services/writingHistoryService'
 import api from '@/services/api'
 import { withAIConfig, checkAIConfig, AI_CONFIG_ERROR_MESSAGE } from '@/utils/aiRequest'
+import { formatAIErrorMessage } from '@/utils/errorHandler'
 import './WritingStudioPage.css'
 
 const { Sider, Content } = Layout
@@ -165,17 +182,17 @@ const formatChineseSentences = (input: string): string => {
       }
     }
   }
-  
+
   // 添加剩余内容
   if (currentLine.trim()) {
-    result += currentLine.trim();
+    result += currentLine.trim()
   }
   
   // 清理：移除多余的连续换行（超过2个）
-  result = result.replace(/\n{3,}/g, '\n\n');
+  result = result.replace(/\n{3,}/g, '\n\n')
   
-  return result.trim();
-};
+  return result.trim()
+}
 
 /**
  * 修复常见标点错误
@@ -423,6 +440,7 @@ const WritingStudioPage: React.FC = () => {
 
   const [loading, setLoading] = useState(true)
   const [novelTitle, setNovelTitle] = useState('')
+  const [novelInfo, setNovelInfo] = useState<any>(null) // 小说完整信息，用于获取wordsPerChapter等配置
   
   // 章节相关状态
   const [chapters, setChapters] = useState<Chapter[]>([])
@@ -440,7 +458,10 @@ const WritingStudioPage: React.FC = () => {
   const [referenceFiles, setReferenceFiles] = useState<ReferenceFile[]>([])
   const [selectedReferenceIds, setSelectedReferenceIds] = useState<number[]>([])
   const [selectedLinkedIds, setSelectedLinkedIds] = useState<number[]>([])
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-3-pro-preview')
+  const [selectedModel, setSelectedModel] = useState<string>('')  // 初始为空，由 ToolPanel 加载后设置默认模型
+  const [temperature, setTemperature] = useState<number>(1.0)
+  const [writingStyleId, setWritingStyleId] = useState<number | null>(null)
+  const [traceRemovalModel, setTraceRemovalModel] = useState<string>('gemini-2.5-pro')
   const [aiHistory, setAIHistory] = useState<AIConversation[]>([])
   const [aiInput, setAIInput] = useState('')
   const [aiOutput, setAIOutput] = useState('')
@@ -488,18 +509,31 @@ const WritingStudioPage: React.FC = () => {
     chapterInVolume?: number
     volumeNumber?: number
     direction: string
-    keyPlotPoints: string
-    emotionalTone: string
-    subplot: string
-    antagonism: string
+    foreshadowAction?: string
+    foreshadowDetail?: string
     status?: string
+    // 以下字段已废弃，保留用于向后兼容
+    keyPlotPoints?: string
+    emotionalTone?: string
+    subplot?: string
+    antagonism?: string
   } | null>(null)
+  
+  // 章纲缺失提醒弹窗状态
+  const [outlineMissingModalVisible, setOutlineMissingModalVisible] = useState(false)
+  const [outlineGenerateModalVisible, setOutlineGenerateModalVisible] = useState(false)
+  const [isGeneratingOutline, setIsGeneratingOutline] = useState(false)
+  const [outlineGenerateProgress, setOutlineGenerateProgress] = useState<string>('')
+  const [outlineGeneratePercent, setOutlineGeneratePercent] = useState<number>(0)
   
   // AI审稿相关状态
   const [reviewDrawerVisible, setReviewDrawerVisible] = useState(false)
   const [reviewResult, setReviewResult] = useState<string>('')
   const [isReviewing, setIsReviewing] = useState(false)
   
+  // 导出相关状态
+  const [exportVisible, setExportVisible] = useState(false)
+
   // AI消痕相关状态
   const [traceRemovalDrawerVisible, setTraceRemovalDrawerVisible] = useState(false)
   const [processedContent, setProcessedContent] = useState<string>('')
@@ -510,6 +544,11 @@ const WritingStudioPage: React.FC = () => {
   const [streamlinedContent, setStreamlinedContent] = useState<string>('')
   const [isStreamlining, setIsStreamlining] = useState(false)
   const [streamlineTargetLength, setStreamlineTargetLength] = useState<string>('')
+
+  // 概要相关状态
+  const [summaryDrawerVisible, setSummaryDrawerVisible] = useState(false)
+  const [summaryLoading, setSummaryLoading] = useState(false)
+  const [summaryData, setSummaryData] = useState<any>(null)
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -529,6 +568,7 @@ const WritingStudioPage: React.FC = () => {
         try {
           const novel = await novelService.getNovelById(novelIdNumber)
           setNovelTitle(novel.title)
+          setNovelInfo(novel) // 保存完整的小说信息
         } catch (e) {
           console.warn('获取小说信息失败', e)
         }
@@ -573,6 +613,9 @@ const WritingStudioPage: React.FC = () => {
             console.warn('自动加载章节失败', err)
           }
         }
+
+        // 预加载所有文件夹的文档，确保 FileTree 能正确显示内容
+        loadAllFoldersDocuments(finalFolders)
       } catch (error: any) {
         message.error(error?.message || '加载数据失败')
       } finally {
@@ -662,6 +705,33 @@ const WritingStudioPage: React.FC = () => {
     }
   }
 
+  // 加载概要信息
+  const loadSummary = async () => {
+    if (!novelIdNumber) return
+    setSummaryLoading(true)
+    try {
+      // 获取小说基本信息
+      const novelResponse = await api.get(`/novels/${novelIdNumber}`)
+      const novelData = novelResponse.data || novelResponse
+      
+      // 获取大纲信息
+      const outlineResponse = await api.get(`/novel-outlines/novel/${novelIdNumber}`)
+      const outlineData = outlineResponse.data || outlineResponse
+      
+      setSummaryData({
+        novel: novelData,
+        outline: outlineData
+      })
+      message.success('概要加载成功')
+    } catch (error: any) {
+      console.error('加载概要失败:', error)
+      message.error('加载概要失败')
+      setSummaryData(null)
+    } finally {
+      setSummaryLoading(false)
+    }
+  }
+
   const findVolumeForChapter = (chapterNumber: number | null): NovelVolume | null => {
     if (!chapterNumber || !volumes || volumes.length === 0) {
       return currentVolume || null
@@ -679,18 +749,33 @@ const WritingStudioPage: React.FC = () => {
     outline: VolumeChapterOutline,
     fallbackChapterNumber?: number
   ) => {
-    return {
+    console.log('🔄 映射章纲数据，原始伏笔字段:', {
+      foreshadowAction: outline.foreshadowAction,
+      foreshadowDetail: outline.foreshadowDetail
+    })
+    
+    const mapped = {
       outlineId: outline.id,
       globalChapterNumber: outline.globalChapterNumber ?? fallbackChapterNumber,
       chapterInVolume: outline.chapterInVolume ?? undefined,
       volumeNumber: outline.volumeNumber ?? undefined,
       direction: outline.direction || '',
+      foreshadowAction: outline.foreshadowAction || 'NONE',
+      foreshadowDetail: outline.foreshadowDetail || '',
+      status: outline.status || undefined,
+      // 以下字段已废弃，保留用于向后兼容旧数据
       keyPlotPoints: outline.keyPlotPoints || '',
       emotionalTone: outline.emotionalTone || '',
       subplot: outline.subplot || '',
       antagonism: outline.antagonism || '',
-      status: outline.status || undefined,
     }
+    
+    console.log('✅ 映射后的伏笔字段:', {
+      foreshadowAction: mapped.foreshadowAction,
+      foreshadowDetail: mapped.foreshadowDetail
+    })
+    
+    return mapped
   }
 
   const getOutlineStatusText = (status?: string) => {
@@ -732,7 +817,12 @@ const WritingStudioPage: React.FC = () => {
 
       // 当前章节章纲详情
       const res = await getChapterOutline(novelIdNumber, chapterNumber)
+      console.log('📋 章纲数据:', res)
       if (res.hasOutline && res.outline) {
+        console.log('🔮 伏笔字段:', {
+          foreshadowAction: res.outline.foreshadowAction,
+          foreshadowDetail: res.outline.foreshadowDetail
+        })
         setEditingChapterOutline(mapOutlineToEditingForm(res.outline, chapterNumber))
       } else {
         const inferredVolume = volumeForChapter
@@ -746,10 +836,8 @@ const WritingStudioPage: React.FC = () => {
           chapterInVolume,
           volumeNumber: inferredVolume?.volumeNumber,
           direction: '',
-          keyPlotPoints: '',
-          emotionalTone: '',
-          subplot: '',
-          antagonism: '',
+          foreshadowAction: 'NONE',
+          foreshadowDetail: '',
           status: undefined,
         })
       }
@@ -783,26 +871,53 @@ const WritingStudioPage: React.FC = () => {
   }
 
   const handleSaveChapterOutline = async () => {
-    if (!editingChapterOutline || !editingChapterOutline.outlineId) {
-      message.warning('当前章节暂无可保存的章纲，请先生成')
+    if (!editingChapterOutline) {
+      message.warning('没有可保存的章纲数据')
       return
+    }
+
+    // 新增章纲需要 volumeId，从当前卷获取
+    if (!editingChapterOutline.outlineId) {
+      // 新增模式
+      if (!chapterOutlineVolumeId || !editingChapterOutline.globalChapterNumber) {
+        message.warning('缺少必要信息（卷ID或章节号），无法创建章纲')
+        return
+      }
     }
 
     setChapterOutlineLoading(true)
     try {
-      const payload = {
-        direction: editingChapterOutline.direction,
-        keyPlotPoints: editingChapterOutline.keyPlotPoints,
-        emotionalTone: editingChapterOutline.emotionalTone,
-        subplot: editingChapterOutline.subplot,
-        antagonism: editingChapterOutline.antagonism,
+      let result: VolumeChapterOutline
+
+      if (editingChapterOutline.outlineId) {
+        // 更新模式
+        const payload = {
+          direction: editingChapterOutline.direction,
+          foreshadowAction: editingChapterOutline.foreshadowAction,
+          foreshadowDetail: editingChapterOutline.foreshadowDetail,
+        }
+        result = await updateVolumeChapterOutline(
+          editingChapterOutline.outlineId,
+          payload
+        )
+        message.success('章纲已保存')
+      } else {
+        // 新增模式
+        const payload = {
+          novelId: novelIdNumber,
+          volumeId: chapterOutlineVolumeId!,
+          globalChapterNumber: editingChapterOutline.globalChapterNumber!,
+          chapterInVolume: editingChapterOutline.chapterInVolume,
+          volumeNumber: editingChapterOutline.volumeNumber,
+          direction: editingChapterOutline.direction,
+          foreshadowAction: editingChapterOutline.foreshadowAction,
+          foreshadowDetail: editingChapterOutline.foreshadowDetail,
+        }
+        result = await createChapterOutline(payload)
+        message.success('章纲已创建')
       }
-      const updated = await updateVolumeChapterOutline(
-        editingChapterOutline.outlineId,
-        payload
-      )
-      setEditingChapterOutline(mapOutlineToEditingForm(updated))
-      message.success('章纲已保存')
+
+      setEditingChapterOutline(mapOutlineToEditingForm(result))
     } catch (error: any) {
       console.error('保存章纲失败:', error)
       message.error(error?.message || '保存章纲失败')
@@ -819,6 +934,7 @@ const WritingStudioPage: React.FC = () => {
   const loadFolderDocuments = useCallback(
     async (folderId: number) => {
       setDocumentsMap((prev) => {
+        // 如果已经有数据，不重复加载，但允许强制刷新（这里先保留旧逻辑）
         if (prev[folderId]) return prev
         
         getDocumentsByFolder(folderId)
@@ -834,6 +950,34 @@ const WritingStudioPage: React.FC = () => {
     },
     []
   )
+
+  // 批量加载所有文件夹的文档
+  const loadAllFoldersDocuments = useCallback(async (folderList: NovelFolder[]) => {
+    if (!folderList || folderList.length === 0) return
+
+    // 预加载所有文件夹（包含系统文件夹），主要内容为前端虚拟节点不在这里处理
+    const targetFolders = folderList.filter(f => f.id !== -999)
+    if (targetFolders.length === 0) return
+
+    try {
+      const results = await Promise.allSettled(
+        targetFolders.map(folder => getDocumentsByFolder(folder.id))
+      )
+
+      setDocumentsMap(prev => {
+        const next = { ...prev }
+        targetFolders.forEach((folder, index) => {
+          const r = results[index]
+          if (r.status === 'fulfilled') {
+            next[folder.id] = r.value
+          }
+        })
+        return next
+      })
+    } catch (error) {
+      console.warn('批量加载文档失败', error)
+    }
+  }, [])
 
   // 选择章节
   const handleSelectChapter = async (chapter: Chapter) => {
@@ -905,10 +1049,13 @@ const WritingStudioPage: React.FC = () => {
   )
 
   const handleCreateDocument = useCallback(
-    async (folder: NovelFolder) => {
+    async (folder: NovelFolder, documentName?: string) => {
       try {
-        const title = window.prompt('输入文档标题', '新文档')
-        if (!title || !title.trim()) return
+        let title = documentName
+        if (!title) {
+          title = window.prompt('输入文档标题', '新文档')
+          if (!title || !title.trim()) return
+        }
         const newDocument = await createDocument(folder.id, {
           novelId: novelIdNumber,
           title: title.trim(),
@@ -1135,7 +1282,10 @@ const WritingStudioPage: React.FC = () => {
     }
   }
 
-  const handleSendAIRequest = async () => {
+  const handleSendAIRequest = async (skipOutlineCheck?: boolean | React.MouseEvent) => {
+    // 处理参数：如果是事件对象，则视为未跳过检查
+    const shouldSkipCheck = typeof skipOutlineCheck === 'boolean' ? skipOutlineCheck : false
+    
     if (!selectedChapter && !selectedDocument) {
       message.warning('请选择要编辑的内容')
       return
@@ -1149,6 +1299,27 @@ const WritingStudioPage: React.FC = () => {
       return
     }
 
+    // 检查章纲是否存在（仅对章节类型检查，且未跳过检查时）
+    if (!shouldSkipCheck && editingType === 'chapter' && selectedChapter?.chapterNumber) {
+      console.log('[章纲检查] 开始检查章纲, novelId:', novelIdNumber, 'chapterNumber:', selectedChapter.chapterNumber)
+      try {
+        const outlineRes = await getChapterOutline(novelIdNumber, selectedChapter.chapterNumber)
+        console.log('[章纲检查] 接口返回:', outlineRes)
+        if (!outlineRes.hasOutline) {
+          // 章纲不存在，弹出提醒
+          console.log('[章纲检查] 章纲不存在，弹出提醒')
+          setOutlineMissingModalVisible(true)
+          return
+        }
+        console.log('[章纲检查] 章纲存在，继续生成')
+      } catch (error) {
+        console.warn('[章纲检查] 检查章纲失败，继续生成:', error)
+        // 检查失败时不阻断流程
+      }
+    } else {
+      console.log('[章纲检查] 跳过检查, shouldSkipCheck:', shouldSkipCheck, 'editingType:', editingType, 'chapterNumber:', selectedChapter?.chapterNumber)
+    }
+
     try {
       // 重置所有状态，确保每次生成都是全新的
       setIsGenerating(true)
@@ -1157,17 +1328,59 @@ const WritingStudioPage: React.FC = () => {
       setHasContentStarted(false)
       
       const userMessage = aiInput.trim() || '开始'
-      const currentChapterNumber = editingType === 'chapter' ? selectedChapter?.chapterNumber : null
+      const currentChapterNumber =
+        editingType === 'chapter' ? selectedChapter?.chapterNumber : null
+      
+      // 构建参考内容：将选中的参考文件和关联文档合并
+      const referenceContents: Record<string, string> = {}
+      
+      // 添加选中的参考文件
+      if (selectedReferenceIds.length > 0) {
+        for (const refId of selectedReferenceIds) {
+          const refFile = referenceFiles.find(f => f.id === refId)
+          if (refFile && refFile.fileContent) {
+            referenceContents[`参考文件: ${refFile.fileName}`] = refFile.fileContent
+          }
+        }
+      }
+      
+      // 添加选中的关联文档（需要动态获取内容，因为列表可能只有摘要）
+      if (selectedLinkedIds.length > 0) {
+        for (const docId of selectedLinkedIds) {
+          const doc = allDocuments.find(d => d.id === docId)
+          if (doc) {
+            // 如果已有内容则直接使用，否则获取完整文档
+            if (doc.content) {
+              referenceContents[`关联文档: ${doc.title}`] = doc.content
+            } else {
+              try {
+                const fullDoc = await getDocumentById(docId)
+                if (fullDoc && fullDoc.content) {
+                  referenceContents[`关联文档: ${fullDoc.title}`] = fullDoc.content
+                }
+              } catch (err) {
+                console.warn(`获取关联文档 ${docId} 内容失败`, err)
+              }
+            }
+          }
+        }
+      }
       
       const token = localStorage.getItem('token')
-      const requestBody = withAIConfig({
-        novelId: novelIdNumber,
-        startChapter: currentChapterNumber,
-        count: 1,
-        userAdjustment: userMessage
-      }, {
-        model: selectedModel
-      })
+      const requestBody = withAIConfig(
+        {
+          novelId: novelIdNumber,
+          startChapter: currentChapterNumber,
+          count: 1,
+          userAdjustment: userMessage,
+          promptTemplateId: writingStyleId,
+          referenceContents: Object.keys(referenceContents).length > 0 ? referenceContents : undefined,
+        },
+        {
+          model: selectedModel,
+          temperature: temperature,
+        }
+      )
       
       const response = await fetch('/api/agentic/generate-chapters-stream', {
         method: 'POST',
@@ -1175,9 +1388,9 @@ const WritingStudioPage: React.FC = () => {
           'Content-Type': 'application/json',
           'Accept': 'text/event-stream',
           'Cache-Control': 'no-cache',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       })
 
       if (!response.ok) {
@@ -1204,7 +1417,7 @@ const WritingStudioPage: React.FC = () => {
 
         // 按事件类型处理：后端已保证使用 event 类型区分内容与状态
         if (eventName === 'error') {
-          message.error(data || '生成失败')
+          message.error(formatAIErrorMessage(data))
           setIsGenerating(false)
           return
         }
@@ -1277,12 +1490,16 @@ const WritingStudioPage: React.FC = () => {
 
           // 事件名称可以出现在 data 之前或之后，取同一块中最后一次出现的名称
           if (line.startsWith('event:')) {
-            currentEventName = line.startsWith('event: ') ? line.slice(7).trim() : line.slice(6).trim()
+            currentEventName = line.startsWith('event: ')
+              ? line.slice(7).trim()
+              : line.slice(6).trim()
             continue
           }
           
           if (line.startsWith('data:')) {
-            const payload = line.startsWith('data: ') ? line.slice(6) : line.slice(5)
+            const payload = line.startsWith('data: ')
+              ? line.slice(6)
+              : line.slice(5)
             if (payload === '[DONE]') {
               // 单独处理 DONE：结束当前块并重置状态
               if (currentDataLines.length > 0) {
@@ -1302,7 +1519,7 @@ const WritingStudioPage: React.FC = () => {
       }
     } catch (error: any) {
       console.error('AI生成失败:', error)
-      message.error(error?.message || '生成失败')
+      message.error(formatAIErrorMessage(error))
       // 确保错误时所有状态都被重置
       setIsGenerating(false)
       setAIOutput('')
@@ -1450,9 +1667,12 @@ const WritingStudioPage: React.FC = () => {
       setTraceRemovalDrawerVisible(true)
       
       const token = localStorage.getItem('token')
-      const requestBody = withAIConfig({
-        content: currentContent
-      })
+      const requestBody = withAIConfig(
+        {
+          content: currentContent
+        },
+        { model: traceRemovalModel }
+      )
       
       const response = await fetch('/api/ai/remove-trace-stream', {
         method: 'POST',
@@ -1542,7 +1762,7 @@ const WritingStudioPage: React.FC = () => {
       }
     } catch (error: any) {
       console.error('AI消痕失败:', error)
-      message.error(error?.message || 'AI消痕失败')
+      message.error(formatAIErrorMessage(error))
       setIsRemovingTrace(false)
     }
   }
@@ -1581,9 +1801,23 @@ const WritingStudioPage: React.FC = () => {
       setStreamlinedContent('')
       
       const token = localStorage.getItem('token')
+      
+      // 获取目标字数（从小说配置中获取wordsPerChapter）
+      const targetLength = editingType === 'chapter' && novelInfo?.wordsPerChapter 
+        ? novelInfo.wordsPerChapter 
+        : undefined
+      
+      // 调试日志：打印目标字数
+      console.log('[AI精简] 小说信息:', novelInfo)
+      console.log('[AI精简] wordsPerChapter:', novelInfo?.wordsPerChapter)
+      console.log('[AI精简] 最终传递的 targetLength:', targetLength)
+      
       const requestBody = withAIConfig({
-        content: currentContent
+        content: currentContent,
+        ...(targetLength ? { targetLength } : {})
       })
+      
+      console.log('[AI精简] 请求体:', requestBody)
       
       const response = await fetch('/api/ai/streamline-content-stream', {
         method: 'POST',
@@ -1670,7 +1904,7 @@ const WritingStudioPage: React.FC = () => {
       }
     } catch (error: any) {
       console.error('AI精简失败:', error)
-      message.error(error?.message || 'AI精简失败')
+      message.error(formatAIErrorMessage(error))
       setIsStreamlining(false)
     }
   }
@@ -1791,9 +2025,160 @@ const WritingStudioPage: React.FC = () => {
       }
     } catch (error: any) {
       console.error('AI审稿失败:', error)
-      message.error(error?.message || '审稿失败')
+      message.error(formatAIErrorMessage(error))
       setIsReviewing(false)
     }
+  }
+
+  // 处理章纲生成
+  const handleGenerateChapterOutline = async () => {
+    let volumeId = chapterOutlineVolumeId || Number(currentVolume?.id)
+    
+    // 如果还没有确定卷ID，尝试加载并确定
+    if (!volumeId) {
+      if (novelIdNumber) {
+        try {
+          let volumeList = volumes
+          if (!volumeList || volumeList.length === 0) {
+            volumeList = await novelVolumeService.getVolumesByNovelId(novelIdNumber.toString())
+            setVolumes(volumeList)
+          }
+          
+          if (volumeList && volumeList.length > 0) {
+            if (selectedChapter?.chapterNumber) {
+              // 按章节范围查找
+              const matched = volumeList.find((v) => {
+                const start = Number(v.chapterStart)
+                const end = Number(v.chapterEnd)
+                if (!Number.isFinite(start) || !Number.isFinite(end)) return false
+                return selectedChapter.chapterNumber! >= start && selectedChapter.chapterNumber! <= end
+              })
+              volumeId = matched ? Number(matched.id) : Number(volumeList[0].id)
+            } else {
+              volumeId = Number(volumeList[0].id)
+            }
+            setChapterOutlineVolumeId(volumeId)
+          }
+        } catch (error) {
+          console.error('加载卷列表失败:', error)
+        }
+      }
+    }
+    
+    if (!volumeId) {
+      message.error('无法确定卷ID，请刷新页面重试')
+      return
+    }
+
+    // 检查AI配置
+    if (!checkAIConfig()) {
+      message.error(AI_CONFIG_ERROR_MESSAGE)
+      return
+    }
+
+    setIsGeneratingOutline(true)
+    setOutlineGenerateProgress('正在初始化...')
+    setOutlineGeneratePercent(0)
+
+    // 模拟进度条（因为实际接口不返回进度）
+    const progressMessages = [
+      { percent: 5, msg: '正在分析卷大纲...' },
+      { percent: 15, msg: '正在规划章节结构...' },
+      { percent: 30, msg: '正在生成章节方向...' },
+      { percent: 45, msg: '正在设计情节要点...' },
+      { percent: 60, msg: '正在构建情感基调...' },
+      { percent: 75, msg: '正在编排伏笔线索...' },
+      { percent: 85, msg: '正在优化章纲内容...' },
+      { percent: 92, msg: '即将完成...' },
+    ]
+    
+    let progressIndex = 0
+    const progressInterval = setInterval(() => {
+      if (progressIndex < progressMessages.length) {
+        const { percent, msg } = progressMessages[progressIndex]
+        setOutlineGeneratePercent(percent)
+        setOutlineGenerateProgress(msg)
+        progressIndex++
+      }
+    }, 15000) // 每15秒更新一次进度
+
+    try {
+      const result = await generateVolumeChapterOutlines(volumeId)
+      clearInterval(progressInterval)
+      setOutlineGeneratePercent(100)
+      setOutlineGenerateProgress('生成完成！')
+      
+      setTimeout(() => {
+        message.success(`成功生成 ${result.count} 个章纲`)
+        setOutlineGenerateModalVisible(false)
+        setOutlineMissingModalVisible(false)
+        setOutlineGenerateProgress('')
+        setOutlineGeneratePercent(0)
+      }, 500)
+      
+      // 刷新章纲列表
+      if (volumeId) {
+        const list = await getChapterOutlinesByVolume(volumeId, true)
+        setChapterOutlineList(list)
+      }
+    } catch (error: any) {
+      clearInterval(progressInterval)
+      console.error('生成章纲失败:', error)
+      message.error(formatAIErrorMessage(error))
+      setOutlineGenerateProgress('')
+      setOutlineGeneratePercent(0)
+    } finally {
+      setIsGeneratingOutline(false)
+    }
+  }
+
+  // 打开章纲生成弹窗
+  const openOutlineGenerateModal = async () => {
+    console.log('[章纲生成] 打开弹窗, selectedChapter:', selectedChapter, 'volumes:', volumes)
+    
+    // 如果 volumes 为空，先加载
+    let volumeList = volumes
+    if (!volumeList || volumeList.length === 0) {
+      if (novelIdNumber) {
+        try {
+          volumeList = await novelVolumeService.getVolumesByNovelId(novelIdNumber.toString())
+          setVolumes(volumeList)
+          console.log('[章纲生成] 加载卷列表:', volumeList)
+        } catch (error) {
+          console.error('[章纲生成] 加载卷列表失败:', error)
+        }
+      }
+    }
+    
+    // 确定当前章节所属的卷
+    if (selectedChapter?.chapterNumber && volumeList && volumeList.length > 0) {
+      console.log('[章纲生成] 查找章节所属卷, chapterNumber:', selectedChapter.chapterNumber)
+      
+      // 按章节范围查找
+      const matched = volumeList.find((v) => {
+        const start = Number(v.chapterStart)
+        const end = Number(v.chapterEnd)
+        console.log('[章纲生成] 检查卷:', v.id, 'start:', start, 'end:', end)
+        if (!Number.isFinite(start) || !Number.isFinite(end)) return false
+        return selectedChapter.chapterNumber! >= start && selectedChapter.chapterNumber! <= end
+      })
+      
+      if (matched) {
+        console.log('[章纲生成] 找到匹配的卷:', matched.id)
+        setChapterOutlineVolumeId(Number(matched.id))
+      } else {
+        // 如果没有匹配，使用第一卷
+        console.log('[章纲生成] 未找到匹配的卷，使用第一卷')
+        setChapterOutlineVolumeId(Number(volumeList[0].id))
+      }
+    } else if (volumeList && volumeList.length > 0) {
+      // 没有选中章节，使用第一卷
+      console.log('[章纲生成] 没有选中章节，使用第一卷')
+      setChapterOutlineVolumeId(Number(volumeList[0].id))
+    }
+    
+    setOutlineMissingModalVisible(false)
+    setOutlineGenerateModalVisible(true)
   }
 
   if (loading) {
@@ -1807,54 +2192,67 @@ const WritingStudioPage: React.FC = () => {
   return (
     <Layout className="writing-studio">
       <Sider width={240} className="writing-sidebar" theme="light">
-        <FileTree
-          novelTitle={novelTitle}
-          folders={folders}
-          chapters={chapters}
-          documents={isSearching ? searchResults : allDocuments}
-          selectedKey={selectedTreeKey}
-          onSelectChapter={handleSelectChapter}
-          onSelectDocument={handleSelectDocument}
-          onSelectFolder={async (folder) => {
-            if (!folder) {
-              setSelectedFolderId(null)
-              setSelectedTreeKey('root')
-              return
-            }
-            setSelectedFolderId(folder.id)
-            setSelectedTreeKey(`folder-${folder.id}`)
-            await loadFolderDocuments(folder.id)
-          }}
-          onCreateFolder={handleCreateFolder}
-          onCreateDocument={handleCreateDocument}
-          onQuickAddChapter={handleQuickAddChapter}
-          onSearch={handleSearchDocuments}
-          onSearchClear={clearSearchResults}
-          onToolbarCreateFolder={() => {
-            if (selectedFolderId) {
-              const folder = folders.find((f) => f.id === selectedFolderId)
-              handleCreateFolder(folder ?? null)
-            } else {
-              handleCreateFolder(null)
-            }
-          }}
-          onDeleteFolder={handleDeleteFolder}
-          onDeleteDocument={handleDeleteDocument}
-          onDeleteChapter={handleDeleteChapter}
-          onRenameFolder={handleRenameFolder}
-          onRenameDocument={handleRenameDocument}
-          onRenameChapter={handleRenameChapter}
-          onToolbarCreateDocument={() => {
-            if (selectedFolderId) {
-              const folder = folders.find((f) => f.id === selectedFolderId)
-              if (folder) {
-                handleCreateDocument(folder)
-                return
-              }
-            }
-            message.info('请先选择一个文件夹')
-          }}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <FileTree
+              novelTitle={novelTitle}
+              folders={folders}
+              chapters={chapters}
+              documents={isSearching ? searchResults : allDocuments}
+              selectedKey={selectedTreeKey}
+              onSelectChapter={handleSelectChapter}
+              onSelectDocument={handleSelectDocument}
+              onSelectFolder={async (folder) => {
+                if (!folder) {
+                  setSelectedFolderId(null)
+                  setSelectedTreeKey('root')
+                  return
+                }
+                setSelectedFolderId(folder.id)
+                setSelectedTreeKey(`folder-${folder.id}`)
+                await loadFolderDocuments(folder.id)
+              }}
+              onCreateFolder={handleCreateFolder}
+              onCreateDocument={handleCreateDocument}
+              onQuickAddChapter={handleQuickAddChapter}
+              onSearch={handleSearchDocuments}
+              onSearchClear={clearSearchResults}
+              onToolbarCreateFolder={() => {
+                if (selectedFolderId) {
+                  const folder = folders.find((f) => f.id === selectedFolderId)
+                  handleCreateFolder(folder ?? null)
+                } else {
+                  handleCreateFolder(null)
+                }
+              }}
+              onDeleteFolder={handleDeleteFolder}
+              onDeleteDocument={handleDeleteDocument}
+              onDeleteChapter={handleDeleteChapter}
+              onRenameFolder={handleRenameFolder}
+              onRenameDocument={handleRenameDocument}
+              onRenameChapter={handleRenameChapter}
+              onToolbarCreateDocument={() => {
+                if (selectedFolderId) {
+                  const folder = folders.find((f) => f.id === selectedFolderId)
+                  if (folder) {
+                    handleCreateDocument(folder)
+                    return
+                  }
+                }
+                message.info('请先选择一个文件夹')
+              }}
+            />
+          </div>
+          <div style={{ padding: '12px', borderTop: '1px solid #f0f0f0', background: '#fff' }}>
+            <Button 
+              block 
+              icon={<ExportOutlined />} 
+              onClick={() => setExportVisible(true)}
+            >
+              导出作品
+            </Button>
+          </div>
+        </div>
       </Sider>
       <Content className="writing-editor">
         <EditorPanel
@@ -1869,8 +2267,8 @@ const WritingStudioPage: React.FC = () => {
                   folderId: 0,
                   documentType: 'chapter' as any,
                   sortOrder: 0,
-                  createdAt: selectedChapter.createdAt,
-                  updatedAt: selectedChapter.updatedAt,
+                  createdAt: selectedChapter.createdAt || '',
+                  updatedAt: selectedChapter.updatedAt || '',
                 }
               : selectedDocument
           }
@@ -1901,9 +2299,16 @@ const WritingStudioPage: React.FC = () => {
             await loadVolumeOutline()
             setVolumeOutlineDrawerVisible(true)
           }}
+          onShowSummary={async () => {
+            await loadSummary()
+            setSummaryDrawerVisible(true)
+          }}
           onStreamlineContent={handleStreamlineContent}
           onReviewManuscript={handleReviewManuscript}
           onRemoveAITrace={handleRemoveAITrace}
+          chapterNumber={
+            editingType === 'chapter' ? selectedChapter?.chapterNumber ?? null : null
+          }
         />
       </Content>
       <Sider width={600} className="writing-tools" theme="light">
@@ -1913,6 +2318,8 @@ const WritingStudioPage: React.FC = () => {
           onGeneratorChange={setGeneratorId}
           selectedModel={selectedModel}
           onModelChange={setSelectedModel}
+          temperature={temperature}
+          onTemperatureChange={setTemperature}
           referenceFiles={referenceFiles}
           onUploadReferenceFile={handleUploadReference}
           onDeleteReferenceFile={handleDeleteReference}
@@ -1921,6 +2328,8 @@ const WritingStudioPage: React.FC = () => {
           linkedDocuments={allDocuments}
           onSelectLinkedDocuments={setSelectedLinkedIds}
           selectedLinkedDocumentIds={selectedLinkedIds}
+          writingStyleId={writingStyleId}
+          onWritingStyleChange={setWritingStyleId}
           aiInputValue={aiInput}
           onChangeAIInput={setAIInput}
           onSendAIRequest={handleSendAIRequest}
@@ -1951,8 +2360,12 @@ const WritingStudioPage: React.FC = () => {
           currentChapterNumber={
             editingType === 'chapter' ? selectedChapter?.chapterNumber ?? null : null
           }
-          currentVolumeId={currentVolume?.id ?? null}
+          currentVolumeId={currentVolume ? Number(currentVolume.id) : null}
           currentVolumeNumber={currentVolume?.volumeNumber ?? null}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
+          temperature={temperature}
+          onTemperatureChange={setTemperature}
         />
       </Sider>
 
@@ -2175,397 +2588,208 @@ const WritingStudioPage: React.FC = () => {
         />
       </Modal>
       
-      {/* 章节章纲弹窗 */}
+      {/* 章节章纲弹窗 (Modernized) */}
       <Modal
-        title={<span style={{ fontSize: '16px', fontWeight: 600 }}>📋 章节章纲</span>}
+        title={null}
         open={chapterOutlineLoading || !!editingChapterOutline || chapterOutlineListVisible}
         onCancel={() => {
           setChapterOutlineListVisible(false)
           setChapterOutlineVolumeId(null)
           setEditingChapterOutline(null)
         }}
-        footer={[
-          <button
-            key="close"
-            onClick={() => {
-              setChapterOutlineListVisible(false)
-              setChapterOutlineVolumeId(null)
-              setEditingChapterOutline(null)
-            }}
-            style={{
-              padding: '8px 20px',
-              border: '1px solid #d9d9d9',
-              borderRadius: '6px',
-              background: '#fff',
-              cursor: 'pointer',
-              marginRight: '8px',
-              fontSize: '14px',
-              transition: 'all 0.3s'
-            }}
-          >
-            关闭
-          </button>,
-          <button
-            key="save"
-            onClick={handleSaveChapterOutline}
-            disabled={
-              chapterOutlineLoading || !editingChapterOutline?.outlineId
-            }
-            style={{
-              padding: '8px 20px',
-              border: 'none',
-              borderRadius: '6px',
-              background:
-                chapterOutlineLoading || !editingChapterOutline?.outlineId ? '#d9d9d9' : '#52c41a',
-              color: '#fff',
-              cursor:
-                chapterOutlineLoading || !editingChapterOutline?.outlineId ? 'not-allowed' : 'pointer',
-              fontSize: '14px',
-              fontWeight: 500,
-              transition: 'all 0.3s'
-            }}
-          >
-            {chapterOutlineLoading ? '保存中...' : '💾 保存章纲'}
-          </button>,
-        ]}
-        width={1000}
+        footer={null}
+        width={1100}
+        centered
+        destroyOnClose
+        styles={{ 
+          content: { padding: 0, borderRadius: '16px', overflow: 'hidden' },
+          body: { padding: 0, height: '700px' } 
+        }}
+        closable={false}
       >
-        <div
-          style={{
-            display: 'flex',
-            gap: '16px',
-            alignItems: 'stretch',
-            minHeight: '320px',
-          }}
-        >
-          {chapterOutlineListVisible && (
-            <div
-              style={{
-                width: '260px',
-                paddingRight: '16px',
-                borderRight: '1px solid #f0f0f0',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 8,
-                }}
+        <div style={{ display: 'flex', height: '100%', background: '#fff' }}>
+          {/* 左侧列表 (Volume List) */}
+          <div 
+            className="co-list-sidebar"
+            style={{ 
+              width: chapterOutlineListVisible ? '280px' : '0', 
+              opacity: chapterOutlineListVisible ? 1 : 0,
+              padding: chapterOutlineListVisible ? '20px 12px 20px 20px' : '0',
+              overflow: 'hidden'
+            }}
+          >
+            <div className="co-list-header">
+              <span className="co-list-title">
+                <BookOutlined style={{ marginRight: 8, color: '#4f46e5' }} />
+                本卷章纲
+              </span>
+              <button 
+                className="co-icon-btn"
+                onClick={() => setChapterOutlineListVisible(false)}
+                title="收起列表"
               >
-                <span style={{ fontSize: 13, fontWeight: 500 }}>本卷章纲列表</span>
-                <button
-                  onClick={() => setChapterOutlineListVisible(false)}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #d9d9d9',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    fontSize: 12,
-                  }}
-                >
-                  收起
-                </button>
-              </div>
-              <div
-                style={{
-                  maxHeight: '360px',
-                  overflowY: 'auto',
-                  border: '1px solid #f0f0f0',
-                  borderRadius: '4px',
-                  padding: '8px',
-                  background: '#fafafa',
-                }}
-              >
-                {chapterOutlineListLoading ? (
-                  <div style={{ textAlign: 'center', padding: '24px 0' }}>
-                    <Spin size="small" />
-                    <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>
-                      正在加载本卷章纲...
-                    </div>
-                  </div>
-                ) : chapterOutlineVolumeId ? (
-                  chapterOutlineList.length > 0 ? (
-                    chapterOutlineList.map((item) => {
-                      const isActive =
-                        editingChapterOutline &&
-                        item.globalChapterNumber &&
-                        editingChapterOutline.globalChapterNumber === item.globalChapterNumber
-                      return (
-                        <div
-                          key={item.id}
-                          onClick={() => handleSelectOutlineChapter(item.globalChapterNumber)}
-                          style={{
-                            padding: '6px 8px',
-                            borderRadius: '4px',
-                            marginBottom: '6px',
-                            cursor: 'pointer',
-                            background: isActive ? '#e6f7ff' : '#fff',
-                            border: isActive
-                              ? '1px solid #1890ff'
-                              : '1px solid #f0f0f0',
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontSize: 13,
-                              fontWeight: 500,
-                              marginBottom: 2,
-                            }}
-                          >
-                            第
-                            {item.chapterInVolume ??
-                              item.globalChapterNumber ??
-                              '-'}
-                            章
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 12,
-                              color: '#666',
-                              marginBottom: 2,
-                            }}
-                          >
-                            {item.emotionalTone || '情感基调未设定'}
-                          </div>
-                          <div style={{ fontSize: 12, color: '#999' }}>
-                            状态：{getOutlineStatusText(item.status)}
-                          </div>
+                <MenuFoldOutlined />
+              </button>
+            </div>
+            
+            <div className="co-list-scroll-area">
+              {chapterOutlineListLoading ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#9ca3af' }}>
+                  <Spin size="small" />
+                  <div style={{ marginTop: 8, fontSize: 12 }}>加载中...</div>
+                </div>
+              ) : chapterOutlineVolumeId && chapterOutlineList.length > 0 ? (
+                chapterOutlineList.map((item) => {
+                  const isActive = editingChapterOutline && 
+                    item.globalChapterNumber === editingChapterOutline.globalChapterNumber;
+                  
+                  return (
+                    <div
+                      key={item.id}
+                      className={`co-list-item ${isActive ? 'active' : ''}`}
+                      onClick={() => handleSelectOutlineChapter(item.globalChapterNumber)}
+                    >
+                      <div className="co-item-header">
+                        <span className="co-item-title">
+                          第 {item.chapterInVolume ?? item.globalChapterNumber ?? '-'} 章
+                        </span>
+                      </div>
+                      {item.direction && (
+                        <div className="co-item-tone" style={{ marginTop: 6 }}>
+                          {item.direction.length > 50 ? item.direction.substring(0, 50) + '...' : item.direction}
                         </div>
-                      )
-                    })
-                  ) : (
-                    <div style={{ fontSize: 12, color: '#999' }}>
-                      当前卷尚未生成任何章纲
+                      )}
                     </div>
                   )
-                ) : (
-                  <div style={{ fontSize: 12, color: '#999' }}>
-                    暂未识别当前章节所属的卷
-                  </div>
-                )}
-              </div>
+                })
+              ) : (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#9ca3af', fontSize: 13 }}>
+                  暂无章纲数据
+                </div>
+              )}
             </div>
-          )}
-          <div
-            style={{
-              flex: 1,
-              paddingLeft: chapterOutlineListVisible ? '16px' : 0,
-              transition: 'all 0.2s ease',
-            }}
-          >
-            {chapterOutlineLoading && !editingChapterOutline ? (
-              <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                <Spin size="large" />
-                <div style={{ marginTop: 16, color: '#666' }}>正在加载章纲...</div>
+          </div>
+
+          {/* 右侧编辑区 (Editor) */}
+          <div className="co-editor-area" style={{ padding: '24px 32px' }}>
+            {/* Header */}
+            <div className="co-editor-header">
+              <div className="co-chapter-info">
+                {!chapterOutlineListVisible && (
+                  <button 
+                    className="co-toggle-sidebar-btn"
+                    onClick={() => {
+                      setChapterOutlineListVisible(true)
+                      if (chapterOutlineVolumeId && chapterOutlineList.length === 0) {
+                        setChapterOutlineListLoading(true)
+                        getChapterOutlinesByVolume(chapterOutlineVolumeId, true)
+                          .then(list => setChapterOutlineList(list))
+                          .finally(() => setChapterOutlineListLoading(false))
+                      }
+                    }}
+                  >
+                    <MenuUnfoldOutlined /> 展开列表
+                  </button>
+                )}
+                <div className="co-chapter-title">
+                  {editingChapterOutline ? (
+                    <>
+                      第 {editingChapterOutline.chapterInVolume ?? editingChapterOutline.globalChapterNumber ?? '-'} 章
+                      <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: 8, fontSize: 16 }}>
+                        {editingChapterOutline.volumeNumber ? `· 第${editingChapterOutline.volumeNumber}卷` : ''}
+                      </span>
+                    </>
+                  ) : '加载中...'}
+                </div>
               </div>
-            ) : editingChapterOutline ? (
-              <>
-                <div
-                  style={{
-                    marginBottom: 16,
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
+              
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button
+                  className="co-close-btn"
+                  onClick={() => {
+                    setChapterOutlineListVisible(false)
+                    setChapterOutlineVolumeId(null)
+                    setEditingChapterOutline(null)
                   }}
                 >
-                  <div>
-                    <div
-                      style={{
-                        fontWeight: 600,
-                        fontSize: 14,
-                        marginBottom: 4,
-                      }}
-                    >
-                      第{' '}
-                      {editingChapterOutline.globalChapterNumber ??
-                        editingChapterOutline.chapterInVolume ??
-                        '-'}{' '}
-                      章
-                      {editingChapterOutline.volumeNumber
-                        ? ` · 第${editingChapterOutline.volumeNumber}卷`
-                        : ''}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#666' }}>
-                      情感基调：
-                      <span>
-                        {editingChapterOutline.emotionalTone
-                          ? editingChapterOutline.emotionalTone
-                          : '未设置'}
-                      </span>
-                      <span style={{ marginLeft: 12 }}>
-                        状态：{getOutlineStatusText(editingChapterOutline.status)}
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={async () => {
-                      const nextVisible = !chapterOutlineListVisible
-                      setChapterOutlineListVisible(nextVisible)
+                  关闭
+                </button>
+                <Button
+                  type="primary"
+                  onClick={handleSaveChapterOutline}
+                  loading={chapterOutlineLoading}
+                  icon={<SaveOutlined />}
+                  className="co-save-btn"
+                >
+                  {editingChapterOutline?.outlineId ? '保存章纲' : '创建章纲'}
+                </Button>
+              </div>
+            </div>
 
-                      if (
-                        nextVisible &&
-                        chapterOutlineVolumeId &&
-                        chapterOutlineList.length === 0
-                      ) {
-                        try {
-                          setChapterOutlineListLoading(true)
-                          const list = await getChapterOutlinesByVolume(
-                            chapterOutlineVolumeId,
-                            true
-                          )
-                          setChapterOutlineList(list)
-                        } catch (e) {
-                          console.error('加载卷章纲列表失败:', e)
-                          message.error('加载本卷章纲列表失败')
-                        } finally {
-                          setChapterOutlineListLoading(false)
-                        }
-                      }
-                    }}
-                    style={{
-                      padding: '4px 10px',
-                      borderRadius: '4px',
-                      border: '1px solid #d9d9d9',
-                      background: '#fff',
-                      cursor: 'pointer',
-                      fontSize: 12,
-                    }}
-                  >
-                    {chapterOutlineListVisible ? '收起列表' : '本卷章纲列表'}
-                  </button>
-                </div>
-                <div style={{ marginBottom: 12 }}>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: '#999',
-                      marginBottom: 4,
-                    }}
-                  >
-                    本章剧情方向
+            {/* Form Content */}
+            {chapterOutlineLoading && !editingChapterOutline ? (
+              <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                <Spin size="large" tip="正在加载章纲内容..." />
+              </div>
+            ) : editingChapterOutline ? (
+              <div className="co-form-grid">
+                {/* 核心字段 */}
+                <div className="co-form-group">
+                  <div className="co-label">
+                    <CompassOutlined className="co-label-icon" />
+                    章节方向 / 核心梗概
                   </div>
                   <textarea
+                    className="co-textarea"
                     value={editingChapterOutline.direction}
                     onChange={(e) =>
-                      setEditingChapterOutline((prev) =>
-                        prev ? { ...prev, direction: e.target.value } : prev
-                      )
+                      setEditingChapterOutline({
+                        ...editingChapterOutline,
+                        direction: e.target.value,
+                      })
                     }
-                    placeholder="简要说明本章要写什么、走向如何"
-                    style={{
-                      width: '100%',
-                      minHeight: '100px',
-                      padding: '8px',
-                      border: '1px solid #d9d9d9',
-                      borderRadius: '4px',
-                      fontSize: '13px',
-                      lineHeight: 1.6,
-                      resize: 'vertical',
-                    }}
+                    placeholder="本章主要写什么？例如：主角在拍卖会上遭遇反派挑衅，通过鉴宝技能打脸..."
                   />
                 </div>
-                <div style={{ marginBottom: 12 }}>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: '#999',
-                      marginBottom: 4,
-                    }}
-                  >
-                    关键剧情点（每行一个）
+
+                <div className="co-form-group">
+                  <div className="co-label">
+                    <AimOutlined className="co-label-icon" />
+                    伏笔动作 (Action)
+                  </div>
+                  <input
+                    className="co-input"
+                    value={editingChapterOutline.foreshadowAction || ''}
+                    onChange={(e) =>
+                      setEditingChapterOutline({
+                        ...editingChapterOutline,
+                        foreshadowAction: e.target.value,
+                      })
+                    }
+                    placeholder="例如：NONE, BURY(埋伏笔), REVEAL(揭伏笔)..."
+                  />
+                </div>
+
+                <div className="co-form-group">
+                  <div className="co-label">
+                    <FileTextOutlined className="co-label-icon" />
+                    伏笔详情 (Detail)
                   </div>
                   <textarea
-                    value={editingChapterOutline.keyPlotPoints}
+                    className="co-textarea large"
+                    style={{ minHeight: '180px' }}
+                    value={editingChapterOutline.foreshadowDetail || ''}
                     onChange={(e) =>
-                      setEditingChapterOutline((prev) =>
-                        prev ? { ...prev, keyPlotPoints: e.target.value } : prev
-                      )
+                      setEditingChapterOutline({
+                        ...editingChapterOutline,
+                        foreshadowDetail: e.target.value,
+                      })
                     }
-                    placeholder="例如：主角做出关键决定；反派伏笔出现；冲突升级等"
-                    style={{
-                      width: '100%',
-                      minHeight: '120px',
-                      padding: '8px',
-                      border: '1px solid #d9d9d9',
-                      borderRadius: '4px',
-                      fontSize: '13px',
-                      lineHeight: 1.6,
-                      resize: 'vertical',
-                    }}
+                    placeholder="描述具体的伏笔内容..."
                   />
                 </div>
-                <div style={{ display: 'flex', gap: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: '#999',
-                        marginBottom: 4,
-                      }}
-                    >
-                      支线 / 人物刻画
-                    </div>
-                    <textarea
-                      value={editingChapterOutline.subplot}
-                      onChange={(e) =>
-                        setEditingChapterOutline((prev) =>
-                          prev ? { ...prev, subplot: e.target.value } : prev
-                        )
-                      }
-                      placeholder="可选：本章想强化的支线或人设"
-                      style={{
-                        width: '100%',
-                        minHeight: '80px',
-                        padding: '8px',
-                        border: '1px solid #d9d9d9',
-                        borderRadius: '4px',
-                        fontSize: '13px',
-                        lineHeight: 1.6,
-                        resize: 'vertical',
-                      }}
-                    />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: '#999',
-                        marginBottom: 4,
-                      }}
-                    >
-                      对手与赌注
-                    </div>
-                    <textarea
-                      value={editingChapterOutline.antagonism}
-                      onChange={(e) =>
-                        setEditingChapterOutline((prev) =>
-                          prev ? { ...prev, antagonism: e.target.value } : prev
-                        )
-                      }
-                      placeholder="可选：本章的阻力、风险和代价"
-                      style={{
-                        width: '100%',
-                        minHeight: '80px',
-                        padding: '8px',
-                        border: '1px solid #d9d9d9',
-                        borderRadius: '4px',
-                        fontSize: '13px',
-                        lineHeight: 1.6,
-                        resize: 'vertical',
-                      }}
-                    />
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
-                暂无章纲内容，请先选择左侧章节，或在其它规划页面生成本卷章纲后再查看。
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </Modal>
@@ -2746,11 +2970,15 @@ const WritingStudioPage: React.FC = () => {
                 setProcessedContent('')
               }}
               style={{
-                padding: '8px 20px',
-                border: '1px solid #d9d9d9',
-                borderRadius: '6px',
-                background: '#fff',
-                cursor: 'pointer'
+                padding: '10px 22px',
+                border: '1px solid #e5e7eb',
+                borderRadius: '10px',
+                background: 'linear-gradient(180deg, #ffffff 0%, #f9fafb 100%)',
+                cursor: 'pointer',
+                fontWeight: 500,
+                fontSize: '14px',
+                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+                transition: 'all 0.2s ease',
               }}
             >
               关闭
@@ -2771,12 +2999,20 @@ const WritingStudioPage: React.FC = () => {
               }}
               disabled={!processedContent}
               style={{
-                padding: '8px 20px',
+                padding: '10px 22px',
                 border: 'none',
-                borderRadius: '6px',
-                background: processedContent ? '#52c41a' : '#d9d9d9',
+                borderRadius: '10px',
+                background: processedContent 
+                  ? 'linear-gradient(145deg, #52c41a 0%, #389e0d 50%, #237804 100%)' 
+                  : 'linear-gradient(145deg, #d9d9d9 0%, #bfbfbf 100%)',
                 color: '#fff',
-                cursor: processedContent ? 'pointer' : 'not-allowed'
+                cursor: processedContent ? 'pointer' : 'not-allowed',
+                fontWeight: 600,
+                fontSize: '14px',
+                boxShadow: processedContent 
+                  ? '0 4px 12px rgba(82, 196, 26, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.15)' 
+                  : 'none',
+                transition: 'all 0.25s ease',
               }}
             >
               应用到正文
@@ -2790,17 +3026,47 @@ const WritingStudioPage: React.FC = () => {
               <div style={{ marginBottom: '16px', color: '#666', fontSize: '14px' }}>
                 点击下方按钮开始AI消痕处理
               </div>
+              <div
+                style={{
+                  marginBottom: '16px',
+                  fontSize: '13px',
+                  color: '#666',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                }}
+              >
+                <span>选择模型：</span>
+                <select
+                  value={traceRemovalModel}
+                  onChange={(e) => setTraceRemovalModel(e.target.value)}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: 4,
+                    border: '1px solid #d9d9d9',
+                    fontSize: '13px',
+                  }}
+                >
+                  <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                  <option value="gemini-3-pro-preview">Gemini 3 Pro</option>
+                  <option value="grok-4.1">Grok 4.1</option>
+                </select>
+              </div>
               <button
                 onClick={executeRemoveAITrace}
                 style={{
-                  padding: '10px 24px',
+                  padding: '12px 28px',
                   border: 'none',
-                  borderRadius: '6px',
-                  background: '#1890ff',
+                  borderRadius: '10px',
+                  background: 'linear-gradient(145deg, #1890ff 0%, #096dd9 50%, #0050b3 100%)',
                   color: '#fff',
                   cursor: 'pointer',
                   fontSize: '14px',
-                  fontWeight: 500
+                  fontWeight: 600,
+                  letterSpacing: '0.3px',
+                  boxShadow: '0 4px 14px rgba(24, 144, 255, 0.35), 0 2px 6px rgba(24, 144, 255, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.15)',
+                  transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                 }}
               >
                 开始AI消痕
@@ -2859,12 +3125,15 @@ const WritingStudioPage: React.FC = () => {
                 setStreamlinedContent('')
               }}
               style={{
-                padding: '8px 20px',
-                border: '1px solid #d9d9d9',
-                borderRadius: '6px',
-                background: '#fff',
+                padding: '10px 22px',
+                border: '1px solid #e5e7eb',
+                borderRadius: '10px',
+                background: 'linear-gradient(180deg, #ffffff 0%, #f9fafb 100%)',
                 cursor: 'pointer',
-                fontSize: '14px'
+                fontSize: '14px',
+                fontWeight: 500,
+                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+                transition: 'all 0.2s ease',
               }}
             >
               关闭
@@ -2885,14 +3154,20 @@ const WritingStudioPage: React.FC = () => {
               }}
               disabled={!streamlinedContent}
               style={{
-                padding: '8px 20px',
+                padding: '10px 22px',
                 border: 'none',
-                borderRadius: '6px',
-                background: streamlinedContent ? '#ff9800' : '#d9d9d9',
+                borderRadius: '10px',
+                background: streamlinedContent 
+                  ? 'linear-gradient(145deg, #ff9800 0%, #f57c00 50%, #e65100 100%)' 
+                  : 'linear-gradient(145deg, #d9d9d9 0%, #bfbfbf 100%)',
                 color: '#fff',
                 cursor: streamlinedContent ? 'pointer' : 'not-allowed',
                 fontSize: '14px',
-                fontWeight: 500
+                fontWeight: 600,
+                boxShadow: streamlinedContent 
+                  ? '0 4px 12px rgba(255, 152, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.15)' 
+                  : 'none',
+                transition: 'all 0.25s ease',
               }}
             >
               应用到正文
@@ -2929,14 +3204,17 @@ const WritingStudioPage: React.FC = () => {
                 <button
                   onClick={executeStreamlineContent}
                   style={{
-                    padding: '10px 24px',
+                    padding: '12px 28px',
                     border: 'none',
-                    borderRadius: '6px',
-                    background: '#ff9800',
+                    borderRadius: '10px',
+                    background: 'linear-gradient(145deg, #ff9800 0%, #f57c00 50%, #e65100 100%)',
                     color: '#fff',
                     cursor: 'pointer',
                     fontSize: '14px',
-                    fontWeight: 500
+                    fontWeight: 600,
+                    letterSpacing: '0.3px',
+                    boxShadow: '0 4px 14px rgba(255, 152, 0, 0.35), 0 2px 6px rgba(255, 152, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.15)',
+                    transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                   }}
                 >
                   开始AI精简
@@ -2975,6 +3253,773 @@ const WritingStudioPage: React.FC = () => {
           )}
         </div>
       </Drawer>
+
+      {/* 概要抽屉 */}
+      <Drawer
+        title={<span style={{ fontSize: '16px', fontWeight: 600 }}>📚 小说概要</span>}
+        placement="right"
+        width={700}
+        mask={false}
+        open={summaryDrawerVisible}
+        onClose={() => {
+          setSummaryDrawerVisible(false)
+        }}
+      >
+        <div style={{ padding: '0' }}>
+          {summaryLoading ? (
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              <Spin size="large" />
+              <div style={{ marginTop: '16px', color: '#666' }}>加载中...</div>
+            </div>
+          ) : summaryData ? (
+            <div style={{ fontSize: '14px', lineHeight: '1.8' }}>
+              {/* 小说基本信息 */}
+              <div style={{ marginBottom: '24px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#1890ff' }}>
+                  📖 基本信息
+                </h3>
+                <div style={{ background: '#f5f5f5', padding: '16px', borderRadius: '8px' }}>
+                  <div style={{ marginBottom: '8px' }}>
+                    <span style={{ fontWeight: 500, color: '#666' }}>书名：</span>
+                    <span style={{ color: '#333' }}>{summaryData.novel?.title || '未设置'}</span>
+                  </div>
+                  <div style={{ marginBottom: '8px' }}>
+                    <span style={{ fontWeight: 500, color: '#666' }}>类型：</span>
+                    <span style={{ color: '#333' }}>{summaryData.novel?.genre || '未设置'}</span>
+                  </div>
+                  <div style={{ marginBottom: '8px' }}>
+                    <span style={{ fontWeight: 500, color: '#666' }}>状态：</span>
+                    <span style={{ color: '#333' }}>{summaryData.novel?.status || '未设置'}</span>
+                  </div>
+                  {summaryData.novel?.author && (
+                    <div style={{ marginBottom: '8px' }}>
+                      <span style={{ fontWeight: 500, color: '#666' }}>作者：</span>
+                      <span style={{ color: '#333' }}>{summaryData.novel.author}</span>
+                    </div>
+                  )}
+                  {summaryData.novel?.description && (
+                    <div>
+                      <span style={{ fontWeight: 500, color: '#666' }}>简介：</span>
+                      <div style={{ color: '#333', marginTop: '4px', whiteSpace: 'pre-wrap' }}>
+                        {summaryData.novel.description}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 大纲信息 */}
+              {summaryData.outline && (
+                <>
+                  {summaryData.outline.basicIdea && (
+                    <div style={{ marginBottom: '24px' }}>
+                      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#52c41a' }}>
+                        💡 基本构思
+                      </h3>
+                      <div style={{ 
+                        background: '#f6ffed', 
+                        padding: '16px', 
+                        borderRadius: '8px',
+                        border: '1px solid #b7eb8f',
+                        whiteSpace: 'pre-wrap',
+                        color: '#333'
+                      }}>
+                        {summaryData.outline.basicIdea}
+                      </div>
+                    </div>
+                  )}
+
+                  {summaryData.outline.coreTheme && (
+                    <div style={{ marginBottom: '24px' }}>
+                      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#722ed1' }}>
+                        🎯 核心主题
+                      </h3>
+                      <div style={{ 
+                        background: '#f9f0ff', 
+                        padding: '16px', 
+                        borderRadius: '8px',
+                        border: '1px solid #d3adf7',
+                        whiteSpace: 'pre-wrap',
+                        color: '#333'
+                      }}>
+                        {summaryData.outline.coreTheme}
+                      </div>
+                    </div>
+                  )}
+
+                  {summaryData.outline.mainCharacters && (
+                    <div style={{ marginBottom: '24px' }}>
+                      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#fa8c16' }}>
+                        👥 主要角色
+                      </h3>
+                      <div style={{ 
+                        background: '#fff7e6', 
+                        padding: '16px', 
+                        borderRadius: '8px',
+                        border: '1px solid #ffd591',
+                        whiteSpace: 'pre-wrap',
+                        color: '#333'
+                      }}>
+                        {summaryData.outline.mainCharacters}
+                      </div>
+                    </div>
+                  )}
+
+                  {summaryData.outline.plotStructure && (
+                    <div style={{ marginBottom: '24px' }}>
+                      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#eb2f96' }}>
+                        📊 剧情结构
+                      </h3>
+                      <div style={{ 
+                        background: '#fff0f6', 
+                        padding: '16px', 
+                        borderRadius: '8px',
+                        border: '1px solid #ffadd2',
+                        whiteSpace: 'pre-wrap',
+                        color: '#333'
+                      }}>
+                        {summaryData.outline.plotStructure}
+                      </div>
+                    </div>
+                  )}
+
+                  {summaryData.outline.worldSetting && (
+                    <div style={{ marginBottom: '24px' }}>
+                      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#13c2c2' }}>
+                        🌍 世界观设定
+                      </h3>
+                      <div style={{ 
+                        background: '#e6fffb', 
+                        padding: '16px', 
+                        borderRadius: '8px',
+                        border: '1px solid #87e8de',
+                        whiteSpace: 'pre-wrap',
+                        color: '#333'
+                      }}>
+                        {summaryData.outline.worldSetting}
+                      </div>
+                    </div>
+                  )}
+
+                  {summaryData.outline.coreSettings && (
+                    <div style={{ marginBottom: '24px' }}>
+                      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#faad14' }}>
+                        ⚙️ 核心设定
+                      </h3>
+                      <div style={{ 
+                        background: '#fffbe6', 
+                        padding: '16px', 
+                        borderRadius: '8px',
+                        border: '1px solid #ffe58f',
+                        whiteSpace: 'pre-wrap',
+                        color: '#333'
+                      }}>
+                        {summaryData.outline.coreSettings}
+                      </div>
+                    </div>
+                  )}
+
+                  {summaryData.outline.keyElements && (
+                    <div style={{ marginBottom: '24px' }}>
+                      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#f5222d' }}>
+                        🔑 关键元素
+                      </h3>
+                      <div style={{ 
+                        background: '#fff1f0', 
+                        padding: '16px', 
+                        borderRadius: '8px',
+                        border: '1px solid #ffa39e',
+                        whiteSpace: 'pre-wrap',
+                        color: '#333'
+                      }}>
+                        {summaryData.outline.keyElements}
+                      </div>
+                    </div>
+                  )}
+
+                  {summaryData.outline.conflictTypes && (
+                    <div style={{ marginBottom: '24px' }}>
+                      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#fa541c' }}>
+                        ⚔️ 冲突类型
+                      </h3>
+                      <div style={{ 
+                        background: '#fff2e8', 
+                        padding: '16px', 
+                        borderRadius: '8px',
+                        border: '1px solid #ffbb96',
+                        whiteSpace: 'pre-wrap',
+                        color: '#333'
+                      }}>
+                        {summaryData.outline.conflictTypes}
+                      </div>
+                    </div>
+                  )}
+
+                  {(summaryData.outline.targetWordCount || summaryData.outline.targetChapterCount) && (
+                    <div style={{ marginBottom: '24px' }}>
+                      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#2f54eb' }}>
+                        📈 目标规划
+                      </h3>
+                      <div style={{ background: '#f0f5ff', padding: '16px', borderRadius: '8px', border: '1px solid #adc6ff' }}>
+                        {summaryData.outline.targetWordCount && (
+                          <div style={{ marginBottom: '8px' }}>
+                            <span style={{ fontWeight: 500, color: '#666' }}>目标字数：</span>
+                            <span style={{ color: '#333' }}>{summaryData.outline.targetWordCount.toLocaleString()} 字</span>
+                          </div>
+                        )}
+                        {summaryData.outline.targetChapterCount && (
+                          <div>
+                            <span style={{ fontWeight: 500, color: '#666' }}>目标章节数：</span>
+                            <span style={{ color: '#333' }}>{summaryData.outline.targetChapterCount} 章</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {!summaryData.outline && (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
+                  暂无大纲信息
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
+              暂无数据
+            </div>
+          )}
+        </div>
+      </Drawer>
+
+      <ExportModal
+        visible={exportVisible}
+        onCancel={() => setExportVisible(false)}
+        novelId={novelIdNumber}
+        novelTitle={novelTitle}
+        chapters={chapters}
+      />
+
+      {/* 章纲缺失提醒弹窗 - 美化版 */}
+      <Modal
+        title={null}
+        open={outlineMissingModalVisible}
+        onCancel={() => setOutlineMissingModalVisible(false)}
+        width={520}
+        footer={null}
+        centered
+        className="outline-missing-modal"
+      >
+        <div style={{ padding: '32px 24px' }}>
+          {/* 图标和标题 */}
+          <div style={{ textAlign: 'center', marginBottom: 28 }}>
+            <div style={{
+              width: 72,
+              height: 72,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #fff7e6 0%, #ffe7ba 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 18px',
+              boxShadow: '0 6px 16px rgba(250, 173, 20, 0.25), 0 0 0 4px rgba(250, 173, 20, 0.08)',
+              position: 'relative' as const,
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                position: 'absolute',
+                top: -2,
+                right: -2,
+                width: 24,
+                height: 24,
+                borderRadius: '50%',
+                background: 'rgba(255, 255, 255, 0.3)',
+                filter: 'blur(8px)'
+              }} />
+              <FileTextOutlined style={{ fontSize: 32, color: '#fa8c16' }} />
+            </div>
+            <h3 style={{ 
+              fontSize: 20, 
+              fontWeight: 600, 
+              color: '#1f2937', 
+              margin: '0 0 8px 0',
+              letterSpacing: '0.3px'
+            }}>
+              章纲尚未生成
+            </h3>
+            <p style={{ 
+              fontSize: 13, 
+              color: '#94a3b8', 
+              margin: 0,
+              fontWeight: 400
+            }}>
+              当前章节缺少写作指导
+            </p>
+          </div>
+          
+          {/* 说明内容 */}
+          <div style={{
+            background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
+            borderRadius: 12,
+            padding: '18px 20px',
+            marginBottom: 28,
+            border: '1px solid #fde68a',
+            position: 'relative' as const,
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: 4,
+              height: '100%',
+              background: 'linear-gradient(180deg, #f59e0b 0%, #d97706 100%)'
+            }} />
+            <p style={{ 
+              marginBottom: 12, 
+              fontSize: 14, 
+              color: '#92400e',
+              fontWeight: 500,
+              paddingLeft: 8
+            }}>
+              当前章节（<strong style={{ color: '#78350f' }}>第 {selectedChapter?.chapterNumber} 章</strong>）尚未生成章纲。
+            </p>
+            <p style={{ 
+              marginBottom: 0, 
+              fontSize: 13, 
+              color: '#a16207', 
+              lineHeight: 1.7,
+              paddingLeft: 8
+            }}>
+              章纲可以帮助 AI 更好地理解章节的方向、情节要点和情感基调，生成更符合预期的内容。
+            </p>
+          </div>
+          
+          {/* 操作按钮 */}
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+            <Button 
+              size="large"
+              onClick={() => setOutlineMissingModalVisible(false)}
+              className="outline-cancel-btn"
+              style={{ 
+                minWidth: 100,
+                height: 44,
+                borderRadius: 11,
+                fontWeight: 500,
+                fontSize: 14,
+                border: '1px solid #e5e7eb',
+                background: 'linear-gradient(180deg, #ffffff 0%, #f9fafb 100%)',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.8)',
+                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                color: '#64748b'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = '#cbd5e1'
+                e.currentTarget.style.background = 'linear-gradient(180deg, #f9fafb 0%, #f1f5f9 100%)'
+                e.currentTarget.style.color = '#475569'
+                e.currentTarget.style.transform = 'translateY(-1px)'
+                e.currentTarget.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = '#e5e7eb'
+                e.currentTarget.style.background = 'linear-gradient(180deg, #ffffff 0%, #f9fafb 100%)'
+                e.currentTarget.style.color = '#64748b'
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.8)'
+              }}
+            >
+              取消
+            </Button>
+            <Button 
+              size="large"
+              icon={<FileTextOutlined />}
+              onClick={openOutlineGenerateModal}
+              style={{ 
+                minWidth: 130,
+                height: 44,
+                borderRadius: 11,
+                fontWeight: 500,
+                fontSize: 14,
+                background: 'linear-gradient(180deg, #f0f5ff 0%, #e6edff 100%)',
+                borderColor: '#adc6ff',
+                color: '#2f54eb',
+                boxShadow: '0 2px 8px rgba(47, 84, 235, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.8)',
+                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(180deg, #e6edff 0%, #d6e4ff 100%)'
+                e.currentTarget.style.borderColor = '#91a7ff'
+                e.currentTarget.style.transform = 'translateY(-1px)'
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(47, 84, 235, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.8)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(180deg, #f0f5ff 0%, #e6edff 100%)'
+                e.currentTarget.style.borderColor = '#adc6ff'
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(47, 84, 235, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.8)'
+              }}
+            >
+              生成章纲
+            </Button>
+            <Button 
+              type="primary"
+              size="large"
+              icon={<RocketOutlined />}
+              onClick={() => {
+                setOutlineMissingModalVisible(false)
+                handleSendAIRequest(true)
+              }}
+              style={{ 
+                minWidth: 130,
+                height: 44,
+                borderRadius: 11,
+                fontWeight: 600,
+                fontSize: 15,
+                letterSpacing: '0.4px',
+                background: 'linear-gradient(145deg, #667eea 0%, #5a67d8 50%, #764ba2 100%)',
+                border: 'none',
+                boxShadow: '0 4px 16px rgba(102, 126, 234, 0.4), 0 2px 8px rgba(102, 126, 234, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.2)',
+                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)'
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.45), 0 3px 10px rgba(102, 126, 234, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.25)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = '0 4px 16px rgba(102, 126, 234, 0.4), 0 2px 8px rgba(102, 126, 234, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.2)'
+              }}
+            >
+              继续生成
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 章纲生成弹窗 - 美化版 */}
+      <Modal
+        title={null}
+        open={outlineGenerateModalVisible}
+        onCancel={() => !isGeneratingOutline && setOutlineGenerateModalVisible(false)}
+        closable={!isGeneratingOutline}
+        maskClosable={!isGeneratingOutline}
+        width={560}
+        footer={null}
+        centered
+        className="outline-generate-modal"
+      >
+        <div style={{ padding: '32px 24px' }}>
+          {/* 图标和标题 */}
+          <div style={{ textAlign: 'center', marginBottom: 28 }}>
+            <div style={{
+              width: 72,
+              height: 72,
+              borderRadius: '50%',
+              background: isGeneratingOutline 
+                ? 'linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%)'
+                : 'linear-gradient(135deg, #f0f5ff 0%, #d6e4ff 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 18px',
+              boxShadow: isGeneratingOutline 
+                ? '0 8px 24px rgba(24, 144, 255, 0.25), 0 0 0 4px rgba(24, 144, 255, 0.08)'
+                : '0 6px 16px rgba(24, 144, 255, 0.18), 0 0 0 4px rgba(24, 144, 255, 0.06)',
+              animation: isGeneratingOutline ? 'pulse 2s ease-in-out infinite' : 'none',
+              position: 'relative' as const,
+              overflow: 'hidden',
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+            }}>
+              {isGeneratingOutline ? (
+                <>
+                  <div style={{
+                    position: 'absolute',
+                    width: '100%',
+                    height: '100%',
+                    borderRadius: '50%',
+                    background: 'linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.3) 50%, transparent 70%)',
+                    animation: 'shimmer 2s linear infinite'
+                  }} />
+                  <Spin size="default" />
+                </>
+              ) : (
+                <FileTextOutlined style={{ 
+                  fontSize: 32, 
+                  color: '#1890ff',
+                  transition: 'all 0.3s ease'
+                }} />
+              )}
+            </div>
+            <h3 style={{ 
+              fontSize: 20, 
+              fontWeight: 600, 
+              color: '#1f2937', 
+              margin: '0 0 8px 0',
+              letterSpacing: '0.3px'
+            }}>
+              {isGeneratingOutline ? '正在生成章纲' : '生成章纲'}
+            </h3>
+            {!isGeneratingOutline && (
+              <p style={{ 
+                fontSize: 13, 
+                color: '#94a3b8', 
+                margin: 0,
+                fontWeight: 400
+              }}>
+                为本卷所有章节生成专业写作指导
+              </p>
+            )}
+          </div>
+          
+          {/* 卷信息 */}
+          {(chapterOutlineVolumeId || (volumes && volumes.length > 0)) && (
+            <div style={{
+              background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+              borderRadius: 14,
+              padding: '18px 22px',
+              marginBottom: 24,
+              border: '1px solid #e2e8f0',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+              transition: 'all 0.3s ease'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 10,
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: 16,
+                  boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)',
+                  position: 'relative' as const,
+                  overflow: 'hidden'
+                }}>
+                  <div style={{
+                    position: 'absolute',
+                    top: -2,
+                    right: -2,
+                    width: 20,
+                    height: 20,
+                    borderRadius: '50%',
+                    background: 'rgba(255, 255, 255, 0.2)',
+                    filter: 'blur(8px)'
+                  }} />
+                  {(() => {
+                    const vol = volumes.find(v => Number(v.id) === chapterOutlineVolumeId) || volumes[0]
+                    return vol?.volumeNumber || '1'
+                  })()}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ 
+                    fontSize: 15, 
+                    fontWeight: 600, 
+                    color: '#1f2937',
+                    marginBottom: 4,
+                    letterSpacing: '0.2px'
+                  }}>
+                    {(() => {
+                      const vol = volumes.find(v => Number(v.id) === chapterOutlineVolumeId) || volumes[0]
+                      return vol?.title || `第${vol?.volumeNumber || 1}卷`
+                    })()}
+                  </div>
+                  <div style={{ 
+                    fontSize: 12, 
+                    color: '#64748b',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}>
+                    <span style={{
+                      display: 'inline-block',
+                      width: 4,
+                      height: 4,
+                      borderRadius: '50%',
+                      background: '#94a3b8'
+                    }} />
+                    {(() => {
+                      const vol = volumes.find(v => Number(v.id) === chapterOutlineVolumeId) || volumes[0]
+                      if (vol?.chapterStart && vol?.chapterEnd) {
+                        return `第 ${vol.chapterStart} - ${vol.chapterEnd} 章`
+                      }
+                      return '章节范围待定'
+                    })()}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* 进度显示 */}
+          {isGeneratingOutline ? (
+            <div style={{ marginBottom: 28 }}>
+              <div style={{ 
+                marginBottom: 16,
+                padding: '0 8px'
+              }}>
+                <Progress 
+                  percent={outlineGeneratePercent} 
+                  status="active"
+                  strokeColor={{
+                    '0%': '#667eea',
+                    '50%': '#5a67d8',
+                    '100%': '#764ba2',
+                  }}
+                  trailColor="#e2e8f0"
+                  strokeWidth={8}
+                  showInfo={false}
+                  style={{
+                    lineHeight: 1
+                  }}
+                />
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginTop: 8
+                }}>
+                  <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>
+                    {outlineGeneratePercent}%
+                  </span>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                    预计 2-5 分钟
+                  </span>
+                </div>
+              </div>
+              <div style={{
+                background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                borderRadius: 12,
+                padding: '14px 18px',
+                border: '1px solid #bae6fd',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12
+              }}>
+                <Spin size="small" />
+                <div style={{ flex: 1 }}>
+                  <div style={{
+                    fontSize: 13,
+                    color: '#0c4a6e',
+                    fontWeight: 500,
+                    lineHeight: 1.5
+                  }}>
+                    {outlineGenerateProgress || '正在生成...'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              background: 'linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%)',
+              borderRadius: 12,
+              padding: '18px 20px',
+              marginBottom: 28,
+              border: '1px solid #e8e8e8',
+              position: 'relative' as const,
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: 4,
+                height: '100%',
+                background: 'linear-gradient(180deg, #667eea 0%, #764ba2 100%)'
+              }} />
+              <p style={{ 
+                marginBottom: 0, 
+                fontSize: 13, 
+                color: '#475569', 
+                lineHeight: 1.7,
+                paddingLeft: 8
+              }}>
+                章纲将为本卷的每个章节生成<strong style={{ color: '#334155' }}>详细的写作指导</strong>，包括章节方向、情节要点、情感基调等，帮助 AI 更好地把握故事走向。
+              </p>
+            </div>
+          )}
+          
+          {/* 操作按钮 */}
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+            <Button 
+              size="large"
+              onClick={() => setOutlineGenerateModalVisible(false)}
+              disabled={isGeneratingOutline}
+              className="outline-cancel-btn"
+              style={{ 
+                minWidth: 110,
+                height: 44,
+                borderRadius: 11,
+                fontWeight: 500,
+                fontSize: 14,
+                border: '1px solid #e5e7eb',
+                background: 'linear-gradient(180deg, #ffffff 0%, #f9fafb 100%)',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.8)',
+                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                color: '#64748b'
+              }}
+              onMouseEnter={(e) => {
+                if (!isGeneratingOutline) {
+                  e.currentTarget.style.borderColor = '#cbd5e1'
+                  e.currentTarget.style.background = 'linear-gradient(180deg, #f9fafb 0%, #f1f5f9 100%)'
+                  e.currentTarget.style.color = '#475569'
+                  e.currentTarget.style.transform = 'translateY(-1px)'
+                  e.currentTarget.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8)'
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isGeneratingOutline) {
+                  e.currentTarget.style.borderColor = '#e5e7eb'
+                  e.currentTarget.style.background = 'linear-gradient(180deg, #ffffff 0%, #f9fafb 100%)'
+                  e.currentTarget.style.color = '#64748b'
+                  e.currentTarget.style.transform = 'translateY(0)'
+                  e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.8)'
+                }
+              }}
+            >
+              {isGeneratingOutline ? '请等待...' : '取消'}
+            </Button>
+            {!isGeneratingOutline && (
+              <Button 
+                type="primary"
+                size="large"
+                icon={<RocketOutlined />}
+                onClick={handleGenerateChapterOutline}
+                className="outline-generate-btn"
+                style={{ 
+                  minWidth: 150,
+                  height: 44,
+                  borderRadius: 11,
+                  fontWeight: 600,
+                  fontSize: 15,
+                  letterSpacing: '0.4px',
+                  background: 'linear-gradient(145deg, #667eea 0%, #5a67d8 50%, #764ba2 100%)',
+                  border: 'none',
+                  boxShadow: '0 4px 16px rgba(102, 126, 234, 0.4), 0 2px 8px rgba(102, 126, 234, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.2)',
+                  transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                  position: 'relative' as const,
+                  overflow: 'hidden'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)'
+                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.45), 0 3px 10px rgba(102, 126, 234, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.25)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)'
+                  e.currentTarget.style.boxShadow = '0 4px 16px rgba(102, 126, 234, 0.4), 0 2px 8px rgba(102, 126, 234, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.2)'
+                }}
+              >
+                <span style={{ position: 'relative', zIndex: 1 }}>
+                  开始生成
+                </span>
+              </Button>
+            )}
+          </div>
+        </div>
+      </Modal>
     </Layout>
   )
 }

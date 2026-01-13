@@ -41,21 +41,97 @@ public class MobileBiquCrawler {
                 .build();
     }
 
-    public static void main(String[] args) {
-        try {
-            Arguments arguments = Arguments.parse(args);
-            MobileBiquCrawler crawler = new MobileBiquCrawler();
-            crawler.run(arguments);
-        } catch (IllegalArgumentException ex) {
-            System.err.println("参数错误: " + ex.getMessage());
-            Arguments.printUsage();
-            System.exit(1);
-        } catch (Exception ex) {
-            System.err.println("执行失败: " + ex.getMessage());
-            ex.printStackTrace();
-            System.exit(2);
-        }
+    public static void main(String[] args) throws Exception {
+        testVideoGeneration();
     }
+ private static void testVideoGeneration() throws Exception {
+
+        System.out.println("=== 视频生成 API 测试 ===\n");
+
+
+
+        String url = BASE_URL + "/v2/videos/generations";
+
+
+
+        // 构建请求体 - 使用首图生成视频
+
+        String requestBody = """
+
+            {
+
+                "model": "veo3.1",
+
+                "prompt": "镜头缓缓推进，小猫在花园里追逐蝴蝶，阳光明媚，花瓣飘落",
+
+                "images": ["https://szridea.oss-cn-beijing.aliyuncs.com/sora-anime/generated-images/b0eba0d3-7b4b-4619-ba6b-43e8c7e4ff3f.jpeg"],
+
+                "aspect_ratio": "16:9",
+
+                "hd": false,
+
+                "duration": "5",
+
+                "watermark": true,
+
+                "private": true
+
+            }
+
+            """;
+
+        System.out.println("请求 URL: " + url);
+
+        System.out.println("请求体: " + requestBody);
+
+        System.out.println("\n发送请求中...\n");
+
+        HttpClient client = HttpClient.newBuilder()
+
+                .connectTimeout(Duration.ofSeconds(30))
+
+                .build();
+
+        HttpRequest request = HttpRequest.newBuilder()
+
+                .uri(URI.create(url))
+
+                .header("Content-Type", "application/json")
+
+                .header("Authorization", "Bearer " + "sk-jUSPTmh5C2PbGHb98cFcA72eFcA54b4aB2Cf21E33b9cA049")
+
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+
+                .timeout(Duration.ofSeconds(120))
+
+                .build();
+
+        long startTime = System.currentTimeMillis();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        long endTime = System.currentTimeMillis();
+
+        System.out.println("响应状态码: " + response.statusCode());
+
+        System.out.println("耗时: " + (endTime - startTime) + "ms");
+
+        System.out.println("响应体:\n" + response.body());
+
+
+
+        // 如果成功，提示如何查询状态
+
+        if (response.statusCode() == 200) {
+
+            System.out.println("\n提示: 使用以下命令查询视频生成状态:");
+
+            System.out.println("java ImageApiTest video-status <taskId>");
+
+        }
+
+    }
+
 
     private void run(Arguments arguments) throws IOException, InterruptedException {
         Files.createDirectories(arguments.outputDir);

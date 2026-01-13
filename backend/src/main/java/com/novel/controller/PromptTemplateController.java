@@ -1,6 +1,7 @@
 package com.novel.controller;
 
 import com.novel.common.Result;
+import com.novel.common.security.AuthUtils;
 import com.novel.domain.entity.PromptTemplate;
 import com.novel.service.PromptTemplateService;
 import org.slf4j.Logger;
@@ -26,15 +27,13 @@ public class PromptTemplateController {
 
     /**
      * 获取所有可用的模板
-     * TODO: 从session或token中获取真实的userId
      */
     @GetMapping
-    public Result<List<PromptTemplate>> getAvailableTemplates() {
+    public Result<List<PromptTemplate>> getAvailableTemplates(
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String category) {
         try {
-            // TODO: 从认证信息中获取真实的userId
-            Long userId = 1L; // 临时写死
-            
-            List<PromptTemplate> templates = promptTemplateService.getAvailableTemplates(userId);
+            List<PromptTemplate> templates = promptTemplateService.getTemplateList(category);
             return Result.success(templates);
         } catch (Exception e) {
             logger.error("获取模板列表失败", e);
@@ -48,10 +47,20 @@ public class PromptTemplateController {
     @GetMapping("/{id}")
     public Result<PromptTemplate> getTemplateById(@PathVariable Long id) {
         try {
+            Long userId = AuthUtils.getCurrentUserId();
             PromptTemplate template = promptTemplateService.getById(id);
             if (template == null) {
                 return Result.error("模板不存在");
             }
+            
+            // 验证权限：只能查看公开模板、官方模板或自己的模板
+            String type = template.getType();
+            if (!"official".equals(type) && 
+                !"public".equals(type) && 
+                (template.getUserId() == null || !template.getUserId().equals(userId))) {
+                return Result.error("无权查看此模板");
+            }
+            
             return Result.success(template);
         } catch (Exception e) {
             logger.error("获取模板详情失败", e);
@@ -65,8 +74,7 @@ public class PromptTemplateController {
     @PostMapping
     public Result<PromptTemplate> createTemplate(@RequestBody Map<String, Object> request) {
         try {
-            // TODO: 从认证信息中获取真实的userId
-            Long userId = 1L; // 临时写死
+            Long userId = AuthUtils.getCurrentUserId();
             
             String name = (String) request.get("name");
             String content = (String) request.get("content");
@@ -99,8 +107,7 @@ public class PromptTemplateController {
             @PathVariable Long id,
             @RequestBody Map<String, Object> request) {
         try {
-            // TODO: 从认证信息中获取真实的userId
-            Long userId = 1L; // 临时写死
+            Long userId = AuthUtils.getCurrentUserId();
             
             String name = (String) request.get("name");
             String content = (String) request.get("content");
@@ -128,8 +135,7 @@ public class PromptTemplateController {
     @DeleteMapping("/{id}")
     public Result<String> deleteTemplate(@PathVariable Long id) {
         try {
-            // TODO: 从认证信息中获取真实的userId
-            Long userId = 1L; // 临时写死
+            Long userId = AuthUtils.getCurrentUserId();
             
             boolean success = promptTemplateService.deleteCustomTemplate(id, userId);
             
@@ -162,15 +168,15 @@ public class PromptTemplateController {
      * 获取公开模板列表
      */
     @GetMapping("/public")
-    public Result<List<PromptTemplate>> getPublicTemplates() {
+    public Result<List<PromptTemplate>> getPublicTemplates(@RequestParam(required = false) String category) {
         try {
-            // TODO: 从认证信息中获取真实的userId
-            Long userId = 1L; // 临时写死
-            
-            List<PromptTemplate> templates = promptTemplateService.getPublicTemplates(userId);
+            Long userId = AuthUtils.getCurrentUserId();
+            logger.info("🔍 获取公开模板列表: userId={}, category={}", userId, category);
+            List<PromptTemplate> templates = promptTemplateService.getPublicTemplates(userId, category);
+            logger.info("✅ 获取公开模板成功: 数量={}", templates.size());
             return Result.success(templates);
         } catch (Exception e) {
-            logger.error("获取公开模板列表失败", e);
+            logger.error("❌ 获取公开模板列表失败", e);
             return Result.error("获取公开模板列表失败: " + e.getMessage());
         }
     }
@@ -179,12 +185,10 @@ public class PromptTemplateController {
      * 获取用户自定义模板列表
      */
     @GetMapping("/custom")
-    public Result<List<PromptTemplate>> getUserCustomTemplates() {
+    public Result<List<PromptTemplate>> getUserCustomTemplates(@RequestParam(required = false) String category) {
         try {
-            // TODO: 从认证信息中获取真实的userId
-            Long userId = 1L; // 临时写死
-            
-            List<PromptTemplate> templates = promptTemplateService.getUserCustomTemplates(userId);
+            Long userId = AuthUtils.getCurrentUserId();
+            List<PromptTemplate> templates = promptTemplateService.getUserCustomTemplates(userId, category);
             return Result.success(templates);
         } catch (Exception e) {
             logger.error("获取自定义模板列表失败", e);
@@ -196,12 +200,10 @@ public class PromptTemplateController {
      * 获取用户收藏的模板列表
      */
     @GetMapping("/favorites")
-    public Result<List<PromptTemplate>> getUserFavoriteTemplates() {
+    public Result<List<PromptTemplate>> getUserFavoriteTemplates(@RequestParam(required = false) String category) {
         try {
-            // TODO: 从认证信息中获取真实的userId
-            Long userId = 1L; // 临时写死
-            
-            List<PromptTemplate> templates = promptTemplateService.getUserFavoriteTemplates(userId);
+            Long userId = AuthUtils.getCurrentUserId();
+            List<PromptTemplate> templates = promptTemplateService.getUserFavoriteTemplates(userId, category);
             return Result.success(templates);
         } catch (Exception e) {
             logger.error("获取收藏模板列表失败", e);
@@ -215,9 +217,7 @@ public class PromptTemplateController {
     @PostMapping("/{id}/favorite")
     public Result<String> favoriteTemplate(@PathVariable Long id) {
         try {
-            // TODO: 从认证信息中获取真实的userId
-            Long userId = 1L; // 临时写死
-            
+            Long userId = AuthUtils.getCurrentUserId();
             boolean success = promptTemplateService.favoriteTemplate(userId, id);
             if (success) {
                 return Result.success("收藏成功");
@@ -236,9 +236,7 @@ public class PromptTemplateController {
     @DeleteMapping("/{id}/favorite")
     public Result<String> unfavoriteTemplate(@PathVariable Long id) {
         try {
-            // TODO: 从认证信息中获取真实的userId
-            Long userId = 1L; // 临时写死
-            
+            Long userId = AuthUtils.getCurrentUserId();
             boolean success = promptTemplateService.unfavoriteTemplate(userId, id);
             if (success) {
                 return Result.success("取消收藏成功");
@@ -257,9 +255,7 @@ public class PromptTemplateController {
     @GetMapping("/{id}/is-favorited")
     public Result<Boolean> isFavorited(@PathVariable Long id) {
         try {
-            // TODO: 从认证信息中获取真实的userId
-            Long userId = 1L; // 临时写死
-            
+            Long userId = AuthUtils.getCurrentUserId();
             boolean favorited = promptTemplateService.isFavorited(userId, id);
             return Result.success(favorited);
         } catch (Exception e) {
@@ -274,9 +270,7 @@ public class PromptTemplateController {
     @GetMapping("/category/{category}")
     public Result<List<PromptTemplate>> getTemplatesByCategory(@PathVariable String category) {
         try {
-            // TODO: 从认证信息中获取真实的userId
-            Long userId = 1L; // 临时写死
-
+            Long userId = AuthUtils.getCurrentUserId();
             List<PromptTemplate> templates = promptTemplateService.getTemplatesByCategory(category, userId);
             return Result.success(templates);
         } catch (Exception e) {
@@ -317,5 +311,72 @@ public class PromptTemplateController {
             return Result.error("校验模板失败: " + e.getMessage());
         }
     }
-}
 
+    /**
+     * 设置默认模板
+     */
+    @PostMapping("/{id}/set-default")
+    public Result<String> setDefaultTemplate(@PathVariable Long id) {
+        try {
+            boolean success = promptTemplateService.setDefaultTemplate(id);
+            if (success) {
+                return Result.success("设置默认模板成功");
+            } else {
+                return Result.error("设置默认模板失败");
+            }
+        } catch (Exception e) {
+            logger.error("设置默认模板失败", e);
+            return Result.error("设置默认模板失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 批量更新模板排序
+     */
+    @PostMapping("/sort-order")
+    public Result<String> updateTemplatesSortOrder(@RequestBody Map<String, Object> request) {
+        try {
+            @SuppressWarnings("unchecked")
+            List<Long> templateIds = (List<Long>) request.get("templateIds");
+            
+            if (templateIds == null || templateIds.isEmpty()) {
+                return Result.error("模板ID列表不能为空");
+            }
+            
+            boolean success = promptTemplateService.updateTemplatesSortOrder(templateIds);
+            if (success) {
+                return Result.success("更新排序成功");
+            } else {
+                return Result.error("更新排序失败");
+            }
+        } catch (Exception e) {
+            logger.error("更新模板排序失败", e);
+            return Result.error("更新模板排序失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 更新单个模板的排序
+     */
+    @PutMapping("/{id}/sort-order")
+    public Result<String> updateTemplateSortOrder(
+            @PathVariable Long id,
+            @RequestBody Map<String, Integer> request) {
+        try {
+            Integer sortOrder = request.get("sortOrder");
+            if (sortOrder == null) {
+                return Result.error("排序值不能为空");
+            }
+            
+            boolean success = promptTemplateService.updateTemplateSortOrder(id, sortOrder);
+            if (success) {
+                return Result.success("更新排序成功");
+            } else {
+                return Result.error("更新排序失败");
+            }
+        } catch (Exception e) {
+            logger.error("更新模板排序失败", e);
+            return Result.error("更新模板排序失败: " + e.getMessage());
+        }
+    }
+}

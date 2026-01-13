@@ -426,7 +426,7 @@ const FileTree: React.FC<FileTreeProps> = ({
               folder,
             },
             children: children.length > 0 ? children : undefined,
-            isLeaf: children.length === 0, // 只有当有子项时才显示展开图标
+            isLeaf: false, // 始终显示展开图标，让用户知道这是一个文件夹（内容可能懒加载）
           }
         })
       
@@ -713,7 +713,40 @@ const FileTree: React.FC<FileTreeProps> = ({
                   <Button
                     type="text"
                     icon={<FileAddOutlined />}
-                    onClick={() => onToolbarCreateDocument?.()}
+                    onClick={() => {
+                      // 尝试确定目标文件夹
+                      let targetFolderId: number | null = null
+                      
+                      if (selectedKey && selectedKey.startsWith('folder-')) {
+                        targetFolderId = parseInt(selectedKey.replace('folder-', ''))
+                      } else if (selectedKey && selectedKey.startsWith('doc-')) {
+                        const docId = parseInt(selectedKey.replace('doc-', ''))
+                        const doc = documents.find(d => d.id === docId)
+                        if (doc) targetFolderId = doc.folderId
+                      }
+                      
+                      // 如果没有选中或选中无效，尝试使用第一个普通文件夹
+                      if (targetFolderId === null || targetFolderId === -999) { // -999 is Main Content
+                         const firstFolder = folders.find(f => !f.isSystem && f.id !== -999)
+                         if (firstFolder) targetFolderId = firstFolder.id
+                      }
+
+                      if (targetFolderId !== null && targetFolderId !== -999) {
+                        const tempDocKey = `temp-doc-${Date.now()}`
+                        setCreatingNewDocument({ folderId: targetFolderId, tempKey: tempDocKey })
+                        setEditingKey(tempDocKey)
+                        setEditingName('新建文档')
+                        setEditingType('document')
+                        
+                        const folderKey = `folder-${targetFolderId}`
+                        if (!expandedKeys.includes(folderKey)) {
+                          setExpandedKeys([...expandedKeys, folderKey])
+                        }
+                        setTimeout(() => editInputRef.current?.select(), 0)
+                      } else {
+                        onToolbarCreateDocument?.()
+                      }
+                    }}
                   />
                 </Tooltip>
                 <Tooltip title="新建文件夹">

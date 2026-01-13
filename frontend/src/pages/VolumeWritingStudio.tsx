@@ -795,10 +795,8 @@ const VolumeWritingStudio: React.FC = () => {
       
       message.destroy('summarizing');
       
-      // 显示概要结果
-      const characterCount = result.characterCount || 0;
-      const eventCount = result.eventCount || 0;
-      message.success(`章节概要完成！更新了${characterCount}个角色，${eventCount}个事件`);
+      // 显示结果
+      message.success('章节处理完成！');
 
       // 刷新章节列表
       await loadChapterList();
@@ -1697,83 +1695,87 @@ const VolumeWritingStudio: React.FC = () => {
             flex: 1, 
             display: 'flex', 
             flexDirection: 'column',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            background: 'linear-gradient(180deg, #fafbfc 0%, #f8fafc 100%)'
           }}>
-            {/* 编辑器头部 - 紧凑一行布局 */}
+            {/* 编辑器头部 - 精致优化布局 */}
             <div style={{
-              padding: '12px 32px',
-              background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
-              borderBottom: '1px solid #e2e8f0',
+              padding: '16px 32px',
+              background: 'linear-gradient(135deg, #ffffff 0%, #fafbfc 100%)',
+              borderBottom: '2px solid #e2e8f0',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              gap: '12px',
+              gap: '16px',
               flexShrink: 0,
-              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)'
             }}>
               {/* 左侧：章节号 + 标题 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
-                {/* 章节号 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                {/* 章节号 - 增强设计 */}
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '4px',
-                  padding: '5px 12px',
+                  gap: '6px',
+                  padding: '8px 14px',
                   background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-                  borderRadius: '8px',
+                  borderRadius: '10px',
                   border: '2px solid #bfdbfe',
-                  boxShadow: '0 2px 6px rgba(59, 130, 246, 0.12)',
-                  height: '34px'
+                  boxShadow: '0 3px 10px rgba(59, 130, 246, 0.18)',
+                  height: '40px',
+                  transition: 'all 0.3s ease'
                 }}>
-                  <span style={{ fontSize: '12px', color: '#1e40af', fontWeight: 600 }}>第</span>
+                  <span style={{ fontSize: '13px', color: '#1e40af', fontWeight: 700 }}>第</span>
                   <Input
                     style={{ 
-                      width: 45,
+                      width: 50,
                       textAlign: 'center',
-                      fontWeight: 700,
-                      fontSize: '14px',
+                      fontWeight: 800,
+                      fontSize: '15px',
                       border: 'none',
                       background: 'transparent',
                       color: '#1e40af',
                       padding: 0,
-                      height: '22px'
+                      height: '24px'
                     }}
                     value={chapterNumber ?? ''}
                     onChange={(e) => setChapterNumber(Number(e.target.value) || null)}
                     bordered={false}
                   />
-                  <span style={{ fontSize: '12px', color: '#1e40af', fontWeight: 600 }}>章</span>
+                  <span style={{ fontSize: '13px', color: '#1e40af', fontWeight: 700 }}>章</span>
                 </div>
                 
-                {/* 章节标题 */}
+                {/* 章节标题 - 优化样式 */}
                   <Input
                   style={{ 
                     flex: 1,
-                    maxWidth: 280,
-                    height: '34px',
-                    borderRadius: '6px',
-                    border: '1px solid #e2e8f0',
-                    fontSize: '13px',
-                    fontWeight: 500,
-                    transition: 'all 0.2s'
+                    maxWidth: 320,
+                    height: '40px',
+                    borderRadius: '10px',
+                    border: '2px solid #e2e8f0',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    transition: 'all 0.3s ease',
+                    background: '#ffffff',
+                    boxShadow: '0 2px 6px rgba(0, 0, 0, 0.04)'
                   }}
                     value={chapterTitle}
                     onChange={(e) => setChapterTitle(e.target.value)}
-                  placeholder="章节标题..."
+                  placeholder="输入章节标题..."
                   onFocus={(e) => {
                     e.currentTarget.style.borderColor = '#3b82f6';
-                    e.currentTarget.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.1)';
+                    e.currentTarget.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.12)';
                   }}
                   onBlur={(e) => {
                     e.currentTarget.style.borderColor = '#e2e8f0';
-                    e.currentTarget.style.boxShadow = 'none';
+                    e.currentTarget.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.04)';
                   }}
                 />
                 
-                {/* AI写作按钮 - 醒目设计 */}
+                {/* AI写作按钮 - 超级醒目设计 */}
                 <Button 
                   type="primary" 
-                  icon={<ThunderboltOutlined style={{ fontSize: '16px' }} />} 
+                  icon={<ThunderboltOutlined style={{ fontSize: '18px' }} />} 
                   size="large"
                   disabled={loading || isStreaming}
                   loading={loading}
@@ -1785,98 +1787,101 @@ const VolumeWritingStudio: React.FC = () => {
                     setAiDrawerVisible(true);
                   }}
                   style={{ 
-                    borderRadius: '8px',
-                    height: '42px',
-                    padding: '0 24px',
-                    background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+                    borderRadius: '12px',
+                    height: '48px',
+                    padding: '0 28px',
+                    background: 'linear-gradient(135deg, #a855f7 0%, #8b5cf6 50%, #7c3aed 100%)',
                     border: 'none',
                     fontWeight: 700,
-                    fontSize: '14px',
-                    boxShadow: '0 4px 16px rgba(139, 92, 246, 0.5)',
+                    fontSize: '15px',
+                    boxShadow: '0 6px 20px rgba(139, 92, 246, 0.6)',
                     flexShrink: 0,
-                    marginLeft: '12px',
-                    transition: 'all 0.3s ease',
+                    marginLeft: '16px',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                     position: 'relative',
                     overflow: 'hidden'
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(139, 92, 246, 0.6)';
+                    e.currentTarget.style.transform = 'translateY(-3px) scale(1.02)';
+                    e.currentTarget.style.boxShadow = '0 10px 30px rgba(139, 92, 246, 0.7)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 4px 16px rgba(139, 92, 246, 0.5)';
+                    e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(139, 92, 246, 0.6)';
                   }}
                 >
                   <span style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
-                    gap: '6px',
+                    gap: '8px',
                     position: 'relative',
                     zIndex: 1
                   }}>
-                    ✨ AI写作
+                    ✨ AI 智能写作
                   </span>
                 </Button>
 
-                {/* 一次生成10章按钮 */}
+                {/* 一次生成10章按钮 - 优化设计 */}
                 <Button 
                   type="default" 
-                  icon={<RobotOutlined style={{ fontSize: '16px' }} />} 
+                  icon={<RobotOutlined style={{ fontSize: '18px' }} />} 
                   size="large"
                   disabled={loading || isStreaming || batchWriting}
                   loading={batchWriting}
                   onClick={handleBatchWriting}
                   style={{ 
-                    borderRadius: '8px',
-                    height: '42px',
-                    padding: '0 20px',
-                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    borderRadius: '12px',
+                    height: '48px',
+                    padding: '0 24px',
+                    background: 'linear-gradient(135deg, #14b8a6 0%, #10b981 50%, #059669 100%)',
                     border: 'none',
                     color: 'white',
                     fontWeight: 700,
-                    fontSize: '14px',
-                    boxShadow: '0 4px 16px rgba(16, 185, 129, 0.4)',
+                    fontSize: '15px',
+                    boxShadow: '0 6px 20px rgba(16, 185, 129, 0.5)',
                     flexShrink: 0,
                     marginLeft: '12px',
-                    transition: 'all 0.3s ease',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                     position: 'relative',
                     overflow: 'hidden'
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.5)';
+                    e.currentTarget.style.transform = 'translateY(-3px) scale(1.02)';
+                    e.currentTarget.style.boxShadow = '0 10px 30px rgba(16, 185, 129, 0.6)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 4px 16px rgba(16, 185, 129, 0.4)';
+                    e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.5)';
                   }}
                 >
                   <span style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
-                    gap: '6px',
+                    gap: '8px',
                     position: 'relative',
                     zIndex: 1
                   }}>
-                    🚀 一次生成10章
+                    🚀 批量生成 10 章
                   </span>
                 </Button>
                 
-                {/* 自动保存状态提示 */}
+                {/* 自动保存状态提示 - 优化设计 */}
                 {isSaving && (
                   <div style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px',
-                    padding: '5px 12px',
-                    background: '#fef3c7',
-                    borderRadius: '6px',
-                    fontSize: '12px',
+                    gap: '8px',
+                    padding: '8px 16px',
+                    background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                    borderRadius: '10px',
+                    fontSize: '13px',
                     color: '#92400e',
-                    marginLeft: '8px'
+                    marginLeft: '12px',
+                    fontWeight: 600,
+                    border: '2px solid #fbbf24',
+                    boxShadow: '0 2px 8px rgba(251, 191, 36, 0.2)'
                   }}>
-                    <SaveOutlined style={{ fontSize: '12px' }} />
+                    <SaveOutlined style={{ fontSize: '13px' }} spin />
                     <span>保存中...</span>
               </div>
                 )}
@@ -1885,83 +1890,106 @@ const VolumeWritingStudio: React.FC = () => {
                   <div style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px',
-                    padding: '5px 12px',
-                    background: '#d1fae5',
-                    borderRadius: '6px',
-                    fontSize: '12px',
+                    gap: '8px',
+                    padding: '8px 16px',
+                    background: 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)',
+                    borderRadius: '10px',
+                    fontSize: '13px',
                     color: '#065f46',
-                    marginLeft: '8px'
+                    marginLeft: '12px',
+                    fontWeight: 600,
+                    border: '2px solid #86efac',
+                    boxShadow: '0 2px 8px rgba(134, 239, 172, 0.3)'
                   }}>
-                    <CheckOutlined style={{ fontSize: '12px' }} />
+                    <CheckOutlined style={{ fontSize: '13px' }} />
                     <span>已保存</span>
               </div>
                 )}
                 
-                {/* 字数统计 - 紧凑显示 */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}>
+                {/* 字数统计 - 精美显示 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: '16px' }}>
                   <div style={{ 
-                    padding: '5px 10px',
-                    background: 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)',
-                    borderRadius: '5px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '11px',
+                    padding: '8px 14px',
+                    background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
+                    borderRadius: '10px',
+                    border: '2px solid #cbd5e1',
+                    fontSize: '12px',
                     color: '#475569',
-                    height: '28px',
+                    height: '36px',
                     display: 'flex',
-                    alignItems: 'center'
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)',
+                    fontWeight: 600
                   }}>
-                    <Text strong style={{ color: '#1e293b', fontSize: '12px' }}>{wordCount}</Text> 字
+                    <Text strong style={{ color: '#1e293b', fontSize: '14px' }}>{wordCount.toLocaleString()}</Text> 字
               </div>
                   <div style={{ 
-                    padding: '5px 10px',
+                    padding: '8px 14px',
                     background: wordCount >= 3000 
-                      ? 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)' 
+                      ? 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)' 
                       : 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
-                    borderRadius: '5px',
-                    border: `1px solid ${wordCount >= 3000 ? '#86efac' : '#fbbf24'}`,
-                    fontSize: '11px',
+                    borderRadius: '10px',
+                    border: `2px solid ${wordCount >= 3000 ? '#86efac' : '#fbbf24'}`,
+                    fontSize: '13px',
                     color: wordCount >= 3000 ? '#166534' : '#92400e',
-                    fontWeight: 600,
-                    height: '28px',
+                    fontWeight: 700,
+                    height: '36px',
                     display: 'flex',
-                    alignItems: 'center'
+                    alignItems: 'center',
+                    boxShadow: wordCount >= 3000 
+                      ? '0 2px 8px rgba(134, 239, 172, 0.3)' 
+                      : '0 2px 8px rgba(251, 191, 36, 0.3)'
                   }}>
-                    {Math.min(100, Math.round((wordCount / 3000) * 100))}%
+                    {wordCount >= 3000 ? '✅' : '📝'} {Math.min(100, Math.round((wordCount / 3000) * 100))}%
                   </div>
                 </div>
               </div>
               
             </div>
               
-            {/* 编辑器主体 */}
+            {/* 编辑器主体 - 升级设计 */}
             <div style={{ 
               flex: 1, 
               display: 'flex',
               flexDirection: 'column',
               background: '#ffffff',
-              borderRadius: '12px',
-              border: '1px solid #e2e8f0',
+              borderRadius: '16px',
+              border: '2px solid #e2e8f0',
               overflow: 'hidden',
-              margin: '0 32px 32px 32px',
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)'
+              margin: '24px 32px 32px 32px',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04)'
             }}>
-              {/* 格式工具栏 */}
+              {/* 格式工具栏 - 精美设计 */}
               <div style={{
-                padding: '12px 20px',
-                background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
-                borderBottom: '1px solid #e2e8f0',
+                padding: '16px 24px',
+                background: 'linear-gradient(135deg, #fafbfc 0%, #f1f5f9 100%)',
+                borderBottom: '2px solid #e2e8f0',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
-                flexWrap: 'wrap'
+                gap: '10px',
+                flexWrap: 'wrap',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
               }}>
-                <div style={{ fontSize: '12px', color: '#64748b', marginRight: '12px', fontWeight: '500' }}>
-                  📝 格式工具：
+                <div style={{ 
+                  fontSize: '13px', 
+                  color: '#475569', 
+                  marginRight: '16px', 
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <span style={{
+                    fontSize: '16px',
+                    display: 'inline-block',
+                    animation: 'pulse 2s infinite'
+                  }}>📝</span>
+                  <span>格式工具</span>
                 </div>
                 
                 <Button 
-                  size="small" 
+                  size="middle" 
                   type={currentContent.includes('　　') ? 'primary' : 'default'}
                   onClick={() => {
                     const textarea = document.getElementById('streaming-textarea') as HTMLTextAreaElement;
@@ -1990,13 +2018,20 @@ const VolumeWritingStudio: React.FC = () => {
                       }
                     }
                   }}
-                  style={{ fontSize: '12px', height: '28px' }}
+                  style={{ 
+                    fontSize: '13px', 
+                    height: '34px',
+                    borderRadius: '8px',
+                    fontWeight: 500,
+                    border: currentContent.includes('　　') ? 'none' : '1.5px solid #e2e8f0',
+                    boxShadow: currentContent.includes('　　') ? '0 2px 8px rgba(59, 130, 246, 0.25)' : 'none'
+                  }}
                 >
                   段落缩进
                 </Button>
                 
                 <Button 
-                  size="small" 
+                  size="middle" 
                   onClick={() => {
                     const textarea = document.getElementById('streaming-textarea') as HTMLTextAreaElement;
                     if (textarea) {
@@ -2022,13 +2057,19 @@ const VolumeWritingStudio: React.FC = () => {
                       }
                     }
                   }}
-                  style={{ fontSize: '12px', height: '28px' }}
+                  style={{ 
+                    fontSize: '13px', 
+                    height: '34px',
+                    borderRadius: '8px',
+                    fontWeight: 500,
+                    border: '1.5px solid #e2e8f0'
+                  }}
                 >
                   对话引号
                 </Button>
                 
                 <Button 
-                  size="small" 
+                  size="middle" 
                   onClick={() => {
                     const textarea = document.getElementById('streaming-textarea') as HTMLTextAreaElement;
                     if (textarea) {
@@ -2041,13 +2082,19 @@ const VolumeWritingStudio: React.FC = () => {
                       }, 0);
                     }
                   }}
-                  style={{ fontSize: '12px', height: '28px' }}
+                  style={{ 
+                    fontSize: '13px', 
+                    height: '34px',
+                    borderRadius: '8px',
+                    fontWeight: 500,
+                    border: '1.5px solid #e2e8f0'
+                  }}
                 >
                   新段落
                 </Button>
                 
                 <Button 
-                  size="small" 
+                  size="middle" 
                   onClick={() => {
                     if (!currentContent || currentContent.trim() === '') {
                       message.warning('请先输入或生成内容');
@@ -2082,14 +2129,23 @@ const VolumeWritingStudio: React.FC = () => {
                     message.success('格式化完成');
                   }}
                   type="primary"
-                  style={{ fontSize: '12px', height: '28px', marginLeft: '8px' }}
+                  style={{ 
+                    fontSize: '13px', 
+                    height: '34px', 
+                    marginLeft: '12px',
+                    borderRadius: '8px',
+                    fontWeight: 600,
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                    border: 'none',
+                    boxShadow: '0 2px 8px rgba(59, 130, 246, 0.3)'
+                  }}
                 >
-                  一键格式化
+                  ✨ 一键格式化
                 </Button>
 
                 {/* AI消痕按钮 */}
                 <Button 
-                  size="small"
+                  size="middle"
                   disabled={!currentContent || isRemovingAITrace || loading || isStreaming}
                   onClick={() => {
                     if (!currentContent || currentContent.trim() === '') {
@@ -2099,30 +2155,42 @@ const VolumeWritingStudio: React.FC = () => {
                     setProcessedContent('');
                     setAiTraceDrawerVisible(true);
                   }}
-                  style={{ fontSize: '12px', height: '28px', marginLeft: '8px' }}
+                  style={{ 
+                    fontSize: '13px', 
+                    height: '34px', 
+                    marginLeft: '8px',
+                    borderRadius: '8px',
+                    fontWeight: 500,
+                    border: '1.5px solid #e2e8f0',
+                    background: '#ffffff'
+                  }}
                 >
                   🧹 AI消痕
                 </Button>
                 
                 <div style={{ 
                   marginLeft: 'auto', 
-                  fontSize: '12px', 
+                  fontSize: '13px', 
                   color: '#64748b', 
                   display: 'flex', 
                   alignItems: 'center', 
-                  gap: '6px',
-                  padding: '4px 12px',
-                  background: lastSaveTime ? '#f0fdf4' : '#f8fafc',
-                  borderRadius: '6px',
-                  border: `1px solid ${lastSaveTime ? '#86efac' : '#e2e8f0'}`
+                  gap: '8px',
+                  padding: '8px 14px',
+                  background: lastSaveTime 
+                    ? 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)' 
+                    : 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+                  borderRadius: '8px',
+                  border: `2px solid ${lastSaveTime ? '#86efac' : '#e2e8f0'}`,
+                  boxShadow: lastSaveTime ? '0 2px 6px rgba(134, 239, 172, 0.2)' : 'none',
+                  fontWeight: 500
                 }}>
                   {lastSaveTime ? (
                     <>
-                      <CheckOutlined style={{ fontSize: '12px', color: '#10b981' }} />
-                      <span style={{ color: '#166534', fontWeight: 500 }}>最后保存：{lastSaveTime}</span>
+                      <CheckOutlined style={{ fontSize: '13px', color: '#10b981' }} />
+                      <span style={{ color: '#166534', fontWeight: 600 }}>最后保存：{lastSaveTime}</span>
                     </>
                   ) : (
-                    <span style={{ color: '#94a3b8', fontSize: '11px' }}>未保存</span>
+                    <span style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 500 }}>未保存</span>
                   )}
                 </div>
               </div>
@@ -2337,8 +2405,7 @@ const VolumeWritingStudio: React.FC = () => {
                                   if (parsed.message && parsed.step) {
                                     console.log('🔍 进度消息:', parsed.message, parsed.step);
                                     if (parsed.step === 'generating_summary') {
-                                      message.loading({ content: '正在生成章节概括...', key: 'summary' });
-                                      setProgressHint('[ 正在生成章节概括... ]');
+                                      // 跳过摘要生成提示
                                     } else if (parsed.step === 'saving_chapter') {
                                       message.loading({ content: '正在保存章节...', key: 'saving' });
                                       setProgressHint('[ 正在保存章节... ]');
@@ -2625,12 +2692,12 @@ const VolumeWritingStudio: React.FC = () => {
 
                       if (!id) { message.error('无法确认：章节未创建成功'); return; }
 
-                      // 2) 发布章节并等待AI生成摘要（后端会同步触发并保存到 chapter_summaries）
-                      message.loading({ content: '正在提取摘要并发布本章...', key: 'publishing' });
+                      // 2) 发布章节
+                      message.loading({ content: '正在发布本章...', key: 'publishing' });
                       try {
                         // 检查AI配置
                         if (!checkAIConfig()) {
-                          message.warning('未配置AI，将跳过生成章节概要');
+                          message.warning('未配置AI');
                         }
                         
                         // 传递AI配置到后端
@@ -2666,7 +2733,7 @@ const VolumeWritingStudio: React.FC = () => {
                       // 重新加载章节列表
                       loadChapterList();
 
-                      message.success(`本章已发布并生成摘要。进入第${nextChapter}章`);
+                      message.success(`本章已发布。进入第${nextChapter}章`);
                     } catch (e: any) {
                       message.error(e?.message || '确认本章失败');
                     }

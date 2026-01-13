@@ -212,50 +212,50 @@ public class NovelCraftController {
 
 
 
-    /**
-     * 流式章节写作(弃用 改为 /agentic/generate-chapters-stream)
-     * POST /novel-craft/{novelId}/write-chapter-stream
-     */
-    @PostMapping(value = "/{novelId}/write-chapter-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter executeStreamingChapterWriting(
-            @PathVariable Long novelId,
-            @RequestBody Map<String, Object> request) {
-
-        SseEmitter emitter = new SseEmitter(300000L);
-
-        try {
-            // 1. 验证小说
-            Novel novel = validateNovel(novelId, emitter);
-            if (novel == null) return emitter;
-
-            // 2. 解析请求参数
-            Integer chapterNumber = parseChapterNumber(request);
-            Map<String, Object> chapterPlan = buildChapterPlan(request, novelId, chapterNumber);
-            String userAdjustment = (String) request.get("userAdjustment");
-            Long promptTemplateId = parsePromptTemplateId(request);
-            Long writingStyleId = parseWritingStyleId(request);
-            Map<String, String> referenceContents = parseReferenceContents(request);
-            
-            // 3. 解析AI配置
-            AIConfigRequest aiConfig = parseAIConfig(request);
-            if (!aiConfig.isValid()) {
-                emitter.send(SseEmitter.event().name("error").data("AI配置无效，请先在设置页面配置AI服务"));
-                emitter.completeWithError(new IOException("AI配置无效"));
-                return emitter;
-            }
-
-
-
-            // 5. 异步执行写作（不再使用memoryBank）
-            executeAsyncWriting(novel, chapterPlan, userAdjustment, emitter, 
-                              aiConfig, promptTemplateId, writingStyleId, referenceContents);
-
-        } catch (Exception e) {
-            handleError(emitter, e, "流式章节写作初始化失败");
-        }
-
-        return emitter;
-    }
+//    /**
+//     * 流式章节写作(弃用 改为 /agentic/generate-chapters-stream)
+//     * POST /novel-craft/{novelId}/write-chapter-stream
+//     */
+//    @PostMapping(value = "/{novelId}/write-chapter-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+//    public SseEmitter executeStreamingChapterWriting(
+//            @PathVariable Long novelId,
+//            @RequestBody Map<String, Object> request) {
+//
+//        SseEmitter emitter = new SseEmitter(300000L);
+//
+//        try {
+//            // 1. 验证小说
+//            Novel novel = validateNovel(novelId, emitter);
+//            if (novel == null) return emitter;
+//
+//            // 2. 解析请求参数
+//            Integer chapterNumber = parseChapterNumber(request);
+//            Map<String, Object> chapterPlan = buildChapterPlan(request, novelId, chapterNumber);
+//            String userAdjustment = (String) request.get("userAdjustment");
+//            Long promptTemplateId = parsePromptTemplateId(request);
+//            Long writingStyleId = parseWritingStyleId(request);
+//            Map<String, String> referenceContents = parseReferenceContents(request);
+//
+//            // 3. 解析AI配置
+//            AIConfigRequest aiConfig = parseAIConfig(request);
+//            if (!aiConfig.isValid()) {
+//                emitter.send(SseEmitter.event().name("error").data("AI配置无效，请先在设置页面配置AI服务"));
+//                emitter.completeWithError(new IOException("AI配置无效"));
+//                return emitter;
+//            }
+//
+//
+//
+//            // 5. 异步执行写作（不再使用memoryBank）
+//            executeAsyncWriting(novel, chapterPlan, userAdjustment, emitter,
+//                              aiConfig, promptTemplateId, writingStyleId, referenceContents);
+//
+//        } catch (Exception e) {
+//            handleError(emitter, e, "流式章节写作初始化失败");
+//        }
+//
+//        return emitter;
+//    }
 
     // ============ Helper Methods ============
     
@@ -387,49 +387,49 @@ public class NovelCraftController {
         return Boolean.valueOf(String.valueOf(value));
     }
 
-    /**
-     * 异步执行章节写作
-     * 
-     * @param chapterPlan 章节计划（包含title/coreEvent/estimatedWords等，详见buildChapterPlan注释）
-     */
-    private void executeAsyncWriting(Novel novel, Map<String, Object> chapterPlan, 
-                                     String userAdjustment,
-                                     SseEmitter emitter, AIConfigRequest aiConfig, 
-                                     Long promptTemplateId,
-                                     Long writingStyleId, Map<String, String> referenceContents) {
-        CompletableFuture.runAsync(() -> {
-            try {
-                // 将写作风格和关联内容整合到章节计划中
-                if (writingStyleId != null || !referenceContents.isEmpty()) {
-                    enrichChapterPlanWithStyleAndReferences(chapterPlan, writingStyleId, referenceContents);
-                }
-                
-                novelCraftAIService.executeMultiStageStreamingChapterWriting(
-                    novel, chapterPlan, userAdjustment, emitter, aiConfig, 
-                    promptTemplateId
-                );
-                
-                // 异步提取上一章概要（优化用户体验，不阻塞当前章节生成）
-                Integer currentChapterNumber = (Integer) chapterPlan.get("chapterNumber");
-                if (currentChapterNumber != null && currentChapterNumber > 1) {
-                    CompletableFuture.runAsync(() -> {
-                        try {
-                            Integer previousChapterNumber = currentChapterNumber - 1;
-                            logger.info("🔄 开始异步提取第{}章概要", previousChapterNumber);
-                            chapterSummaryService.generateAndSaveChapterSummaryAsync(
-                                novel.getId(), previousChapterNumber, aiConfig
-                            );
-                            logger.info("✅ 第{}章概要提取完成", previousChapterNumber);
-                        } catch (Exception ex) {
-                            logger.warn("⚠️ 异步提取章节概要失败: {}", ex.getMessage());
-                        }
-                    });
-                }
-            } catch (Exception e) {
-                handleError(emitter, e, "流式章节写作失败");
-            }
-        });
-    }
+//    /**
+//     * 异步执行章节写作
+//     *
+//     * @param chapterPlan 章节计划（包含title/coreEvent/estimatedWords等，详见buildChapterPlan注释）
+//     */
+//    private void executeAsyncWriting(Novel novel, Map<String, Object> chapterPlan,
+//                                     String userAdjustment,
+//                                     SseEmitter emitter, AIConfigRequest aiConfig,
+//                                     Long promptTemplateId,
+//                                     Long writingStyleId, Map<String, String> referenceContents) {
+//        CompletableFuture.runAsync(() -> {
+//            try {
+//                // 将写作风格和关联内容整合到章节计划中
+//                if (writingStyleId != null || !referenceContents.isEmpty()) {
+//                    enrichChapterPlanWithStyleAndReferences(chapterPlan, writingStyleId, referenceContents);
+//                }
+//
+//                novelCraftAIService.executeMultiStageStreamingChapterWriting(
+//                    novel, chapterPlan, userAdjustment, emitter, aiConfig,
+//                    promptTemplateId
+//                );
+//
+//                // 异步提取上一章概要（优化用户体验，不阻塞当前章节生成）
+//                Integer currentChapterNumber = (Integer) chapterPlan.get("chapterNumber");
+//                if (currentChapterNumber != null && currentChapterNumber > 1) {
+//                    CompletableFuture.runAsync(() -> {
+//                        try {
+//                            Integer previousChapterNumber = currentChapterNumber - 1;
+//                            logger.info("🔄 开始异步提取第{}章概要", previousChapterNumber);
+//                            chapterSummaryService.generateAndSaveChapterSummaryAsync(
+//                                novel.getId(), previousChapterNumber, aiConfig
+//                            );
+//                            logger.info("✅ 第{}章概要提取完成", previousChapterNumber);
+//                        } catch (Exception ex) {
+//                            logger.warn("⚠️ 异步提取章节概要失败: {}", ex.getMessage());
+//                        }
+//                    });
+//                }
+//            } catch (Exception e) {
+//                handleError(emitter, e, "流式章节写作失败");
+//            }
+//        });
+//    }
     
     /**
      * 将写作风格和关联内容整合到章节计划中

@@ -1,295 +1,227 @@
 /* ==========================================
-   新建小说向导 - 现代简洁
+   新建小说向导
    ========================================== */
 
-.novel-create-wizard {
-  background: #f8fafc;
-}
-
-/* ==========================================
-   Hero区域
-   ========================================== */
-.wizard-hero {
-  background: #ffffff;
-  padding: var(--space-7) var(--space-6) var(--space-5);
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.hero-content {
-  max-width: 1000px;
-  margin: 0 auto;
-  text-align: center;
-}
-
-.hero-title {
-  font-size: 28px !important;
-  font-weight: 700 !important;
-  color: #0f172a !important;
-  margin: 0 0 var(--space-2) 0 !important;
-  line-height: 1.2 !important;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-}
-
-.title-icon {
-  color: #3b82f6;
-  font-size: 28px;
-}
-
-.hero-subtitle {
-  font-size: 15px !important;
-  color: #64748b !important;
-  line-height: 1.6 !important;
-}
-
-/* ==========================================
-   容器
-   ========================================== */
-.wizard-container {
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: var(--space-5) var(--space-6) var(--space-10);
-  position: relative;
-}
-
-.back-btn {
-  margin-bottom: var(--space-4);
-  border: 1px solid #e2e8f0;
-  color: #64748b;
-  transition: all 0.2s ease;
-  border-radius: var(--radius-lg);
-}
-
-.back-btn:hover {
-  border-color: #cbd5e1;
-  color: #3b82f6;
-  background: #f8fafc;
-}
-
-/* ==========================================
-   表单卡片
-   ========================================== */
-.wizard-card {
-  border-radius: var(--radius-xl) !important;
-  border: 1px solid #e2e8f0 !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
-  background: #ffffff !important;
-  margin-bottom: var(--space-4);
-}
-
-.wizard-card .ant-card-body {
-  padding: var(--space-7);
-}
-
-.wizard-form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-}
-
-.form-row {
-  display: grid;
-  grid-template-columns: 1.5fr 1fr;
-  gap: var(--space-5);
-}
-
-.form-row .ant-form-item {
-  margin-bottom: 0;
-}
-
-/* 表单样式 */
-.form-label {
-  font-size: 15px;
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.form-input,
-.form-textarea {
-  border-radius: var(--radius-lg) !important;
-  border: 2px solid #e2e8f0 !important;
-  transition: all 0.2s ease !important;
-}
-
-.form-input:hover,
-.form-textarea:hover {
-  border-color: #cbd5e1 !important;
-}
-
-.form-input:focus,
-.form-textarea:focus {
-  border-color: #3b82f6 !important;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
-}
-
-/* 原生下拉框样式 */
-.form-select {
+.novel-create-page {
   width: 100%;
-  height: 40px;
-  padding: 0 40px 0 16px;
+  display: flex;
+  justify-content: center;
+}
+
+.novel-create-container {
+  width: 100%;
+  max-width: 640px;
+}
+
+/* 返回按钮 */
+.novel-create-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  margin-bottom: 32px;
   font-size: 14px;
-  font-family: inherit;
-  color: #0f172a;
-  background-color: #ffffff;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4 6l4 4 4-4' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  background-size: 16px;
-  border: 2px solid #e2e8f0;
-  border-radius: var(--radius-lg);
-  outline: none;
+  font-weight: 500;
+  color: #64748b;
+  background: none;
+  border: none;
   cursor: pointer;
-  transition: all 0.2s ease;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  appearance: none;
+  transition: color 0.2s;
 }
 
-.form-select:hover {
-  border-color: #cbd5e1;
-  background-color: #f8fafc;
-}
-
-.form-select:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  background-color: #ffffff;
-}
-
-.form-select option {
-  padding: 8px;
-  background-color: #ffffff;
+.novel-create-back:hover {
   color: #0f172a;
 }
 
-.form-select option:hover {
-  background-color: #f1f5f9;
+/* 页面头部 */
+.novel-create-header {
+  margin-bottom: 40px;
 }
 
-/* Placeholder样式 */
-.form-select option[value=""] {
-  color: #94a3b8;
+.novel-create-header h1 {
+  font-size: 32px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 10px;
+  letter-spacing: -0.025em;
 }
 
-.form-textarea {
-  font-size: 14px;
+.novel-create-header p {
+  font-size: 15px;
+  color: #64748b;
+  margin: 0;
   line-height: 1.6;
 }
 
-.form-extra {
-  font-size: 13px;
-  color: #94a3b8;
-  line-height: 1.5;
-  margin-top: 8px;
+/* 表单区域 */
+.novel-create-form {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 36px;
 }
 
-.form-actions {
-  margin-top: var(--space-6);
+/* 表单组 */
+.novel-form-group {
+  margin-bottom: 36px;
+}
+
+.novel-form-group:last-of-type {
   margin-bottom: 0;
 }
 
-.submit-btn {
-  height: 50px !important;
-  font-size: 16px !important;
-  font-weight: 600 !important;
-  border-radius: var(--radius-xl) !important;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
-  border: none !important;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2) !important;
-  transition: all 0.3s ease !important;
-}
-
-.submit-btn:hover {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
-  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.35) !important;
-  transform: translateY(-2px) !important;
-}
-
-/* ==========================================
-   提示卡片
-   ========================================== */
-.tips-card {
-  border-radius: var(--radius-xl) !important;
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important;
-  border: none !important;
-  box-shadow: 0 2px 8px rgba(251, 191, 36, 0.2) !important;
-}
-
-.tips-card .ant-card-body {
-  padding: var(--space-4);
-}
-
-.tips-content {
-  display: flex;
-  gap: var(--space-3);
-  align-items: flex-start;
-}
-
-.tips-icon {
-  font-size: 24px;
-  line-height: 1;
-  flex-shrink: 0;
-}
-
-.tips-text {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.tips-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #78350f;
+.novel-form-label {
   display: block;
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 12px;
 }
 
-.tips-desc {
+.novel-form-hint {
   font-size: 13px;
-  color: #92400e;
+  color: #94a3b8;
+  margin-top: 10px;
   line-height: 1.5;
 }
 
-/* ==========================================
-   响应式
-   ========================================== */
-@media (max-width: 768px) {
-  .wizard-hero {
-    padding: var(--space-6) var(--space-4) var(--space-4);
-  }
-
-  .hero-title {
-    font-size: 22px !important;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-
-  .title-icon {
-    font-size: 24px;
-  }
-
-  .hero-subtitle {
-    font-size: 14px !important;
-  }
-
-  .wizard-container {
-    padding: var(--space-4) var(--space-4) var(--space-8);
-  }
-
-  .wizard-card .ant-card-body {
-    padding: var(--space-5);
-  }
-
-  .wizard-form {
-    gap: var(--space-5);
-  }
-
-  .form-row {
-    grid-template-columns: 1fr;
-    gap: var(--space-4);
-  }
+/* 输入框 */
+.novel-input {
+  width: 100%;
+  height: 56px !important;
+  padding: 0 20px !important;
+  font-size: 16px !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+  transition: all 0.2s ease !important;
+  color: #0f172a !important;
 }
 
+.novel-input:hover {
+  border-color: #cbd5e1 !important;
+}
+
+.novel-input:focus {
+  border-color: #0f172a !important;
+  box-shadow: none !important;
+}
+
+.novel-input::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* 文本域 */
+.novel-textarea {
+  width: 100%;
+  min-height: 280px !important;
+  padding: 20px !important;
+  font-size: 15px !important;
+  line-height: 1.8 !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+  resize: vertical !important;
+  transition: all 0.2s ease !important;
+  color: #0f172a !important;
+}
+
+.novel-textarea:hover {
+  border-color: #cbd5e1 !important;
+}
+
+.novel-textarea:focus {
+  border-color: #0f172a !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.novel-textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* 覆盖 antd textarea 样式 */
+.novel-create-form .ant-input-textarea-show-count {
+  position: relative;
+}
+
+.novel-create-form .ant-input-textarea-show-count .ant-input {
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.novel-create-form .ant-input-textarea-show-count > .ant-input-textarea {
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 12px !important;
+}
+
+.novel-create-form .ant-input-textarea-show-count > .ant-input-textarea:hover {
+  border-color: #cbd5e1 !important;
+}
+
+.novel-create-form .ant-input-textarea-show-count > .ant-input-textarea:focus-within {
+  border-color: #0f172a !important;
+  box-shadow: none !important;
+}
+
+.novel-create-form .ant-input-textarea-show-count::after {
+  font-size: 13px;
+  color: #94a3b8;
+  margin-top: 8px;
+}
+
+/* 提交按钮 */
+.novel-submit-btn {
+  width: 100%;
+  height: 52px !important;
+  margin-top: 36px;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  border-radius: 12px !important;
+  background: #0f172a !important;
+  border: none !important;
+  transition: all 0.2s ease !important;
+}
+
+.novel-submit-btn:hover:not(:disabled) {
+  background: #1e293b !important;
+}
+
+.novel-submit-btn:disabled {
+  background: #94a3b8 !important;
+}
+
+/* 表单验证错误 */
+.novel-create-form .ant-form-item-explain-error {
+  font-size: 13px;
+  margin-top: 8px;
+  color: #ef4444;
+}
+
+.novel-create-form .ant-form-item {
+  margin-bottom: 0;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .novel-create-header h1 {
+    font-size: 26px;
+  }
+
+  .novel-create-form {
+    padding: 24px;
+    border-radius: 14px;
+  }
+
+  .novel-input {
+    height: 48px !important;
+  }
+
+  .novel-textarea {
+    min-height: 200px !important;
+  }
+
+  .novel-submit-btn {
+    height: 48px !important;
+  }
+}

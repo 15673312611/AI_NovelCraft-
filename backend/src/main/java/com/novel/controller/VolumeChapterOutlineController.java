@@ -4,6 +4,8 @@ import com.novel.domain.entity.VolumeChapterOutline;
 import com.novel.dto.AIConfigRequest;
 import com.novel.repository.VolumeChapterOutlineRepository;
 import com.novel.service.VolumeChapterOutlineService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,6 +16,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/volumes")
 public class VolumeChapterOutlineController {
+
+    private static final Logger logger = LoggerFactory.getLogger(VolumeChapterOutlineController.class);
 
     @Autowired
     private VolumeChapterOutlineService service;
@@ -209,43 +213,133 @@ public class VolumeChapterOutlineController {
     ) {
         try {
             VolumeChapterOutline outline = outlineRepository.selectById(outlineId);
-
             if (outline == null) {
-                Map<String, Object> error = new HashMap<>();
-                error.put("error", "章纲不存在");
-                return ResponseEntity.badRequest().body(error);
+                return ResponseEntity.badRequest().body(Map.of("error", "章纲不存在"));
             }
 
-            // 更新字段
-            if (request.containsKey("direction")) {
-                outline.setDirection((String) request.get("direction"));
-            }
-            if (request.containsKey("keyPlotPoints")) {
-                outline.setKeyPlotPoints((String) request.get("keyPlotPoints"));
-            }
-            if (request.containsKey("emotionalTone")) {
-                outline.setEmotionalTone((String) request.get("emotionalTone"));
-            }
-            if (request.containsKey("foreshadowAction")) {
-                outline.setForeshadowAction((String) request.get("foreshadowAction"));
-            }
-            if (request.containsKey("foreshadowDetail")) {
-                outline.setForeshadowDetail((String) request.get("foreshadowDetail"));
-            }
-            if (request.containsKey("subplot")) {
-                outline.setSubplot((String) request.get("subplot"));
-            }
-            if (request.containsKey("antagonism")) {
-                outline.setAntagonism((String) request.get("antagonism"));
-            }
+            // 更新普通字段
+            updateFieldIfPresent(request, "direction", outline::setDirection);
+            updateFieldIfPresent(request, "emotionalTone", outline::setEmotionalTone);
+            updateFieldIfPresent(request, "foreshadowAction", outline::setForeshadowAction);
+            updateFieldIfPresent(request, "subplot", outline::setSubplot);
+            
+            // 更新 JSON 字段（空值时设为 null）
+            updateJsonFieldIfPresent(request, "keyPlotPoints", outline::setKeyPlotPoints);
+            updateJsonFieldIfPresent(request, "foreshadowDetail", outline::setForeshadowDetail);
+            updateJsonFieldIfPresent(request, "antagonism", outline::setAntagonism);
 
             outlineRepository.updateById(outline);
-
             return ResponseEntity.ok(outline);
         } catch (Exception e) {
-            Map<String, Object> error = new HashMap<>();
-            error.put("error", e.getMessage());
-            return ResponseEntity.badRequest().body(error);
+            logger.error("更新章纲失败: outlineId={}", outlineId, e);
+            return ResponseEntity.badRequest().body(Map.of("error", "更新章纲失败: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 创建单个章节的章纲
+     * POST /volumes/chapter-outline
+     */
+    @PostMapping("/chapter-outline")
+    public ResponseEntity<?> createChapterOutline(@RequestBody Map<String, Object> request) {
+        try {
+            // 必填字段校验
+            Long novelId = getLong(request, "novelId");
+            Long volumeId = getLong(request, "volumeId");
+            Integer globalChapterNumber = getInt(request, "globalChapterNumber");
+            
+            if (novelId == null || volumeId == null || globalChapterNumber == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "缺少必填字段: novelId, volumeId, globalChapterNumber"));
+            }
+            
+            // 检查是否已存在
+            VolumeChapterOutline existing = outlineRepository.findByNovelAndGlobalChapter(novelId, globalChapterNumber);
+            if (existing != null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "该章节已存在章纲，请使用更新接口"));
+            }
+            
+            VolumeChapterOutline outline = new VolumeChapterOutline();
+            outline.setNovelId(novelId);
+            outline.setVolumeId(volumeId);
+            outline.setGlobalChapterNumber(globalChapterNumber);
+            
+            // 可选字段
+            Integer chapterInVolume = getInt(request, "chapterInVolume");
+            if (chapterInVolume != null) {
+                outline.setChapterInVolume(chapterInVolume);
+            }
+            
+            Integer volumeNumber = getInt(request, "volumeNumber");
+            if (volumeNumber != null) {
+                outline.setVolumeNumber(volumeNumber);
+            }
+            
+            // 内容字段
+            outline.setDirection(getString(request, "direction"));
+            outline.setForeshadowAction(getString(request, "foreshadowAction"));
+            // foreshadowDetail 是 JSON 字段，空字符串需要设为 null
+            String foreshadowDetail = getString(request, "foreshadowDetail");
+            outline.setForeshadowDetail(isBlank(foreshadowDetail) ? null : foreshadowDetail);
+            outline.setStatus("PENDING");
+            
+            outlineRepository.insert(outline);
+            logger.info("✅ 创建章纲成功: novelId={}, globalChapterNumber={}, outlineId={}", 
+                novelId, globalChapterNumber, outline.getId());
+            
+            return ResponseEntity.ok(outline);
+        } catch (Exception e) {
+            logger.error("创建章纲失败", e);
+            return ResponseEntity.badRequest().body(Map.of("error", "创建章纲失败: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 删除指定卷的所有章纲
+     * DELETE /volumes/{volumeId}/chapter-outlines
+     */
+    @DeleteMapping("/{volumeId}/chapter-outlines")
+    public ResponseEntity<?> deleteChapterOutlinesByVolume(@PathVariable("volumeId") Long volumeId) {
+        try {
+            int deletedCount = outlineRepository.deleteByVolumeId(volumeId);
+            logger.info("✅ 已删除卷 {} 的所有章纲，共 {} 条", volumeId, deletedCount);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "success");
+            response.put("message", "章纲删除成功");
+            response.put("volumeId", volumeId);
+            response.put("deletedCount", deletedCount);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("删除章纲失败: volumeId={}", volumeId, e);
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("status", "error");
+            errorResponse.put("message", "删除章纲失败: " + e.getMessage());
+            return ResponseEntity.status(500).body(errorResponse);
+        }
+    }
+
+    /**
+     * 辅助方法：如果请求中包含指定字段，则更新（普通字段）
+     */
+    private void updateFieldIfPresent(Map<String, Object> request, String fieldName, java.util.function.Consumer<String> setter) {
+        if (request.containsKey(fieldName)) {
+            Object value = request.get(fieldName);
+            setter.accept(value != null ? String.valueOf(value) : null);
+        }
+    }
+
+    /**
+     * 辅助方法：如果请求中包含指定字段，则更新（JSON 字段）
+     * JSON 字段空值时必须设为 null，不能是空字符串，否则 MySQL 会报错
+     */
+    private void updateJsonFieldIfPresent(Map<String, Object> request, String fieldName, java.util.function.Consumer<String> setter) {
+        if (request.containsKey(fieldName)) {
+            Object value = request.get(fieldName);
+            if (value == null || value.toString().trim().isEmpty()) {
+                setter.accept(null);
+            } else {
+                setter.accept(String.valueOf(value));
+            }
         }
     }
 
@@ -309,6 +403,42 @@ public class VolumeChapterOutlineController {
         }
 
         return null;
+    }
+
+    /**
+     * 辅助方法：从 Map 中获取字符串
+     */
+    private String getString(Map<String, Object> map, String key) {
+        Object v = map.get(key);
+        if (v == null) return null;
+        return v.toString();
+    }
+
+    /**
+     * 辅助方法：从 Map 中获取整数
+     */
+    private Integer getInt(Map<String, Object> map, String key) {
+        Object v = map.get(key);
+        if (v == null) return null;
+        if (v instanceof Number) return ((Number) v).intValue();
+        try { return Integer.parseInt(v.toString()); } catch (Exception e) { return null; }
+    }
+
+    /**
+     * 辅助方法：从 Map 中获取长整数
+     */
+    private Long getLong(Map<String, Object> map, String key) {
+        Object v = map.get(key);
+        if (v == null) return null;
+        if (v instanceof Number) return ((Number) v).longValue();
+        try { return Long.parseLong(v.toString()); } catch (Exception e) { return null; }
+    }
+
+    /**
+     * 辅助方法：判断字符串是否为空
+     */
+    private boolean isBlank(String s) {
+        return s == null || s.trim().isEmpty();
     }
 }
 

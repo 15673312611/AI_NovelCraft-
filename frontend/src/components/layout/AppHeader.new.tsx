@@ -76,13 +76,15 @@ const AppHeader: React.FC = () => {
 
   const handleLogout = async () => {
     try {
-      await dispatch(logout())
+      await dispatch(logout()).unwrap()
       dispatch(clearAuth())
       message.success('已退出登录')
-      navigate('/login')
     } catch (error) {
+      // 即使logout失败也要清除本地状态
       dispatch(clearAuth())
       message.info('已退出登录')
+    } finally {
+      // 确保跳转到登录页
       navigate('/login')
     }
   }

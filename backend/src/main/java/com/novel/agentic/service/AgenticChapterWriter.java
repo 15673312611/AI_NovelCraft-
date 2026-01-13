@@ -87,6 +87,9 @@ public class AgenticChapterWriter {
     @Autowired(required = false)
     private VolumeChapterOutlineRepository outlineRepository;
 
+    @Autowired
+    private com.novel.service.AIConfigService aiConfigService;
+
 
 
     /**
@@ -98,6 +101,7 @@ public class AgenticChapterWriter {
             String userAdjustment,
             AIConfigRequest aiConfig,
             String stylePromptFile,
+            Long promptTemplateId,
             Map<String, String> referenceContents,
             SseEmitter emitter) throws Exception {
 
@@ -105,6 +109,23 @@ public class AgenticChapterWriter {
         if (novel == null) {
             throw new IllegalArgumentException("小说不存在: " + novelId);
         }
+
+        // 如果前端没有传递有效的aiConfig，从数据库读取系统配置
+        if (aiConfig == null || !aiConfig.isValid()) {
+            logger.info("📡 前端未传递有效AI配置，从系统配置读取...");
+            try {
+                String modelId = aiConfig != null ? aiConfig.getModel() : null;
+                aiConfig = aiConfigService.getSystemAIConfig(modelId);
+                logger.info("✅ 已从系统配置加载AI配置: provider={}, model={}", 
+                    aiConfig.getProvider(), aiConfig.getModel());
+            } catch (Exception e) {
+                logger.error("❌ 加载系统AI配置失败: {}", e.getMessage());
+                throw new RuntimeException("AI配置无效，请先在后台管理页面配置AI服务: " + e.getMessage());
+            }
+        }
+        
+        // 创建final变量供lambda表达式使用
+        final AIConfigRequest finalAiConfig = aiConfig;
 
         logger.info("🎬 开始生成章节: {} - 第{}章", novel.getTitle(), chapterNumber);
 
@@ -201,7 +222,7 @@ public class AgenticChapterWriter {
         }
 
         List<Map<String, String>> messages = structuredMessageBuilder.buildMessagesFromIntent(
-                novel, context, effectiveIntent, chapterNumber, stylePromptFile);
+                novel, context, effectiveIntent, chapterNumber, stylePromptFile, promptTemplateId);
 
         if (mode.equals("intent_writing") && plotIntent == null) {
             sendEvent(emitter, "intent", "⚠️ 未获取到完整章纲，已按最小意图继续写作");
@@ -256,7 +277,7 @@ public class AgenticChapterWriter {
                             chapterNumber,
                             generatedContent,
                             chapter.getTitle(),
-                            aiConfig
+                            finalAiConfig
                     );
                     sendEvent(emitter, "extraction", "✅ 核心状态抽取完成");
                 } catch (Exception e) {
@@ -282,7 +303,7 @@ public class AgenticChapterWriter {
                             chapterNumber,
                             chapter.getTitle(),
                             generatedContent,
-                            aiConfig
+                            finalAiConfig
                     );
                     sendEvent(emitter, "extraction", "✅ 实体抽取完成");
                 } catch (Exception e) {
@@ -311,10 +332,25 @@ public class AgenticChapterWriter {
             Integer count,
             AIConfigRequest aiConfig,
             String stylePromptFile,
+            Long promptTemplateId,
             Map<String, String> referenceContents,
             SseEmitter emitter) throws Exception {
 
         logger.info("📚 开始批量生成: novelId={}, 起始章节={}, 数量={}", novelId, startChapter, count);
+
+        // 如果前端没有传递有效的aiConfig，从数据库读取系统配置
+        if (aiConfig == null || !aiConfig.isValid()) {
+            logger.info("📡 前端未传递有效AI配置，从系统配置读取...");
+            try {
+                String modelId = aiConfig != null ? aiConfig.getModel() : null;
+                aiConfig = aiConfigService.getSystemAIConfig(modelId);
+                logger.info("✅ 已从系统配置加载AI配置: provider={}, model={}", 
+                    aiConfig.getProvider(), aiConfig.getModel());
+            } catch (Exception e) {
+                logger.error("❌ 加载系统AI配置失败: {}", e.getMessage());
+                throw new RuntimeException("AI配置无效，请先在后台管理页面配置AI服务: " + e.getMessage());
+            }
+        }
 
         List<Chapter> chapters = new ArrayList<>();
 
@@ -324,7 +360,7 @@ public class AgenticChapterWriter {
             sendEvent(emitter, "chapter_start", "开始生成第 " + currentChapter + " 章 (" + (i + 1) + "/" + count + ")");
 
             try {
-                Chapter chapter = generateChapter(novelId, currentChapter, null, aiConfig, stylePromptFile, referenceContents, emitter);
+                Chapter chapter = generateChapter(novelId, currentChapter, null, aiConfig, stylePromptFile, promptTemplateId, referenceContents, emitter);
                 chapters.add(chapter);
 
                 // 🔧 验证章节是否正确保存
@@ -360,8 +396,10 @@ public class AgenticChapterWriter {
 
     /**
      * 直接构建写作上下文：最近1章全文 + 前30章概要 + 图谱数据 + 大纲蓝图
+     *
+     * 对外公开，便于重写/编辑等场景复用同一套上下文来源。
      */
-    private WritingContext buildDirectWritingContext(Long novelId, Integer chapterNumber, String userAdjustment, Map<String, String> referenceContents) {
+    public WritingContext buildDirectWritingContext(Long novelId, Integer chapterNumber, String userAdjustment, Map<String, String> referenceContents) {
         WritingContext.WritingContextBuilder contextBuilder = WritingContext.builder();
         contextBuilder.userAdjustment(userAdjustment);
         if (referenceContents != null && !referenceContents.isEmpty()) {
@@ -506,46 +544,48 @@ public class AgenticChapterWriter {
                 } catch (Exception e) {
                     logger.warn("⚠️ 获取关系状态失败: {}", e.getMessage());
                 }
-                try {
-                    __openQuests = graphService.getOpenQuests(novelId, chapterNumber);
-                    if (__openQuests != null && !__openQuests.isEmpty()) {
-                        contextBuilder.openQuests(__openQuests);
-                        logger.info("✅ 已加载{}个未决任务", __openQuests.size());
-                    }
-                } catch (Exception e) {
-                    logger.warn("⚠️ 获取未决任务失败: {}", e.getMessage());
-                }
+                // 🔕 注释掉未决任务：剧情按章纲发展，未决任务容易干扰AI写作
+                // try {
+                //     __openQuests = graphService.getOpenQuests(novelId, chapterNumber);
+                //     if (__openQuests != null && !__openQuests.isEmpty()) {
+                //         contextBuilder.openQuests(__openQuests);
+                //         logger.info("✅ 已加载{}个未决任务", __openQuests.size());
+                //     }
+                // } catch (Exception e) {
+                //     logger.warn("⚠️ 获取未决任务失败: {}", e.getMessage());
+                // }
             }
 
-            // 13. 生成轻量章合同（基于未决任务的本章目标）
-            try {
-                java.util.Map<String, Object> plan = new java.util.HashMap<>();
-                plan.put("chapterNumber", chapterNumber);
-                plan.put("estimatedWords", 2500);
-
-                // 基于未决任务推导本章意图
-                if (__openQuests != null && !__openQuests.isEmpty()) {
-                    StringBuilder purpose = new StringBuilder("推进未决任务：");
-                    int limit = Math.min(2, __openQuests.size());
-                    for (int i = 0; i < limit; i++) {
-                        java.util.Map<String, Object> q = __openQuests.get(i);
-                        Object id = q.get("id");
-                        Object desc = q.get("description");
-                        purpose.append("[").append(id != null ? id : (i + 1)).append("] ");
-                        if (desc != null) {
-                            String d = desc.toString();
-                            purpose.append(d.length() > 24 ? d.substring(0, 24) + "..." : d);
-                        }
-                        if (i < limit - 1) purpose.append("；");
-                    }
-                    plan.put("purpose", purpose.toString());
-                    plan.put("primaryFocus", "QUEST_PROGRESS");
-                }
-
-                contextBuilder.chapterPlan(plan);
-            } catch (Exception ignore) {
-                // 忽略章合同推导失败
-            }
+            // 13. 生成轻量章合同（基于章纲，不再依赖未决任务）
+            // 🔕 注释掉基于未决任务的章合同生成，改为依赖章纲
+            // try {
+            //     java.util.Map<String, Object> plan = new java.util.HashMap<>();
+            //     plan.put("chapterNumber", chapterNumber);
+            //     plan.put("estimatedWords", 2500);
+            //
+            //     // 基于未决任务推导本章意图
+            //     if (__openQuests != null && !__openQuests.isEmpty()) {
+            //         StringBuilder purpose = new StringBuilder("推进未决任务：");
+            //         int limit = Math.min(2, __openQuests.size());
+            //         for (int i = 0; i < limit; i++) {
+            //             java.util.Map<String, Object> q = __openQuests.get(i);
+            //             Object id = q.get("id");
+            //             Object desc = q.get("description");
+            //             purpose.append("[").append(id != null ? id : (i + 1)).append("] ");
+            //             if (desc != null) {
+            //                 String d = desc.toString();
+            //                 purpose.append(d.length() > 24 ? d.substring(0, 24) + "..." : d);
+            //             }
+            //             if (i < limit - 1) purpose.append("；");
+            //         }
+            //         plan.put("purpose", purpose.toString());
+            //         plan.put("primaryFocus", "QUEST_PROGRESS");
+            //     }
+            //
+            //     contextBuilder.chapterPlan(plan);
+            // } catch (Exception ignore) {
+            //     // 忽略章合同推导失败
+            // }
 
         } catch (Exception e) {
             logger.error("❌ 构建直接写作上下文失败", e);
@@ -956,24 +996,15 @@ public class AgenticChapterWriter {
 
     /**
      * 将预生成章纲转换为 plotIntent 格式
+     * 简化版：只使用 direction（本章剧情方向）和伏笔字段
      */
     private Map<String, Object> convertOutlineToIntent(VolumeChapterOutline outline, VolumeChapterOutline prevOutline, VolumeChapterOutline nextOutline) {
         Map<String, Object> intent = new HashMap<>();
+        
+        // direction 作为本章剧情方向（包含关键剧情点，不再使用数组格式）
         intent.put("direction", outline.getDirection());
 
-        if (outline.getKeyPlotPoints() != null) {
-            try {
-                List<String> points = objectMapper.readValue(outline.getKeyPlotPoints(),
-                        new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){});
-                intent.put("keyPlotPoints", points);
-            } catch (Exception e) {
-                logger.warn("解析keyPlotPoints失败: {}", e.getMessage());
-                intent.put("keyPlotPoints", new ArrayList<>());
-            }
-        }
-
-        intent.put("emotionalTone", outline.getEmotionalTone());
-
+        // 伏笔相关字段
         if (outline.getForeshadowDetail() != null) {
             try {
                 Map<String, Object> detail = objectMapper.readValue(outline.getForeshadowDetail(),
@@ -984,20 +1015,11 @@ public class AgenticChapterWriter {
             } catch (Exception e) {
                 logger.warn("解析foreshadowDetail失败: {}", e.getMessage());
             }
+        } else if (outline.getForeshadowAction() != null) {
+            intent.put("foreshadowAction", outline.getForeshadowAction());
         }
 
-        intent.put("subplot", outline.getSubplot());
-
-        if (outline.getAntagonism() != null) {
-            try {
-                Map<String, Object> antag = objectMapper.readValue(outline.getAntagonism(),
-                        new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>(){});
-                intent.put("antagonism", antag);
-            } catch (Exception e) {
-                logger.warn("解析antagonism失败: {}", e.getMessage());
-            }
-        }
-
+        // 后续章节剧情方向提示（用于避免剧情冲突）
         if (outlineRepository != null) {
             try {
                 List<VolumeChapterOutline> futureOutlines = new ArrayList<>();
@@ -1018,39 +1040,30 @@ public class AgenticChapterWriter {
 
                 if (!futureOutlines.isEmpty()) {
                     StringBuilder hint = new StringBuilder();
-                    hint.append("\n\n【后续章节关键剧情点】 注意下面内容非本章内容 主要是让你了解后续大致剧情走向：\n");
+                    hint.append("\n\n【后续章节剧情方向(主要是为了让你了解后续剧情节点发展 别提前写 当前写的逻辑也不能后面的有冲突 注意逻辑关系)】 ：\n");
                     for (VolumeChapterOutline fo : futureOutlines) {
                         Integer g = fo.getGlobalChapterNumber();
                         Integer civ = fo.getChapterInVolume();
                         if (g != null) {
-                            hint.append("第").append(g).append("章：\n");
+                            hint.append("第").append(g).append("章：");
                         } else if (civ != null) {
-                            hint.append("卷内第").append(civ).append("章：\n");
+                            hint.append("卷内第").append(civ).append("章：");
                         } else {
-                            hint.append("未来章节：\n");
+                            hint.append("未来章节：");
                         }
 
-                        if (fo.getKeyPlotPoints() != null) {
-                            try {
-                                List<String> points = objectMapper.readValue(fo.getKeyPlotPoints(),
-                                        new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){});
-                                if (points != null && !points.isEmpty()) {
-                                    for (String p : points) {
-                                        if (p != null && !p.isEmpty()) {
-                                            hint.append(p).append("\n");
-                                        }
-                                    }
-                                }
-                            } catch (Exception e) {
-                                logger.warn("解析未来章节keyPlotPoints失败: {}", e.getMessage());
-                            }
+                        // 使用 direction 字段
+                        if (fo.getDirection() != null && !fo.getDirection().isEmpty()) {
+                            hint.append(fo.getDirection()).append("\n");
+                        } else {
+                            hint.append("（暂无剧情方向）\n");
                         }
                     }
-                    hint.append("本章剧情需要在不抢先写完上述关键剧情点全部结果的前提下，自然衔接并为这些发展做好铺垫。");
+                    hint.append("\n注意:本章剧情需要在不抢先写完上述剧情方向全部结果的前提下，自然衔接并为这些发展做好铺垫。");
                     intent.put("adjacentOutlineHint", hint.toString());
                 }
             } catch (Exception e) {
-                logger.warn("构造后续章节关键剧情点提示失败: {}", e.getMessage());
+                logger.warn("构造后续章节剧情方向提示失败: {}", e.getMessage());
             }
         }
 

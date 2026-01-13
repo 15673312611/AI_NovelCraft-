@@ -1021,6 +1021,7 @@ public class Neo4jGraphService implements IGraphService {
                 "  realm: s.realm, " +
                 "  alive: s.alive, " +
                 "  inventory: s.inventory, " +
+                "  characterInfo: s.characterInfo, " +
                 "  chapterNumber: s.lastUpdatedChapter, " +
                 "  createdAt: datetime()" +
                 "})";
@@ -1059,6 +1060,136 @@ public class Neo4jGraphService implements IGraphService {
             logger.info("🧭 upsertCharacterState: {}@{} loc={}, realm={} alive={}", characterName, chapterNumber, location, realm, alive);
         } catch (Exception e) {
             logger.error("❌ upsertCharacterState失败", e);
+        }
+    }
+
+    /**
+     * 🆕 更新角色状态（包含人物信息字段）
+     * 用于保存关键数值相关的一句话总结
+     */
+    @Override
+    public void upsertCharacterStateWithInfo(Long novelId, String characterName, String location, String realm, Boolean alive, String characterInfo, Integer chapterNumber) {
+        try (Session session = driver.session()) {
+            // 步骤1：保存历史快照
+            String saveHistoryQuery =
+                "MATCH (s:CharacterState {novelId: $novelId, characterName: $characterName}) " +
+                "WHERE s.lastUpdatedChapter IS NOT NULL " +
+                "CREATE (h:CharacterStateHistory {" +
+                "  novelId: $novelId, " +
+                "  characterName: $characterName, " +
+                "  location: s.location, " +
+                "  realm: s.realm, " +
+                "  alive: s.alive, " +
+                "  inventory: s.inventory, " +
+                "  characterInfo: s.characterInfo, " +
+                "  chapterNumber: s.lastUpdatedChapter, " +
+                "  createdAt: datetime()" +
+                "})";
+            
+            session.run(saveHistoryQuery, Map.of("novelId", novelId, "characterName", characterName));
+            
+            // 步骤2：更新当前状态（包含characterInfo）
+            String cypher =
+                "MERGE (s:CharacterState {novelId: $novelId, characterName: $characterName}) " +
+                "SET s.location = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN coalesce($location, s.location) ELSE s.location END, " +
+                "    s.realm = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN coalesce($realm, s.realm) ELSE s.realm END, " +
+                "    s.alive = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN coalesce($alive, s.alive) ELSE s.alive END, " +
+                "    s.characterInfo = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) AND $characterInfo <> '' THEN $characterInfo WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN s.characterInfo ELSE s.characterInfo END, " +
+                "    s.lastUpdatedChapter = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN $chapterNumber ELSE s.lastUpdatedChapter END, " +
+                "    s.updatedAt = datetime() " +
+                "RETURN s";
+
+            Map<String, Object> params = new HashMap<>();
+            params.put("novelId", novelId);
+            params.put("characterName", characterName);
+            params.put("location", location);
+            params.put("realm", realm);
+            params.put("alive", alive);
+            params.put("characterInfo", characterInfo != null ? characterInfo : "");
+            params.put("chapterNumber", chapterNumber);
+
+            logger.info("🔍 执行upsertCharacterStateWithInfo: novelId={}, name={}, chapter={}, characterInfo={}", novelId, characterName, chapterNumber, characterInfo);
+            Result result = session.run(cypher, params);
+
+            if (result.hasNext()) {
+                Record record = result.next();
+                logger.info("✅ CharacterState(含人物信息)已保存: {}", record.get("s").asMap());
+            } else {
+                logger.warn("⚠️ CharacterState保存后无返回结果");
+            }
+
+            logger.info("🧭 upsertCharacterStateWithInfo: {}@{} loc={}, realm={}, alive={}, info={}", characterName, chapterNumber, location, realm, alive, characterInfo);
+        } catch (Exception e) {
+            logger.error("❌ upsertCharacterStateWithInfo失败", e);
+        }
+    }
+
+    /**
+     * 🆕 完整更新角色状态（包含扩展字段）
+     * 全题材通用设计
+     */
+    @Override
+    public void upsertCharacterStateComplete(Long novelId, String characterName, Map<String, Object> stateData, Integer chapterNumber) {
+        try (Session session = driver.session()) {
+            // 步骤1：保存历史快照
+            String saveHistoryQuery =
+                "MATCH (s:CharacterState {novelId: $novelId, characterName: $characterName}) " +
+                "WHERE s.lastUpdatedChapter IS NOT NULL " +
+                "CREATE (h:CharacterStateHistory {" +
+                "  novelId: $novelId, " +
+                "  characterName: $characterName, " +
+                "  location: s.location, " +
+                "  realm: s.realm, " +
+                "  alive: s.alive, " +
+                "  affiliation: s.affiliation, " +
+                "  socialStatus: s.socialStatus, " +
+                "  backers: s.backers, " +
+                "  tags: s.tags, " +
+                "  secrets: s.secrets, " +
+                "  keyItems: s.keyItems, " +
+                "  knownBy: s.knownBy, " +
+                "  characterInfo: s.characterInfo, " +
+                "  chapterNumber: s.lastUpdatedChapter, " +
+                "  createdAt: datetime()" +
+                "})";
+            
+            session.run(saveHistoryQuery, Map.of("novelId", novelId, "characterName", characterName));
+            
+            // 步骤2：更新当前状态
+            String cypher =
+                "MERGE (s:CharacterState {novelId: $novelId, characterName: $characterName}) " +
+                "SET s.location = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN coalesce($location, s.location) ELSE s.location END, " +
+                "    s.realm = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN coalesce($realm, s.realm) ELSE s.realm END, " +
+                "    s.alive = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN coalesce($alive, s.alive, true) ELSE s.alive END, " +
+                "    s.affiliation = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN coalesce($affiliation, s.affiliation) ELSE s.affiliation END, " +
+                "    s.socialStatus = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN coalesce($socialStatus, s.socialStatus) ELSE s.socialStatus END, " +
+                "    s.backers = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN coalesce($backers, s.backers, []) ELSE coalesce(s.backers, []) END, " +
+                "    s.tags = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN coalesce($tags, s.tags, []) ELSE coalesce(s.tags, []) END, " +
+                "    s.secrets = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN coalesce($secrets, s.secrets, []) ELSE coalesce(s.secrets, []) END, " +
+                "    s.keyItems = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN coalesce($keyItems, s.keyItems, []) ELSE coalesce(s.keyItems, []) END, " +
+                "    s.knownBy = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN coalesce($knownBy, s.knownBy, []) ELSE coalesce(s.knownBy, []) END, " +
+                "    s.lastUpdatedChapter = CASE WHEN $chapterNumber >= coalesce(s.lastUpdatedChapter,-1) THEN $chapterNumber ELSE s.lastUpdatedChapter END, " +
+                "    s.updatedAt = datetime()";
+
+            Map<String, Object> params = new HashMap<>();
+            params.put("novelId", novelId);
+            params.put("characterName", characterName);
+            params.put("location", stateData.get("location"));
+            params.put("realm", stateData.get("realm"));
+            params.put("alive", stateData.get("alive"));
+            params.put("affiliation", stateData.get("affiliation"));
+            params.put("socialStatus", stateData.get("socialStatus"));
+            params.put("backers", stateData.get("backers"));
+            params.put("tags", stateData.get("tags"));
+            params.put("secrets", stateData.get("secrets"));
+            params.put("keyItems", stateData.get("keyItems"));
+            params.put("knownBy", stateData.get("knownBy"));
+            params.put("chapterNumber", chapterNumber);
+
+            session.run(cypher, params);
+            logger.info("✅ 完整角色状态已更新: {} @chapter{}", characterName, chapterNumber);
+        } catch (Exception e) {
+            logger.error("❌ upsertCharacterStateComplete失败", e);
         }
     }
 
@@ -1150,6 +1281,64 @@ public class Neo4jGraphService implements IGraphService {
             logger.info("🤝 upsertRelationshipState: {}—{} type={} strength={}", characterA, characterB, type, strength);
         } catch (Exception e) {
             logger.error("upsertRelationshipState失败", e);
+        }
+    }
+
+    /**
+     * 🆕 完整更新关系状态（包含扩展字段）
+     * 全题材通用设计
+     */
+    @Override
+    public void upsertRelationshipStateComplete(Long novelId, String characterA, String characterB, Map<String, Object> relationData, Integer chapterNumber) {
+        try (Session session = driver.session()) {
+            // 步骤1：保存历史快照
+            String saveHistoryQuery =
+                "WITH CASE WHEN $a < $b THEN $a ELSE $b END AS a, CASE WHEN $a < $b THEN $b ELSE $a END AS b " +
+                "MATCH (r:RelationshipState {novelId: $novelId, a: a, b: b}) " +
+                "WHERE r.lastUpdatedChapter IS NOT NULL " +
+                "CREATE (h:RelationshipStateHistory {" +
+                "  novelId: $novelId, " +
+                "  a: a, " +
+                "  b: b, " +
+                "  type: r.type, " +
+                "  strength: r.strength, " +
+                "  description: r.description, " +
+                "  publicStatus: r.publicStatus, " +
+                "  chapterNumber: r.lastUpdatedChapter, " +
+                "  createdAt: datetime()" +
+                "})";
+            
+            Map<String, Object> historyParams = new HashMap<>();
+            historyParams.put("novelId", novelId);
+            historyParams.put("a", characterA);
+            historyParams.put("b", characterB);
+            session.run(saveHistoryQuery, historyParams);
+            
+            // 步骤2：更新当前状态
+            String cypher =
+                "WITH CASE WHEN $a < $b THEN $a ELSE $b END AS a, CASE WHEN $a < $b THEN $b ELSE $a END AS b " +
+                "MERGE (r:RelationshipState {novelId: $novelId, a: a, b: b}) " +
+                "SET r.type = CASE WHEN $chapterNumber >= coalesce(r.lastUpdatedChapter,-1) THEN coalesce($type, r.type) ELSE r.type END, " +
+                "    r.strength = CASE WHEN $chapterNumber >= coalesce(r.lastUpdatedChapter,-1) THEN coalesce($strength, r.strength, 0.5) ELSE r.strength END, " +
+                "    r.description = CASE WHEN $chapterNumber >= coalesce(r.lastUpdatedChapter,-1) THEN coalesce($description, r.description) ELSE r.description END, " +
+                "    r.publicStatus = CASE WHEN $chapterNumber >= coalesce(r.lastUpdatedChapter,-1) THEN coalesce($publicStatus, r.publicStatus) ELSE r.publicStatus END, " +
+                "    r.lastUpdatedChapter = CASE WHEN $chapterNumber >= coalesce(r.lastUpdatedChapter,-1) THEN $chapterNumber ELSE r.lastUpdatedChapter END, " +
+                "    r.updatedAt = datetime()";
+
+            Map<String, Object> params = new HashMap<>();
+            params.put("novelId", novelId);
+            params.put("a", characterA);
+            params.put("b", characterB);
+            params.put("type", relationData.get("type"));
+            params.put("strength", relationData.get("strength"));
+            params.put("description", relationData.get("description"));
+            params.put("publicStatus", relationData.get("publicStatus"));
+            params.put("chapterNumber", chapterNumber);
+            
+            session.run(cypher, params);
+            logger.info("✅ 完整关系状态已更新: {}—{} @chapter{}", characterA, characterB, chapterNumber);
+        } catch (Exception e) {
+            logger.error("❌ upsertRelationshipStateComplete失败", e);
         }
     }
 
@@ -1312,7 +1501,7 @@ public class Neo4jGraphService implements IGraphService {
         String cypher =
             "MATCH (s:CharacterState {novelId: $novelId}) " +
             "RETURN s.characterName AS name, s.location AS location, s.realm AS realm, " +
-            "       s.alive AS alive, s.inventory AS inventory, s.lastUpdatedChapter AS lastChapter " +
+            "       s.alive AS alive, s.inventory AS inventory, s.characterInfo AS characterInfo, s.lastUpdatedChapter AS lastChapter " +
             "ORDER BY s.lastUpdatedChapter DESC " +
             "LIMIT $limit";
         
@@ -1328,6 +1517,7 @@ public class Neo4jGraphService implements IGraphService {
                 state.put("location", safeGetString(record, "location", ""));
                 state.put("realm", safeGetString(record, "realm", ""));
                 state.put("alive", record.get("alive").asBoolean(true));
+                state.put("characterInfo", safeGetString(record, "characterInfo", ""));
                 state.put("lastChapter", safeGetInt(record, "lastChapter", 0));
                 
                 // 处理inventory（List类型）
@@ -1593,7 +1783,7 @@ public class Neo4jGraphService implements IGraphService {
             String queryCharStatesQuery = 
                 "MATCH (s:CharacterState {novelId: $novelId, lastUpdatedChapter: $chapterNumber}) " +
                 "RETURN s.characterName as name, s.location as location, s.realm as realm, " +
-                "       s.alive as alive, s.inventory as inventory";
+                "       s.alive as alive, s.inventory as inventory, s.characterInfo as characterInfo";
             List<Record> charStates = session.run(queryCharStatesQuery, 
                 Map.of("novelId", novelId, "chapterNumber", chapterNumber)).list();
             
@@ -1621,6 +1811,7 @@ public class Neo4jGraphService implements IGraphService {
                         "    s.realm = $realm, " +
                         "    s.alive = $alive, " +
                         "    s.inventory = $inventory, " +
+                        "    s.characterInfo = $characterInfo, " +
                         "    s.lastUpdatedChapter = $lastUpdatedChapter, " +
                         "    s.updatedAt = datetime()";
                     
@@ -1631,6 +1822,7 @@ public class Neo4jGraphService implements IGraphService {
                     restoreParams.put("realm", historyNode.get("realm"));
                     restoreParams.put("alive", historyNode.get("alive"));
                     restoreParams.put("inventory", historyNode.get("inventory"));
+                    restoreParams.put("characterInfo", historyNode.get("characterInfo"));
                     restoreParams.put("lastUpdatedChapter", historyNode.get("chapterNumber"));
                     
                     session.run(restoreQuery, restoreParams);
@@ -2407,7 +2599,8 @@ public class Neo4jGraphService implements IGraphService {
             // 查询角色状态
             String characterStateQuery = "MATCH (s:CharacterState {novelId: $novelId}) " +
                                         "RETURN s.characterName as name, s.location as location, s.realm as realm, " +
-                                        "       s.alive as alive, s.inventory as inventory, s.lastUpdatedChapter as chapter " +
+                                        "       s.alive as alive, s.inventory as inventory, s.characterInfo as characterInfo, " +
+                                        "       s.lastUpdatedChapter as chapter " +
                                         "ORDER BY s.lastUpdatedChapter DESC";
             List<Map<String, Object>> characterStates = session.run(characterStateQuery, Collections.singletonMap("novelId", novelId))
                 .list(record -> {
@@ -2423,6 +2616,14 @@ public class Neo4jGraphService implements IGraphService {
                         state.put("inventory", inventoryValue.asList());
                     } else {
                         state.put("inventory", Collections.emptyList());
+                    }
+
+                    // 添加 characterInfo 字段
+                    Value characterInfoValue = record.get("characterInfo");
+                    if (characterInfoValue != null && !characterInfoValue.isNull()) {
+                        state.put("characterInfo", characterInfoValue.asString(""));
+                    } else {
+                        state.put("characterInfo", "");
                     }
 
                     state.put("chapter", record.get("chapter").asInt(0));
@@ -2474,18 +2675,87 @@ public class Neo4jGraphService implements IGraphService {
                 });
             logger.info("🔍 查询到{}个OpenQuest", openQuests.size());
 
-            // 只返回核心记忆账本数据
+            // 查询历史事件
+            logger.info("🔍 开始查询Event节点...");
+            String eventQuery = "MATCH (e:Event {novelId: $novelId}) " +
+                               "RETURN e.id as id, e.summary as summary, e.chapterNumber as chapter, " +
+                               "       e.importance as importance, e.emotionalTone as emotionalTone, " +
+                               "       e.tags as tags, e.description as description, " +
+                               "       e.participants as participants, e.location as location " +
+                               "ORDER BY e.chapterNumber DESC";
+            List<Map<String, Object>> events = session.run(eventQuery, Collections.singletonMap("novelId", novelId))
+                .list(record -> {
+                    Map<String, Object> event = new HashMap<>();
+                    event.put("id", record.get("id").asString(""));
+                    event.put("summary", record.get("summary").asString(""));
+                    event.put("chapter", record.get("chapter").asInt(0));
+                    
+                    // 安全处理 importance 字段
+                    Value importanceValue = record.get("importance");
+                    if (importanceValue != null && !importanceValue.isNull()) {
+                        event.put("importance", importanceValue.asDouble(0.5));
+                    } else {
+                        event.put("importance", 0.5);
+                    }
+                    
+                    // 安全处理 emotionalTone 字段
+                    Value toneValue = record.get("emotionalTone");
+                    if (toneValue != null && !toneValue.isNull()) {
+                        event.put("emotionalTone", toneValue.asString(""));
+                    } else {
+                        event.put("emotionalTone", "");
+                    }
+                    
+                    // 安全处理 tags 字段
+                    Value tagsValue = record.get("tags");
+                    if (tagsValue != null && !tagsValue.isNull()) {
+                        event.put("tags", tagsValue.asList());
+                    } else {
+                        event.put("tags", Collections.emptyList());
+                    }
+                    
+                    // 安全处理 description 字段
+                    Value descValue = record.get("description");
+                    if (descValue != null && !descValue.isNull()) {
+                        event.put("description", descValue.asString(""));
+                    } else {
+                        event.put("description", "");
+                    }
+                    
+                    // 安全处理 participants 字段
+                    Value participantsValue = record.get("participants");
+                    if (participantsValue != null && !participantsValue.isNull()) {
+                        event.put("participants", participantsValue.asList());
+                    } else {
+                        event.put("participants", Collections.emptyList());
+                    }
+                    
+                    // 安全处理 location 字段
+                    Value locationValue = record.get("location");
+                    if (locationValue != null && !locationValue.isNull()) {
+                        event.put("location", locationValue.asString(""));
+                    } else {
+                        event.put("location", "");
+                    }
+                    
+                    return event;
+                });
+            logger.info("🔍 查询到{}个Event", events.size());
+
+            // 返回核心记忆账本数据和历史事件
             result.put("characterStates", characterStates);
             result.put("relationshipStates", relationshipStates);
             result.put("openQuests", openQuests);
+            result.put("events", events);
 
             // 添加统计信息
             result.put("totalCharacterStates", characterStates.size());
             result.put("totalRelationshipStates", relationshipStates.size());
             result.put("totalOpenQuests", openQuests.size());
+            result.put("totalEvents", events.size());
 
-            logger.info("✅ 核心记忆账本查询完成: {}个角色状态, {}个关系状态, {}个任务",
-                characterStates.size(), relationshipStates.size(), openQuests.size());
+            logger.info("✅ 核心记忆账本查询完成: {}个角色状态, {}个关系状态, {}个任务, {}个历史事件",
+                characterStates.size(), relationshipStates.size(), openQuests.size(), events.size());
             
         } catch (Exception e) {
             logger.error("❌ 查询图谱数据失败", e);

@@ -10,6 +10,7 @@ export interface NovelVolume {
   volumeNumber: number;
   chapterStart: number;
   chapterEnd: number;
+  chapterCount?: number; // 章节数量（可选，用于智能章纲）
   estimatedWordCount: number;
   actualWordCount: number;
   keyEvents: string;

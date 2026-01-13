@@ -1,13 +1,14 @@
 package com.novel.service;
 
 import com.novel.domain.entity.Novel;
+import com.novel.agentic.service.AgenticChapterWriter;
+import com.novel.agentic.model.WritingContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.novel.domain.entity.Chapter;
 import com.novel.repository.ChapterRepository;
-
 
 import java.util.*;
 
@@ -23,8 +24,6 @@ public class ContextManagementService {
     @Autowired
     private CharacterManagementService characterManagementService;
 
-
-
     @Autowired
     private ChapterRepository chapterRepository;
 
@@ -33,6 +32,9 @@ public class ContextManagementService {
 
     @Autowired
     private LongNovelMemoryManager longNovelMemoryManager;
+
+    @Autowired
+    private AgenticChapterWriter agenticChapterWriter;
 
     @Autowired
     private PromptTemplateService promptTemplateService;
@@ -55,7 +57,6 @@ public class ContextManagementService {
     @Autowired
     private com.novel.repository.NovelWorldDictionaryRepository worldDictionaryRepository;
 
-
     /**
      * 构建完整的AI上下文消息列表（支持自定义模板）
      * 充分利用128k上下文容量，确保AI获得足够的创作信息
@@ -77,107 +78,191 @@ public class ContextManagementService {
         List<Map<String, String>> messages = new ArrayList<>();
         Integer chapterNumber = (Integer) chapterPlan.get("chapterNumber");
 
-        // 1. 系统身份设定（支持自定义模板）
+        // 1. 系统身份（已调整为编辑模式身份）
         String systemIdentity = getSystemIdentityPrompt(promptTemplateId);
         messages.add(createMessage("system", systemIdentity));
 
-        // 1.1 番茄小说风格指引
-//        messages.add(createMessage("system", buildTomatoNovelStyleGuide()));
-
-
-
-        // 2. 小说基本信息
+        // 2. 基本小说信息
         messages.add(createMessage("system", buildNovelBasicInfoPrompt(novel)));
 
-        // 3. 系统大纲信息（直接从novel对象获取）
-        String outlineContext = buildOutlineContext(novel, chapterNumber);
-        if (!outlineContext.isEmpty()) {
-            messages.add(createMessage("system", outlineContext));
+        // 3. 复用 agentic 写作的上下文构建逻辑
+        //    使用 AgenticChapterWriter.buildDirectWritingContext 获取 WritingContext，
+        //    然后从中拆分出各类上下文块。
+        WritingContext context = agenticChapterWriter.buildDirectWritingContext(
+            novel.getId(), chapterNumber, userAdjustment, null);
+
+//         3.1 核心设定（coreSettings）
+        if (context.getCoreSettings() != null && !context.getCoreSettings().trim().isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("【核心设定】\n");
+            sb.append(context.getCoreSettings()).append("\n");
+            messages.add(createMessage("system", sb.toString()));
         }
 
-        // 4. 当前卷大纲信息（直接从数据库查询）
-        String volumeContext = buildCurrentVolumeContext(novel.getId(), chapterNumber);
-        if (!volumeContext.isEmpty()) {
-            messages.add(createMessage("system", volumeContext));
-        }
-
-        // 5. 角色信息上下文（动态选角+配额+触发约束） - 从数据库查询
-        String characterContext = buildCharacterContextEnhanced(novel.getId(), chapterPlan, chapterNumber);
-        if (!characterContext.isEmpty()) {
-            messages.add(createMessage("system", characterContext));
-        }
-
-        // 6. 主角详细现状（直接从数据库查询）
-
-
-        // 7. 情节线管理信息（暂时禁用）
-//         String plotlineContext = buildPlotlineContext(novel.getId(), memoryBank, chapterNumber);
-//         if (!plotlineContext.isEmpty()) {
-//             messages.add(createMessage("system", plotlineContext));
-//         }
-
-        // 8. 世界观设定和实体词典 - 从数据库查询
-        String worldBuildingContext = buildWorldBuildingContext(novel.getId());
-        if (!worldBuildingContext.isEmpty()) {
-            messages.add(createMessage("system", worldBuildingContext));
-        }
-
-        // 9. 前情回顾（智能章节概括） - 从数据库读取前20章概括
-        String chaptersSummaryContext = buildChaptersSummaryContext(novel.getId(), chapterNumber);
-        // 9.1 上一章完整内容，避免割裂
-        String prevChapterContext = buildPreviousChapterFullContentContext(novel.getId(), chapterNumber);
-        if (!prevChapterContext.isEmpty()) {
-            messages.add(createMessage("system", prevChapterContext));
-        }
-
-        if (!chaptersSummaryContext.isEmpty()) {
-            messages.add(createMessage("system", chaptersSummaryContext));
-        }
-
-        // 10. 创作灵感分析（AI深度思考后续发展）
-//        String inspirationContext = buildCreativeInspirationContext(novel, memoryBank, chapterNumber, chaptersSummaryContext);
-//        if (!inspirationContext.isEmpty()) {
-//            messages.add(createMessage("system", inspirationContext));
-//        }
-
-        // 11. 伏笔和线索管理 - 从数据库查询
-        String foreshadowingContext = buildForeshadowingContext(novel.getId());
-        if (!foreshadowingContext.isEmpty()) {
-            messages.add(createMessage("system", foreshadowingContext));
-        }
-
-        // 12. 风格和语调指导
-//        String styleContext = buildStyleGuidanceContext(novel, memoryBank);
-//        if (!styleContext.isEmpty()) {
-//            messages.add(createMessage("system", styleContext));
-//        }
-
-        // 13. 长篇记忆管理上下文包（新增！）
-        try {
-            String memoryContext = longNovelMemoryManager.buildContextPackage(chapterNumber);
-            if (!memoryContext.isEmpty()) {
-                messages.add(createMessage("system", memoryContext));
+        // 3.2 卷蓝图（volumeBlueprint）
+        if (context.getVolumeBlueprint() != null && !context.getVolumeBlueprint().isEmpty()) {
+            Map<String, Object> volume = context.getVolumeBlueprint();
+            StringBuilder sb = new StringBuilder();
+            sb.append("【本卷蓝图】\n");
+            sb.append("卷名：").append(volume.getOrDefault("volumeTitle", "未命名卷")).append("\n");
+            Object blueprint = volume.get("blueprint");
+            if (blueprint != null) {
+                sb.append("蓝图摘要：").append(blueprint).append("\n");
             }
-        } catch (Exception e) {
-            logger.warn("构建长篇记忆上下文失败: {}", e.getMessage());
+            Object progress = volume.get("progressDescription");
+            if (progress != null) {
+                sb.append("当前位置：").append(progress).append("\n");
+            }
+            messages.add(createMessage("system", sb.toString()));
         }
 
-        // 14. 用户特殊要求
+        // 3.3 最近章节完整内容（recentFullChapters）
+        if (context.getRecentFullChapters() != null && !context.getRecentFullChapters().isEmpty()) {
+            for (Map<String, Object> ch : context.getRecentFullChapters()) {
+                Object num = ch.get("chapterNumber");
+                Object title = ch.get("title");
+                Object content = ch.get("content");
+                if (content == null) {
+                    continue;
+                }
+                StringBuilder sb = new StringBuilder();
+                sb.append("【上一章完整内容回顾】\n");
+                sb.append("章节：第").append(num).append("章");
+                if (title != null) {
+                    sb.append("  标题：").append(title);
+                }
+                sb.append("\n\n");
+                sb.append(content.toString());
+                messages.add(createMessage("system", sb.toString()));
+            }
+        }
+
+        // 3.4 最近章节概要（recentSummaries）
+        if (context.getRecentSummaries() != null && !context.getRecentSummaries().isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("【最近章节概要】\n");
+            for (Map<String, Object> summary : context.getRecentSummaries()) {
+                Object num = summary.get("chapterNumber");
+                Object text = summary.get("summary");
+                sb.append("- 第").append(num).append("章：")
+                  .append(text != null ? text : "暂无摘要").append("\n");
+            }
+            messages.add(createMessage("system", sb.toString()));
+        }
+
+        // 3.5 角色档案（characterProfiles）
+        if (context.getCharacterProfiles() != null && !context.getCharacterProfiles().isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("【角色信息（来自图谱）】\n");
+            for (Map<String, Object> profile : context.getCharacterProfiles()) {
+                if (profile == null) continue;
+                Object name = profile.getOrDefault("character_name", profile.get("characterName"));
+                if (name == null) continue;
+                sb.append("- ").append(name);
+                Object role = profile.getOrDefault("role_position", profile.get("role"));
+                if (role != null) {
+                    sb.append("（").append(role).append(")");
+                }
+                Object trait = profile.get("extreme_trait");
+                if (trait != null) {
+                    sb.append(" | 特质：").append(trait);
+                }
+                sb.append("\n");
+            }
+            messages.add(createMessage("system", sb.toString()));
+        }
+
+        // 3.6 历史事件与未回收伏笔（relevantEvents / unresolvedForeshadows）
+        if (context.getRelevantEvents() != null && !context.getRelevantEvents().isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("【历史事件概览】\n");
+            for (com.novel.agentic.model.GraphEntity event : context.getRelevantEvents()) {
+                Map<String, Object> props = event.getProperties();
+                sb.append("- [第").append(event.getChapterNumber()).append("章] ")
+                  .append(String.valueOf(props.getOrDefault("description", "事件描述")))
+                  .append("\n");
+            }
+            messages.add(createMessage("system", sb.toString()));
+        }
+
+        if (context.getUnresolvedForeshadows() != null && !context.getUnresolvedForeshadows().isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("【待回收伏笔】\n");
+            for (com.novel.agentic.model.GraphEntity f : context.getUnresolvedForeshadows()) {
+                Map<String, Object> props = f.getProperties();
+                sb.append("- ")
+                  .append(String.valueOf(props.getOrDefault("description", "伏笔描述")))
+                  .append("\n");
+            }
+            messages.add(createMessage("system", sb.toString()));
+        }
+
+        // 3.7 核心记忆账本（角色状态 / 关系 / 未决任务）
+        if (context.getCharacterStates() != null && !context.getCharacterStates().isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("【角色状态账本】\n");
+            for (Map<String, Object> st : context.getCharacterStates()) {
+                if (st == null) continue;
+                Object name = st.get("name");
+                if (name == null) continue;
+                sb.append("- ").append(name).append("：");
+                Object status = st.get("status");
+                if (status != null) sb.append(status).append("；");
+                Object location = st.get("location");
+                if (location != null) sb.append("位置：").append(location).append("；");
+                Object characterInfo = st.get("characterInfo");
+                if (characterInfo != null && !characterInfo.toString().trim().isEmpty()) {
+                    sb.append("人物信息：").append(characterInfo).append("；");
+                }
+                sb.append("\n");
+            }
+            messages.add(createMessage("system", sb.toString()));
+        }
+
+        if (context.getRelationshipStates() != null && !context.getRelationshipStates().isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("【关系状态账本】\n");
+            for (Map<String, Object> rel : context.getRelationshipStates()) {
+                if (rel == null) continue;
+                Object a = rel.get("a");
+                Object b = rel.get("b");
+                Object type = rel.get("type");
+                if (a == null || b == null) continue;
+                sb.append("- ").append(a).append(" ↔ ").append(b);
+                if (type != null) sb.append("（").append(type).append(")");
+                sb.append("\n");
+            }
+            messages.add(createMessage("system", sb.toString()));
+        }
+
+        // 🔕 注释掉未决任务：剧情按章纲发展，未决任务容易干扰AI写作
+        // if (context.getOpenQuests() != null && !context.getOpenQuests().isEmpty()) {
+        //     StringBuilder sb = new StringBuilder();
+        //     sb.append("【未决任务】\n");
+        //     for (Map<String, Object> q : context.getOpenQuests()) {
+        //         if (q == null) continue;
+        //         Object desc = q.get("description");
+        //         if (desc != null) {
+        //             sb.append("- ").append(desc).append("\n");
+        //         }
+        //     }
+        //     messages.add(createMessage("system", sb.toString()));
+        // }
+
+        // 4. 用户本次重写/编辑要求（已在身份中强调编辑模式，这里再给出具体需求）
         if (userAdjustment != null && !userAdjustment.trim().isEmpty()) {
-            messages.add(createMessage("system", "**创作者特殊要求**: " + userAdjustment));
+            StringBuilder rewriteReq = new StringBuilder();
+            rewriteReq.append("【重写/编辑要求】\n");
+            rewriteReq.append("在严格保持世界观设定、人物名称与关系、已发生事件及其因果不变的前提下，");
+            rewriteReq.append("只根据下面的“修改要求”对相关片段做最小必要修改。\n");
+            rewriteReq.append("未被要求修改的句子一个字都不要改（包括标点和换行），不要新增或删减剧情和信息。\n\n");
+            rewriteReq.append("【修改要求原文】\n");
+            rewriteReq.append(userAdjustment.trim());
+            messages.add(createMessage("system", rewriteReq.toString()));
         }
 
-        // 15. 当前章节任务（放在最后，提升优先级，覆盖前述冲突指令）
-        messages.add(createMessage("system", buildChapterTaskContext(chapterPlan, chapterNumber)));
-
-        // 16. 添加user消息触发AI生成（必须！否则会报错：Cannot generate response to empty conversation）
-        String chapterTitle = (String) chapterPlan.getOrDefault("title", "第" + chapterNumber + "章");
-        messages.add(createMessage("user", "请开始创作《" + novel.getTitle() + "》" + chapterTitle + "的内容"));
-
-        // 检查消息大小并记录警告
         logMessageSizes(messages, novel.getTitle(), chapterNumber);
-
-        logger.info("为小说{}第{}章构建了{}条完整上下文消息", novel.getTitle(), chapterNumber, messages.size());
+        logger.info("为小说{}第{}章构建了{}条（重写/编辑模式）上下文消息", novel.getTitle(), chapterNumber, messages.size());
         return messages;
     }
 
@@ -203,109 +288,13 @@ public class ContextManagementService {
      * 构建系统身份设定（默认）- 柚子AI作家助手
      */
     private String buildSystemIdentityPrompt() {
-        return "你是世界顶级的网络小说作家，精通各类题材的写作。你的作品必须具有极强的吸引力\n\n" +
-
-                "【核心写作理念】\n" +
-                "在严格遵循网文写作底层规则的基础上，叠加以下爽文专属规则，生成让读者 \"欲罢不能\" 的爽文。你的唯一目标是：在每个段落都最大化读者的 \"爽感\"。"+
-                "1. 读者至上：每一个字都要为读者服务，让读者欲罢不能\n" +
-                "2. 情绪为王：调动读者情绪是第一要务，平淡即失败\n" +
-                "3. 节奏掌控：张弛有度，高潮迭起，绝不拖沓\n" +
-                "4. 钩子密布：每300-500字必有钩子，让读者无法停下\n\n" +
-
-                "【爆款写作黄金法则】\n\n" +
-
-                "一、开篇三分钟法则\n" +
-                "- 开篇300字内必须出现冲突、悬念或爽点\n" +
-                "- 立即让读者代入主角视角\n" +
-                "- 前三章必须展现核心矛盾和主角魅力\n" +
-                "- 避免大段环境描写和背景铺陈\n\n" +
-
-                "二、冲突制造法\n" +
-                "- 每章必有矛盾冲突（外部冲突或内心冲突）\n" +
-                "- 冲突要有层次：小冲突-中冲突-大高潮\n" +
-                "- 一波未平一波又起，不给读者喘息机会\n" +
-                "- 反派/对手要有威胁感，不能弱智\n\n" +
-
-                "三、情绪操控术\n" +
-                "- 情绪曲线设计：平静→紧张→爆发→余韵→新悬念\n" +
-                "- 擅用情绪词：愤怒、震惊、恐惧、兴奋、期待\n" +
-                "- 关键时刻要有情绪爆发点\n" +
-                "- 对话和动作要传递强烈情绪\n\n" +
-
-                "四、人物塑造法\n" +
-                "- 主角必须有明确的目标和动机\n" +
-                "- 给主角独特的性格标签（不能千篇一律）\n" +
-                "- 配角要有记忆点，不能工具人化\n" +
-                "- 通过对话和行动展现性格，少用旁白解释\n\n" +
-
-                "五、对话黄金律\n" +
-                "- 对话占比30-50%，是推动剧情的主力\n" +
-                "- 每句对话都要有目的：推进剧情/展现性格/制造冲突\n" +
-                "- 对话要有人物特色，不能千人一面\n" +
-                "- 避免说教式对话，多用口语化表达\n" +
-                "- 对话后的动作描写要自然\n\n" +
-
-                "六、节奏控制法\n" +
-                "- 快节奏场景：对话+短句+动作，制造紧张感\n" +
-                "- 慢节奏场景：适当增加环境和心理，营造氛围\n" +
-                "- 关键情节要慢镜头，强化感染力\n" +
-                "- 过渡剧情要简洁，能省则省\n\n" +
-
-                "七、钩子布局法\n" +
-                "- 章末必留悬念：反转、危机、疑问、期待\n" +
-                "- 每隔300-500字设置一个小钩子\n" +
-                "- 伏笔要巧妙，回收要有爽感\n" +
-                "- 悬念要分层：短期悬念+中期悬念+长期悬念\n\n" +
-
-                "八、爽点设计法\n" +
-                "- 了解目标读者的爽点类型（打脸/逆袭/获得/成长等）\n" +
-                "- 爽点要有铺垫，先抑后扬效果最佳\n" +
-                "- 爽点密度适中，过密会疲劳\n" +
-                "- 每个爽点要有情绪高潮\n\n" +
-
-                "九、场景描写法\n" +
-                "- 环境描写要为剧情服务，不能纯景物描写\n" +
-                "- 调动五感：视觉、听觉、触觉、嗅觉、味觉\n" +
-                "- 场景要有代入感，让读者身临其境\n" +
-                "- 关键场景要细腻，过渡场景要简略\n\n" +
-
-                "十、语言精炼法\n" +
-                "- 能用短句不用长句，关键时刻多用短句\n" +
-                "- 删除所有废话：冗余的形容词、重复的表达、无意义的过渡\n" +
-                "- 动词要有力，避免【是】【有】等弱动词\n" +
-                "- 多用具体描写，少用抽象概念\n\n" +
-
-                "【语言风格要求】\n\n" +
-                "1. 自然流畅\n" +
-                "- 避免AI腔调：意识到、感觉到、明白、似乎、仿佛等\n" +
-                "- 避免套路表达：嘴角上扬、眼中闪过、心中一震等\n" +
-                "- 用口语化、接地气的表达\n\n" +
-
-                "2. 生动形象\n" +
-                "- 多用动态描写，少用静态描写\n" +
-                "- 用具体细节替代抽象概括\n" +
-                "- 善用比喻但要新颖，避免陈词滥调\n\n" +
-
-                "3. 节奏感强\n" +
-                "- 长短句结合，制造韵律感\n" +
-                "- 关键句子独立成段，强化冲击力\n" +
-                "- 对话独立成段，提高可读性\n\n" +
-
-                "【绝对禁忌】\n\n" +
-                "1. 禁止说教和灌输价值观\n" +
-                "2. 禁止大段心理独白和自我分析\n" +
-                "3. 禁止无意义的环境描写和氛围营造\n" +
-                "4. 禁止让主角傻白甜或圣母\n" +
-                "5. 禁止配角智商下线突出主角\n" +
-                "6. 禁止拖沓重复，浪费读者时间\n" +
-                "7. 禁止逻辑混乱和前后矛盾\n" +
-
-
-                "【执行要求】\n" +
-                "1. 严格遵循以上所有规则\n" +
-                "2. 每次创作前先思考：这段内容能吸引读者吗？有情绪吗？有冲突吗？有钩子吗？\n" +
-                "3. 写完后自检：删除所有废话，强化所有钩子\n" +
-                "4. 永远记住：商业价值=读者愿意花钱追更的程度";
+        return "你是一名资深网络小说编辑，你的任务不是从零创作新故事，而是在保持世界观设定、人物关系和既有剧情事实完全不变的前提下，对已有章节正文进行精确、克制的修改和精修。\n\n"
+                + "【编辑模式总原则】\n"
+                + "- 严禁更改任何已确定的世界设定、重要事件及其因果关系、人名和称呼；\n"
+                + "- 不新增或删减剧情信息，只在表达层面做优化，或根据明确的“重写/编辑要求”对局部内容做必要调整；\n"
+                + "- 未被要求修改的句子一个字都不要改（包括标点和换行），避免无意义的同义改写；\n"
+                + "- 始终保持叙述视角、人物语气和整体文风与原文及上下文一致；\n"
+                + "- 如发现上下文存在轻微不顺或小问题，可以在不改变剧情走向的前提下做微调，但不得引入新设定或推翻既有内容。";
     }
 
     /**

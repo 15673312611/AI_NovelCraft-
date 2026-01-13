@@ -2,9 +2,11 @@ import React from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import { Layout, App as AntdApp } from 'antd'
 // 新版组件
-import AppHeader from '@/components/layout/AppHeader.new'
-import AppSider from '@/components/layout/AppSider'
-import HomePage from '@/pages/HomePage.new'
+import ModernLayout from '@/components/layout/ModernLayout'
+import ModernDashboard from '@/components/dashboard/ModernDashboard'
+import ProtectedRoute from '@/components/ProtectedRoute'
+import '@/styles/modern-theme.css'
+
 import LoginPage from '@/pages/LoginPage'
 import RegisterPage from '@/pages/RegisterPage'
 import NovelListPage from '@/pages/NovelListPage.new'
@@ -23,9 +25,11 @@ import WelcomeGuide from '@/pages/WelcomeGuide'
 import AIChatPage from '@/pages/AIChatPage'
 import GeneratorListPage from '@/pages/GeneratorListPage'
 import WritingStudioPage from '@/pages/WritingStudioPage'
+import IdeaInputPage from '@/pages/IdeaInputPage'
+import OutlineGenerationPage from '@/pages/OutlineGenerationPage'
+import VolumeGenerationPage from '@/pages/VolumeGenerationPage'
 import './App.new.css'
 
-const { Content } = Layout
 
 const App: React.FC = () => {
   const location = useLocation()
@@ -42,9 +46,9 @@ const App: React.FC = () => {
         // 写作页面:全屏模式,无导航栏和侧边栏
         <Layout className="app-layout" style={{ height: '100vh' }}>
           <Routes>
-            <Route path="/novels/:novelId/writing" element={<NovelCraftStudio />} />
-            <Route path="/novels/:novelId/volumes/:volumeId/writing" element={<VolumeWritingStudio />} />
-            <Route path="/novels/:novelId/writing-studio" element={<WritingStudioPage />} />
+            <Route path="/novels/:novelId/writing" element={<ProtectedRoute><NovelCraftStudio /></ProtectedRoute>} />
+            <Route path="/novels/:novelId/volumes/:volumeId/writing" element={<ProtectedRoute><VolumeWritingStudio /></ProtectedRoute>} />
+            <Route path="/novels/:novelId/writing-studio" element={<ProtectedRoute><WritingStudioPage /></ProtectedRoute>} />
           </Routes>
         </Layout>
       ) : isAuthPage ? (
@@ -56,32 +60,24 @@ const App: React.FC = () => {
           </Routes>
         </Layout>
       ) : (
-        // 普通页面:显示导航栏和侧边栏
-        <Layout className="app-layout">
-          <AppHeader />
-          <Layout>
-            <AppSider />
-            <Layout>
-              <Content className="app-content">
-                <Routes>
-                  <Route path="/" element={<HomePage />} />
-                  <Route path="/novels" element={<NovelListPage />} />
-                  <Route path="/novels/new" element={<NovelCreateWizard />} />
-                  <Route path="/novels/:id/edit" element={<NovelEditPage />} />
-                  <Route path="/novels/:novelId/editor" element={<NovelEditorPage />} />
-                  <Route path="/novels/:novelId/volumes" element={<VolumeManagementPage />} />
-                  <Route path="/welcome" element={<WelcomeGuide />} />
-                  <Route path="/profile" element={<ProfilePage />} />
-                  <Route path="/settings" element={<SettingsPage />} />
-                  <Route path="/ai-control-panel" element={<AIControlPanelPage />} />
-                  <Route path="/prompt-library" element={<PromptLibraryPage />} />
-                  <Route path="/ai-generators" element={<GeneratorListPage />} />
-                  <Route path="/ai-chat" element={<AIChatPage />} />
-                </Routes>
-              </Content>
-            </Layout>
-          </Layout>
-        </Layout>
+        // 普通页面:显示现代布局
+        <ModernLayout>
+          <Routes>
+            <Route path="/" element={<ProtectedRoute><ModernDashboard /></ProtectedRoute>} />
+            <Route path="/novels" element={<ProtectedRoute><NovelListPage /></ProtectedRoute>} />
+            <Route path="/novels/new" element={<ProtectedRoute><NovelCreateWizard /></ProtectedRoute>} />
+            <Route path="/novels/:id/edit" element={<ProtectedRoute><NovelEditPage /></ProtectedRoute>} />
+            <Route path="/novels/:novelId/editor" element={<ProtectedRoute><NovelEditorPage /></ProtectedRoute>} />
+            <Route path="/novels/:novelId/volumes" element={<ProtectedRoute><VolumeManagementPage /></ProtectedRoute>} />
+            <Route path="/welcome" element={<ProtectedRoute><WelcomeGuide /></ProtectedRoute>} />
+            <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+            <Route path="/ai-control-panel" element={<ProtectedRoute><AIControlPanelPage /></ProtectedRoute>} />
+            <Route path="/prompt-library" element={<ProtectedRoute><PromptLibraryPage /></ProtectedRoute>} />
+            <Route path="/ai-generators" element={<ProtectedRoute><GeneratorListPage /></ProtectedRoute>} />
+            <Route path="/ai-chat" element={<ProtectedRoute><AIChatPage /></ProtectedRoute>} />
+          </Routes>
+        </ModernLayout>
       )}
     </AntdApp>
   )

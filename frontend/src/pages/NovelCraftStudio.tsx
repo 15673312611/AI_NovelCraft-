@@ -55,6 +55,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Descriptions, InputNumber, Slider } from 'antd'
 import './NovelCraftStudio.css'
 import api from '@/services/api'
+import { withAIConfig } from '../utils/aiRequest'
 import novelOutlineService from '@/services/novelOutlineService'
 
 const { Title, Text, Paragraph } = Typography
@@ -128,8 +129,8 @@ const NovelCraftStudio: React.FC<NovelCraftStudioProps> = () => {
       const novelData = await api.get(`/novels/${novelId}`)
       setNovel((novelData as any).data || novelData)
       
-    } catch (error) {
-      message.error('加载小说信息失败')
+    } catch (error: any) {
+      message.error(error?.message || '加载小说信息失败')
     } finally {
       setLoading(false)
     }
@@ -213,8 +214,8 @@ const NovelCraftStudio: React.FC<NovelCraftStudioProps> = () => {
       } else {
         throw new Error(result?.message || `${taskName}接口返回异常`)
       }
-    } catch (error) {
-      message.error(`启动${taskName}失败`)
+    } catch (error: any) {
+      message.error(error?.message || `启动${taskName}失败`)
       if (!customTaskId) {
         setTaskModalOpen(false)
       }
@@ -256,9 +257,9 @@ const NovelCraftStudio: React.FC<NovelCraftStudioProps> = () => {
           // 继续轮询
           setTimeout(poll, 2000)
         }
-      } catch (error) {
+      } catch (error: any) {
         if (showModal) {
-          message.error('查询任务状态失败')
+          message.error(error?.message || '查询任务状态失败')
           setTaskModalOpen(false)
         } else {
           console.warn('查询任务状态失败:', error)
@@ -478,7 +479,7 @@ const NovelCraftStudio: React.FC<NovelCraftStudioProps> = () => {
           const totalWords = chapters * wordsPerChapter
           const volumeCount = Math.max(1, Math.min(10, Math.round(totalWords / 200000)))
           console.log('[confirmOutline] fallback trigger generate-from-outline, volumeCount=', volumeCount)
-          await api.post(`/volumes/${novelId}/generate-from-outline`, { volumeCount })
+          await api.post(`/volumes/${novelId}/generate-from-outline`, withAIConfig({ volumeCount }))
           message.success(`已触发卷规划生成（兜底），约${volumeCount}卷`)
         }
       } catch (e) {
@@ -559,8 +560,8 @@ const NovelCraftStudio: React.FC<NovelCraftStudioProps> = () => {
         throw new Error(result?.message || '对话接口返回异常')
       }
       
-    } catch (error) {
-      message.error('AI对话失败')
+    } catch (error: any) {
+      message.error(error?.message || 'AI对话失败')
       // 添加错误消息到聊天历史
       const errorMessage = { 
         role: 'assistant', 

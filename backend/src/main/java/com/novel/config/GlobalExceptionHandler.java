@@ -97,7 +97,22 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 处理其他未捕获的异常
+     * 处理字数点不足异常
+     */
+    @ExceptionHandler(com.novel.exception.InsufficientCreditsException.class)
+    public ResponseEntity<Map<String, Object>> handleInsufficientCreditsException(com.novel.exception.InsufficientCreditsException e) {
+        logger.warn("字数点不足: {}", e.getMessage());
+        
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("error", "字数点不足");
+        errorResponse.put("message", e.getMessage());
+        errorResponse.put("code", "INSUFFICIENT_CREDITS");
+        
+        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(errorResponse);
+    }
+
+    /**
+     * 处理权限异常
      */
     @ExceptionHandler(SecurityException.class)
     public ResponseEntity<Map<String, Object>> handleSecurityException(SecurityException e) {
@@ -110,6 +125,25 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse);
     }
 
+    /**
+     * 处理通用RuntimeException（不包括已特殊处理的）
+     */
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<Map<String, Object>> handleRuntimeException(RuntimeException e) {
+        logger.error("Runtime异常: {}", e.getMessage(), e);
+        
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("error", "操作失败");
+        // 对于RuntimeException，直接返回具体错误信息，方便前端展示
+        errorResponse.put("message", e.getMessage() != null ? e.getMessage() : "操作失败，请稍后重试");
+        errorResponse.put("timestamp", System.currentTimeMillis());
+        
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+    }
+
+    /**
+     * 处理所有未捕获的异常（兼底）
+     */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneralException(Exception e) {
         logger.error("系统异常: {}", e.getMessage(), e);

@@ -25,6 +25,11 @@ public class AIConfigRequest {
      * API基础URL（可选，某些服务商需要）
      */
     private String baseUrl;
+    
+    /**
+     * 温度参数（可选，0-2范围）
+     */
+    private Double temperature;
 
     // 默认构造函数
     public AIConfigRequest() {
@@ -69,6 +74,14 @@ public class AIConfigRequest {
 
     public void setBaseUrl(String baseUrl) {
         this.baseUrl = baseUrl;
+    }
+
+    public Double getTemperature() {
+        return temperature;
+    }
+
+    public void setTemperature(Double temperature) {
+        this.temperature = temperature;
     }
 
     /**

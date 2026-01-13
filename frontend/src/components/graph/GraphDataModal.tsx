@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Modal, Tabs, Table, Tag, Spin, message, Empty, Form, Input, InputNumber, Select, Button } from 'antd'
-import { NodeIndexOutlined, LinkOutlined, AimOutlined, GlobalOutlined, ThunderboltOutlined, UserOutlined, PlusOutlined } from '@ant-design/icons'
+import { NodeIndexOutlined, LinkOutlined, AimOutlined, GlobalOutlined, ThunderboltOutlined, UserOutlined, PlusOutlined, HistoryOutlined } from '@ant-design/icons'
 import api from '@/services/api'
 import './GraphDataModal.css'
 
@@ -15,9 +15,11 @@ interface GraphData {
   characterStates: any[]
   relationshipStates: any[]
   openQuests: any[]
+  events: any[]
   totalCharacterStates: number
   totalRelationshipStates: number
   totalOpenQuests: number
+  totalEvents: number
 }
 
 const toNumber = (value: any): number | null => {
@@ -131,6 +133,25 @@ const GraphDataModal: React.FC<GraphDataModalProps> = ({ visible, novelId, novel
       },
     },
     {
+      title: '人物信息',
+      dataIndex: 'characterInfo',
+      key: 'characterInfo',
+      width: 200,
+      render: (characterInfo: any, record: any) => {
+        const key = `${record.name}_${record.chapter}`
+        const isEditing = editingCharacterKey === key
+        return isEditing ? (
+          <Form.Item name="characterInfo" style={{ margin: 0 }}>
+            <Input.TextArea size="small" placeholder="如：黑化值：87/100" rows={2} />
+          </Form.Item>
+        ) : (
+          <span style={{ fontSize: '12px', color: characterInfo ? '#1890ff' : '#999' }}>
+            {characterInfo || '暂无'}
+          </span>
+        )
+      },
+    },
+    {
       title: '状态',
       dataIndex: 'alive',
       key: 'alive',
@@ -240,6 +261,7 @@ const GraphDataModal: React.FC<GraphDataModalProps> = ({ visible, novelId, novel
       name: record.name,
       location: record.location,
       realm: record.realm,
+      characterInfo: record.characterInfo,
       alive: record.alive,
       chapter: record.chapter,
     })
@@ -254,6 +276,7 @@ const GraphDataModal: React.FC<GraphDataModalProps> = ({ visible, novelId, novel
         name: values.name,
         location: values.location,
         realm: values.realm,
+        characterInfo: values.characterInfo,
         alive: values.alive,
         chapter: values.chapter,
       }
@@ -291,6 +314,7 @@ const GraphDataModal: React.FC<GraphDataModalProps> = ({ visible, novelId, novel
         name: values.name,
         location: values.location,
         realm: values.realm,
+        characterInfo: values.characterInfo,
         alive: values.alive ?? true,
         chapter: values.chapter ?? 0,
       }
@@ -795,6 +819,99 @@ const GraphDataModal: React.FC<GraphDataModalProps> = ({ visible, novelId, novel
     }
   }
 
+  const eventColumns = [
+    {
+      title: '章节',
+      dataIndex: 'chapter',
+      key: 'chapter',
+      width: 80,
+      sorter: (a: any, b: any) => (toNumber(a.chapter) || 0) - (toNumber(b.chapter) || 0),
+      render: (chapter: any) => <Tag color="blue">第{chapter}章</Tag>,
+    },
+    {
+      title: '事件摘要',
+      dataIndex: 'summary',
+      key: 'summary',
+      ellipsis: true,
+      render: (summary: any) => summary || '-',
+    },
+    {
+      title: '地点',
+      dataIndex: 'location',
+      key: 'location',
+      width: 120,
+      ellipsis: true,
+      render: (location: any) => location ? <Tag color="green">{location}</Tag> : '-',
+    },
+    {
+      title: '参与者',
+      dataIndex: 'participants',
+      key: 'participants',
+      width: 150,
+      render: (participants: any) => {
+        const participantArray = toStringArray(participants)
+        return participantArray.length > 0 ? (
+          <span>
+            {participantArray.slice(0, 3).map((p, idx) => (
+              <Tag key={idx} color="purple" style={{ marginBottom: 4 }}>
+                {p}
+              </Tag>
+            ))}
+            {participantArray.length > 3 && <span>+{participantArray.length - 3}</span>}
+          </span>
+        ) : '-'
+      },
+    },
+    {
+      title: '重要性',
+      dataIndex: 'importance',
+      key: 'importance',
+      width: 100,
+      sorter: (a: any, b: any) => (toNumber(a.importance) || 0) - (toNumber(b.importance) || 0),
+      render: (importance: any) => {
+        const val = toNumber(importance)
+        if (val === null) return '-'
+        const color = val >= 0.8 ? 'red' : val >= 0.6 ? 'orange' : 'default'
+        return <Tag color={color}>{val.toFixed(2)}</Tag>
+      },
+    },
+    {
+      title: '情感基调',
+      dataIndex: 'emotionalTone',
+      key: 'emotionalTone',
+      width: 100,
+      render: (tone: any) => {
+        if (!tone) return '-'
+        const colorMap: any = {
+          positive: 'green',
+          negative: 'red',
+          neutral: 'default',
+          tense: 'orange',
+        }
+        return <Tag color={colorMap[tone] || 'default'}>{tone}</Tag>
+      },
+    },
+    {
+      title: '标签',
+      dataIndex: 'tags',
+      key: 'tags',
+      width: 180,
+      render: (tags: any) => {
+        const tagArray = toStringArray(tags)
+        return tagArray.length > 0 ? (
+          <span>
+            {tagArray.slice(0, 3).map((tag, idx) => (
+              <Tag key={idx} color="cyan" style={{ marginBottom: 4 }}>
+                {tag}
+              </Tag>
+            ))}
+            {tagArray.length > 3 && <span>...</span>}
+          </span>
+        ) : '-'
+      },
+    },
+  ]
+
   const tabItems = [
     {
       key: 'characterStates',
@@ -889,6 +1006,40 @@ const GraphDataModal: React.FC<GraphDataModalProps> = ({ visible, novelId, novel
         </div>
       ),
     },
+    {
+      key: 'events',
+      label: (
+        <span>
+          <HistoryOutlined /> 历史事件 ({graphData?.totalEvents || 0})
+        </span>
+      ),
+      children: (
+        <div>
+          {graphData?.events && graphData.events.length > 0 ? (
+            <Table
+              columns={eventColumns}
+              dataSource={graphData.events}
+              rowKey={(record) => record.id || Math.random()}
+              pagination={{ pageSize: 10 }}
+              size="small"
+              bordered
+              expandable={{
+                expandedRowRender: (record) => (
+                  <div style={{ padding: '8px 16px', backgroundColor: '#fafafa' }}>
+                    <p style={{ margin: '4px 0' }}>
+                      <strong>详细描述：</strong>
+                      {record.description || '无'}
+                    </p>
+                  </div>
+                ),
+              }}
+            />
+          ) : (
+            <Empty description="暂无历史事件数据" />
+          )}
+        </div>
+      ),
+    },
   ]
 
   return (
@@ -932,6 +1083,13 @@ const GraphDataModal: React.FC<GraphDataModalProps> = ({ visible, novelId, novel
           </Form.Item>
           <Form.Item label="境界" name="realm">
             <Input placeholder="请输入境界（可选）" />
+          </Form.Item>
+          <Form.Item label="人物信息" name="characterInfo">
+            <Input.TextArea 
+              placeholder="如：黑化值：87/100；对主角好感度：40/100" 
+              rows={3}
+              autoSize={{ minRows: 2, maxRows: 4 }}
+            />
           </Form.Item>
           <Form.Item label="是否存活" name="alive" initialValue={true}>
             <Select>

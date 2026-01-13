@@ -1,288 +1,576 @@
+/* ==========================================
+   提示词库页面
+   ========================================== */
+
 .prompt-library-page {
-  background: #fafbfc;
-  padding: 4vh 4vw;
+  width: 100%;
 }
 
 .prompt-library-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  position: relative;
-  z-index: 1;
+  width: 100%;
 }
 
-.prompt-library-header {
+/* ==========================================
+   页面头部
+   ========================================== */
+.prompt-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
   margin-bottom: 32px;
 }
 
-.prompt-library-header h1 {
+.prompt-header-left h1 {
   font-size: 32px;
   font-weight: 700;
-  color: #1a202c;
-  margin-bottom: 8px;
-  letter-spacing: -0.5px;
+  color: #0f172a;
+  margin: 0 0 8px 0;
+  letter-spacing: -0.025em;
 }
 
-.prompt-library-header p {
-  font-size: 16px;
-  color: #718096;
+.prompt-header-left p {
+  font-size: 15px;
+  color: #64748b;
+  margin: 0;
 }
 
-.prompt-tabs {
-  background: white;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-  padding: 24px;
-  min-height: 500px;
+.prompt-create-btn {
+  height: 44px !important;
+  padding: 0 24px !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  border-radius: 12px !important;
+  background: #0f172a !important;
+  border: none !important;
+  transition: all 0.2s ease !important;
 }
 
-.prompt-tabs :global(.ant-tabs-nav) {
-  margin-bottom: 24px;
+.prompt-create-btn:hover {
+  background: #1e293b !important;
+  transform: translateY(-1px) !important;
 }
 
-.prompt-tabs :global(.ant-tabs-tab) {
+/* ==========================================
+   Tab 切换
+   ========================================== */
+.prompt-tab-section {
+  margin-bottom: 32px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.prompt-tab-bar {
+  display: flex;
+  gap: 32px;
+}
+
+.prompt-tab-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
   font-size: 15px;
   font-weight: 500;
-  padding: 8px 16px;
+  color: #64748b;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  position: relative;
+  transition: color 0.2s;
 }
 
-.prompt-tabs :global(.ant-tabs-tab:hover) {
-  color: #5a67d8;
+.prompt-tab-item:hover {
+  color: #0f172a;
 }
 
-.prompt-tabs :global(.ant-tabs-tab-active) {
-  color: #5a67d8 !important;
+.prompt-tab-item.active {
+  color: #0f172a;
   font-weight: 600;
 }
 
-.prompt-tabs :global(.ant-tabs-ink-bar) {
+.prompt-tab-item.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
   height: 2px;
-  background: #5a67d8;
+  background: #0f172a;
+  border-radius: 2px 2px 0 0;
 }
 
+.prompt-tab-item .anticon {
+  font-size: 16px;
+}
+
+/* ==========================================
+   卡片网格
+   ========================================== */
 .prompt-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 24px;
 }
 
+/* ==========================================
+   模板卡片
+   ========================================== */
 .prompt-card {
-  background: white;
+  background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 20px;
-  transition: all 0.2s ease;
+  border-radius: 16px;
+  padding: 24px;
   cursor: pointer;
-  position: relative;
+  transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
-  min-height: 180px;
+  min-height: 200px;
 }
 
 .prompt-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  border-color: #cbd5e0;
-}
-
-.prompt-card.official {
-  border-left: 3px solid #f59e0b;
-}
-
-.prompt-card.custom {
-  border-left: 3px solid #8b5cf6;
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
 }
 
 .prompt-card-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
-.prompt-card-title {
-  font-size: 17px;
-  font-weight: 600;
-  color: #2d3748;
-  margin-bottom: 4px;
-  line-height: 1.4;
+.prompt-card-meta {
+  flex: 1;
 }
 
 .prompt-card-badge {
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
-  border-radius: 4px;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
   font-size: 12px;
-  font-weight: 500;
-  margin-bottom: 10px;
+  font-weight: 600;
+  margin-bottom: 12px;
 }
 
 .prompt-card-badge.official {
-  background: #fef3c7;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
   color: #92400e;
 }
 
 .prompt-card-badge.custom {
-  background: #ede9fe;
-  color: #5b21b6;
+  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+  color: #4338ca;
+}
+
+.prompt-card-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.prompt-card-favorite {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.prompt-card-favorite:hover {
+  background: #fef3c7;
+}
+
+.prompt-card-favorite .anticon {
+  font-size: 18px;
+  color: #cbd5e1;
+  transition: color 0.2s;
+}
+
+.prompt-card-favorite:hover .anticon,
+.prompt-card-favorite .anticon.active {
+  color: #f59e0b;
 }
 
 .prompt-card-description {
   font-size: 14px;
-  color: #718096;
-  line-height: 1.6;
-  margin-bottom: 16px;
+  color: #64748b;
+  line-height: 1.7;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   flex: 1;
+  margin-bottom: 20px;
 }
 
 .prompt-card-footer {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding-top: 12px;
-  border-top: 1px solid #e2e8f0;
+  justify-content: space-between;
+  padding-top: 16px;
+  border-top: 1px solid #f1f5f9;
   margin-top: auto;
-  gap: 8px;
 }
 
-.prompt-card-actions {
-  display: flex;
-  gap: 8px;
+.prompt-use-btn {
+  height: 38px !important;
+  padding: 0 20px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  border-radius: 10px !important;
+  background: #0f172a !important;
+  border: none !important;
+  transition: all 0.2s ease !important;
 }
 
+.prompt-use-btn:hover {
+  background: #1e293b !important;
+}
+
+.prompt-delete-btn {
+  color: #94a3b8 !important;
+  font-size: 14px !important;
+  padding: 0 !important;
+  height: auto !important;
+}
+
+.prompt-delete-btn:hover {
+  color: #ef4444 !important;
+}
+
+/* ==========================================
+   创建新模板卡片
+   ========================================== */
 .create-prompt-card {
-  background: linear-gradient(135deg, #f0f4ff 0%, #e6f0ff 100%);
-  color: #667eea;
+  background: #f8fafc;
+  border: 2px dashed #e2e8f0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   min-height: 200px;
   cursor: pointer;
-  transition: all 0.3s ease;
-  border: 2px dashed #a5b4fc;
-  border-radius: 8px;
-  position: relative;
-  overflow: hidden;
-}
-
-.create-prompt-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  z-index: 0;
-}
-
-.create-prompt-card:hover::before {
-  opacity: 1;
+  transition: all 0.2s ease;
 }
 
 .create-prompt-card:hover {
-  border-color: #667eea;
-  transform: translateY(-4px);
-  box-shadow: 0 8px 16px rgba(102, 126, 234, 0.2);
+  border-color: #cbd5e1;
+  background: #f1f5f9;
 }
 
 .create-prompt-card .anticon {
-  font-size: 40px;
+  font-size: 32px;
+  color: #94a3b8;
   margin-bottom: 12px;
-  position: relative;
-  z-index: 1;
+  transition: color 0.2s;
+}
+
+.create-prompt-card:hover .anticon {
+  color: #64748b;
 }
 
 .create-prompt-card span {
+  font-size: 15px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+/* ==========================================
+   空状态
+   ========================================== */
+.prompt-empty-state {
+  text-align: center;
+  padding: 80px 40px;
+}
+
+.prompt-empty-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 24px;
+  background: #f1f5f9;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+}
+
+.prompt-empty-state h3 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 8px;
+}
+
+.prompt-empty-state p {
+  font-size: 15px;
+  color: #64748b;
+  margin: 0 0 28px;
+}
+
+/* ==========================================
+   加载状态
+   ========================================== */
+.prompt-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 100px 20px;
+}
+
+/* ==========================================
+   弹窗样式
+   ========================================== */
+.prompt-modal .ant-modal-content {
+  border-radius: 16px;
+  padding: 0;
+}
+
+.prompt-modal .ant-modal-header {
+  padding: 24px 24px 0;
+  border-bottom: none;
+}
+
+.prompt-modal .ant-modal-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.prompt-modal .ant-modal-body {
+  padding: 20px 24px;
+}
+
+.prompt-modal .ant-modal-footer {
+  padding: 0 24px 24px;
+  border-top: none;
+}
+
+.prompt-modal .ant-form-item-label > label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.prompt-modal .ant-input,
+.prompt-modal .ant-select-selector {
+  border-radius: 10px !important;
+  border: 1px solid #e2e8f0 !important;
+  height: 44px !important;
+  font-size: 15px !important;
+}
+
+.prompt-modal .ant-input:hover,
+.prompt-modal .ant-select-selector:hover {
+  border-color: #cbd5e1 !important;
+}
+
+.prompt-modal .ant-input:focus,
+.prompt-modal .ant-select-focused .ant-select-selector {
+  border-color: #0f172a !important;
+  box-shadow: none !important;
+}
+
+.prompt-modal textarea.ant-input {
+  height: auto !important;
+  padding: 14px 16px !important;
+  border-radius: 12px !important;
+  line-height: 1.6 !important;
+}
+
+.prompt-modal .ant-btn-primary {
+  background: #0f172a !important;
+  border: none !important;
+  border-radius: 10px !important;
+  height: 44px !important;
+  font-weight: 600 !important;
+}
+
+.prompt-modal .ant-btn-primary:hover {
+  background: #1e293b !important;
+}
+
+.prompt-modal .ant-btn-default {
+  border-radius: 10px !important;
+  height: 44px !important;
+  font-weight: 500 !important;
+}
+
+/* ==========================================
+   详情弹窗
+   ========================================== */
+.prompt-detail-card {
+  padding: 4px 0;
+}
+
+.prompt-detail-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.prompt-detail-badge.official {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  color: #92400e;
+}
+
+.prompt-detail-badge.custom {
+  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+  color: #4338ca;
+}
+
+.prompt-detail-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 24px;
+  line-height: 1.3;
+}
+
+.prompt-detail-section {
+  margin-bottom: 20px;
+}
+
+.prompt-detail-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.prompt-detail-description {
+  font-size: 15px;
+  color: #334155;
+  line-height: 1.7;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 12px;
+}
+
+.prompt-detail-tip {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  background: #fffbeb;
+  border-radius: 12px;
+  margin-top: 20px;
+}
+
+.prompt-detail-tip-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.prompt-detail-tip-content {
+  flex: 1;
+}
+
+.prompt-detail-tip-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #92400e;
+  margin-bottom: 4px;
+}
+
+.prompt-detail-tip-text {
+  font-size: 13px;
+  color: #a16207;
+  line-height: 1.6;
+}
+
+/* ==========================================
+   选择书籍弹窗
+   ========================================== */
+.novel-select-card {
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 12px;
+  background: #fff;
+}
+
+.novel-select-card:hover {
+  border-color: #0f172a;
+}
+
+.novel-select-card.selected {
+  border-color: #0f172a;
+  background: #f8fafc;
+}
+
+.novel-select-card-title {
   font-size: 16px;
   font-weight: 600;
-  position: relative;
-  z-index: 1;
+  color: #0f172a;
+  margin-bottom: 4px;
 }
 
-.empty-state {
-  text-align: center;
-  padding: 60px 20px;
-  color: #a0aec0;
-}
-
-.empty-state .anticon {
-  font-size: 64px;
-  margin-bottom: 16px;
-  opacity: 0.3;
-  color: #cbd5e0;
-}
-
-.empty-state p {
-  font-size: 15px;
-  margin-bottom: 24px;
-  color: #718096;
-}
-
-.empty-state button {
-  height: 36px;
-  padding: 0 24px;
+.novel-select-card-meta {
   font-size: 14px;
-  font-weight: 500;
-  border-radius: 6px;
+  color: #64748b;
 }
 
-/* 响应式设计 */
-@media (max-width: 1200px) {
-  .prompt-grid {
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  }
+.novel-select-check {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #0f172a;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
 }
 
+/* ==========================================
+   响应式
+   ========================================== */
 @media (max-width: 768px) {
-  .prompt-library-page {
-    padding: 40px 16px;
+  .prompt-page-header {
+    flex-direction: column;
+    gap: 16px;
   }
 
-  .prompt-library-header h1 {
-    font-size: 36px;
+  .prompt-header-left h1 {
+    font-size: 26px;
   }
 
-  .prompt-library-header p {
-    font-size: 16px;
+  .prompt-create-btn {
+    width: 100%;
   }
 
-  .prompt-tabs {
-    padding: 20px;
+  .prompt-tab-bar {
+    gap: 24px;
+  }
+
+  .prompt-tab-item {
+    font-size: 14px;
   }
 
   .prompt-grid {
     grid-template-columns: 1fr;
-    gap: 16px;
   }
 
   .prompt-card {
     padding: 20px;
   }
 }
-
-/* 滚动条美化 */
-.prompt-tabs::-webkit-scrollbar {
-  width: 6px;
-}
-
-.prompt-tabs::-webkit-scrollbar-track {
-  background: #f7fafc;
-}
-
-.prompt-tabs::-webkit-scrollbar-thumb {
-  background: #cbd5e0;
-  border-radius: 3px;
-}
-
-.prompt-tabs::-webkit-scrollbar-thumb:hover {
-  background: #a0aec0;
-}
-

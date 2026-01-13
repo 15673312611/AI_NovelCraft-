@@ -11,7 +11,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * 小说创作系统主应用类
  * 
  * @author Novel Creation System
- * @version 1.0.0
+ * @version 1.0.0n
  * @since 2024-01-01
  */
 @SpringBootApplication

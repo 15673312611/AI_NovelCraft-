@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
-import { Typography, Form, Input, Button, Card, message } from 'antd'
-import { ArrowLeftOutlined, RocketOutlined } from '@ant-design/icons'
+import { Form, Input, Button, message } from 'antd'
+import { ArrowLeftOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch } from 'react-redux'
 import { AppDispatch } from '@/store'
@@ -8,12 +8,11 @@ import { createNovel } from '@/store/slices/novelSlice'
 
 import './NovelCreateWizard.new.css'
 
-const { Title, Text } = Typography
 const { TextArea } = Input
 
 interface CreateNovelForm {
   title: string
-  description: string // 这里是构思
+  description: string
 }
 
 const NovelCreateWizard: React.FC = () => {
@@ -26,24 +25,22 @@ const NovelCreateWizard: React.FC = () => {
     try {
       setLoading(true)
 
-      // 使用 Redux 创建新小说（不再传 genre）
       const result = await dispatch(createNovel({
         title: values.title,
         description: values.description,
-        targetTotalChapters: 100, // 默认值
-        wordsPerChapter: 2200, // 默认值
-        plannedVolumeCount: 3, // 默认值
-        totalWordTarget: 300000, // 默认值
+        targetTotalChapters: 100,
+        wordsPerChapter: 2200,
+        plannedVolumeCount: 3,
+        totalWordTarget: 300000,
       })).unwrap()
 
       message.success('小说创建成功！')
       
-      // 跳转到卷规划页面，并传递构思，自动触发大纲生成
       navigate(`/novels/${result.id}/volumes`, {
         state: { initialIdea: values.description, autoGenerate: true }
       })
-    } catch (error) {
-      message.error('创建失败，请重试')
+    } catch (error: any) {
+      message.error(error?.message || '创建失败，请重试')
       console.error('创建错误:', error)
     } finally {
       setLoading(false)
@@ -51,108 +48,87 @@ const NovelCreateWizard: React.FC = () => {
   }
 
   return (
-    <div className="novel-create-wizard">
-      {/* Hero区域 */}
-      <div className="wizard-hero">
-        <div className="hero-content">
-          <Title level={2} className="hero-title">
-            <RocketOutlined className="title-icon" />
-            创建新小说
-          </Title>
-          <Text className="hero-subtitle">
-            简单三步，开启您的创作之旅
-          </Text>
+    <div className="novel-create-page">
+      <div className="novel-create-container">
+        {/* 返回按钮 */}
+        <button className="novel-create-back" onClick={() => navigate('/novels')}>
+          <ArrowLeftOutlined />
+          <span>返回小说列表</span>
+        </button>
+
+        {/* 页面头部 */}
+        <div className="novel-create-header">
+          <h1>创建新小说</h1>
+          <p>输入你的创意构思，AI 将帮你构建完整的故事框架和分卷规划</p>
         </div>
-      </div>
 
-      {/* 表单区域 */}
-      <div className="wizard-container">
-        <Button 
-          icon={<ArrowLeftOutlined />} 
-          onClick={() => navigate('/novels')}
-          className="back-btn"
-        >
-          返回
-        </Button>
-
-        <Card className="wizard-card">
+        {/* 表单 */}
+        <div className="novel-create-form">
           <Form
             form={form}
             layout="vertical"
             onFinish={onFinish}
-            className="wizard-form"
-            initialValues={{}}
           >
-            <div className="form-row">
+            {/* 作品名称 */}
+            <div className="novel-form-group">
+              <label className="novel-form-label">作品名称</label>
               <Form.Item
                 name="title"
-                label={<span className="form-label">作品名称</span>}
                 rules={[
                   { required: true, message: '请输入作品名称' },
-                  { max: 100, message: '名称长度不能超过100个字符' },
+                  { max: 100, message: '名称不能超过100个字符' },
                 ]}
               >
                 <Input 
-                  placeholder="例如：修仙之路" 
-                  size="large"
-                  className="form-input"
+                  placeholder="给你的故事起个名字" 
+                  className="novel-input"
                 />
               </Form.Item>
-
-
             </div>
 
-            <Form.Item
-              name="description"
-              label={<span className="form-label">创作构思</span>}
-              rules={[
-                { required: true, message: '请输入您的创作构思' },
-                { min: 50, message: '构思至少需要50个字符，以便生成更好的大纲' },
-                { max: 3000, message: '构思长度不能超过3000个字符' },
-              ]}
-              extra={<span className="form-extra">详细描述您的故事构思、主要情节、人物设定等，AI将根据这些信息生成大纲</span>}
-            >
-              <TextArea 
-                placeholder="例如：一个现代青年穿越到修仙世界，从无灵根的废柴开始，通过获得神秘系统逐步崛起。故事主要讲述他如何在修仙界中历练成长，最终成为一代强者的故事..." 
-                rows={8}
-                showCount
-                maxLength={3000}
-                className="form-textarea"
-              />
-            </Form.Item>
-
-            <Form.Item className="form-actions">
-              <Button
-                type="primary"
-                htmlType="submit"
-                icon={<RocketOutlined />}
-                loading={loading}
-                size="large"
-                block
-                className="submit-btn"
+            {/* 创作构思 */}
+            <div className="novel-form-group">
+              <label className="novel-form-label">创作构思</label>
+              <Form.Item
+                name="description"
+                rules={[
+                  { required: true, message: '请输入创作构思' },
+                  { min: 50, message: '构思至少需要50个字符' },
+                  { max: 3000, message: '构思不能超过3000个字符' },
+                ]}
               >
-                {loading ? '创建中...' : '确认并生成大纲'}
-              </Button>
-            </Form.Item>
-          </Form>
-        </Card>
+                <TextArea 
+                  placeholder="描述你的故事构思...
 
-        {/* 提示卡片 */}
-        <Card className="tips-card">
-          <div className="tips-content">
-            <div className="tips-icon">💡</div>
-            <div className="tips-text">
-              <Text strong className="tips-title">提示</Text>
-              <Text className="tips-desc">
-                创作构思越详细，AI生成的大纲越精准。建议包含：故事背景、主角设定、核心冲突、大致情节等。
-              </Text>
+可以包含：
+• 故事背景和世界观设定
+• 主角人设和性格特点
+• 核心冲突和矛盾
+• 大致的情节走向" 
+                  showCount
+                  maxLength={3000}
+                  className="novel-textarea"
+                />
+              </Form.Item>
+              <p className="novel-form-hint">
+                构思越详细，AI 生成的大纲和分卷规划越精准
+              </p>
             </div>
-          </div>
-        </Card>
+
+            {/* 提交按钮 */}
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={loading}
+              className="novel-submit-btn"
+            >
+              {loading ? '创建中...' : '开始创作'}
+            </Button>
+          </Form>
+        </div>
       </div>
     </div>
   )
 }
 
 export default NovelCreateWizard
-

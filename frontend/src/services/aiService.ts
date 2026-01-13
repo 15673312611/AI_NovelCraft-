@@ -138,10 +138,15 @@ class AIService {
   /**
    * AI精简 - 流式
    * 优化章节内容，精简冗余片段，加快剧情节奏
+   * @param content 章节内容
+   * @param targetLength 目标字数（可选）
    */
-  async streamlineContentStream(content: string): Promise<Response> {
+  async streamlineContentStream(content: string, targetLength?: number): Promise<Response> {
     const token = localStorage.getItem('token');
-    const requestBody = withAIConfig({ content });
+    const requestBody = withAIConfig({ 
+      content,
+      ...(targetLength ? { targetLength } : {})
+    });
     
     return fetch('/api/ai/streamline-content-stream', {
       method: 'POST',

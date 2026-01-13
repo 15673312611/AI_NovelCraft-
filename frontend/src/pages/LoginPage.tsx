@@ -1,18 +1,11 @@
-import React, { useEffect } from 'react'
-import { Form, Input, Button, Typography, Checkbox, App } from 'antd'
+﻿import React, { useEffect } from 'react'
+import { Form, Input, Button, Checkbox, App } from 'antd'
 import { useNavigate, Link } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { AppDispatch, RootState } from '@/store'
 import { login, clearError } from '@/store/slices/authSlice'
+import WechatLoginButton from '@/components/WechatLoginButton'
 import './LoginPage.css'
-
-const { Title, Text } = Typography
-
-interface LoginForm {
-  usernameOrEmail: string
-  password: string
-  rememberMe: boolean
-}
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate()
@@ -21,9 +14,7 @@ const LoginPage: React.FC = () => {
   const { loading, error, isAuthenticated } = useSelector((state: RootState) => state.auth)
 
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/')
-    }
+    if (isAuthenticated) navigate('/')
   }, [isAuthenticated, navigate])
 
   useEffect(() => {
@@ -33,174 +24,123 @@ const LoginPage: React.FC = () => {
     }
   }, [error, dispatch])
 
-  const onFinish = async (values: LoginForm) => {
+  const onFinish = async (values: any) => {
     try {
       await dispatch(login({
         usernameOrEmail: values.usernameOrEmail,
         password: values.password,
       })).unwrap()
-      
-      message.success('登录成功！')
+      message.success('登录成功')
       navigate('/')
-    } catch (error) {
-      // 错误已经在useEffect中处理
-    }
+    } catch (e) {}
   }
 
   return (
     <div className="login-page">
-      {/* 左侧装饰区域 */}
-      <div className="login-left">
-        <div className="brand-section">
-          <div className="brand-logo">
-            <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
-              <defs>
-                <linearGradient id="logoGradient" x1="0" y1="0" x2="56" y2="56" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stopColor="#FFFFFF" />
-                  <stop offset="100%" stopColor="rgba(255, 255, 255, 0.9)" />
-                </linearGradient>
-                <filter id="glow">
-                  <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-                  <feMerge>
-                    <feMergeNode in="coloredBlur"/>
-                    <feMergeNode in="SourceGraphic"/>
-                  </feMerge>
-                </filter>
-              </defs>
-              <rect width="56" height="56" rx="16" fill="url(#logoGradient)" filter="url(#glow)"/>
-              <path d="M18 16h20v2.5H18v-2.5zm0 7h20v2.5H18v-2.5zm0 7h14v2.5H18v-2.5zm0 7h16v2.5H18v-2.5z" fill="#FF6B35" opacity="0.9" />
-              <path d="M32 32l5-5 2.5 2.5-5 5-2.5-2.5z" fill="#FF9F1C" />
-              <circle cx="34" cy="34" r="1.5" fill="#FFD23F"/>
+      {/* 左侧视觉区 */}
+      <div className="login-visual">
+        <div className="visual-shapes">
+          <div className="shape shape-1" />
+          <div className="shape shape-2" />
+          <div className="shape shape-3" />
+        </div>
+        
+        <div className="visual-content">
+          <div className="visual-logo">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M4 6h16M4 10h16M4 14h12M4 18h14" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
             </svg>
           </div>
-          <h1 className="brand-title">小说创作系统</h1>
-          <p className="brand-description">
-            AI驱动的智能创作平台<br />
-            让每一个故事都精彩绝伦
-          </p>
           
-          <div className="brand-stats">
-            <div className="stat-item">
-              <div className="stat-number">10K+</div>
-              <div className="stat-label">活跃作者</div>
+          <h1 className="visual-title">欢迎回来</h1>
+          <p className="visual-desc">
+            登录你的账户，继续你的创作之旅。AI 助手已准备就绪，随时为你提供灵感。
+          </p>
+
+          <div className="feature-cards">
+            <div className="feature-card">
+              <div className="feature-icon">
+                <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                </svg>
+              </div>
+              <span className="feature-text">智能大纲，快速构建故事结构</span>
             </div>
-            <div className="stat-item">
-              <div className="stat-number">50K+</div>
-              <div className="stat-label">创作作品</div>
+            <div className="feature-card">
+              <div className="feature-icon">
+                <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+              </div>
+              <span className="feature-text">AI 续写润色，提升内容质量</span>
             </div>
-            <div className="stat-item">
-              <div className="stat-number">100M+</div>
-              <div className="stat-label">累计字数</div>
+            <div className="feature-card">
+              <div className="feature-icon">
+                <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                  <line x1="9" y1="9" x2="15" y2="15"/>
+                  <line x1="15" y1="9" x2="9" y2="15"/>
+                </svg>
+              </div>
+              <span className="feature-text">云端同步，随时随地创作</span>
             </div>
           </div>
-        </div>
-
-        {/* 几何装饰 */}
-        <div className="geometric-bg">
-          <div className="geo-line geo-line-1"></div>
-          <div className="geo-line geo-line-2"></div>
-          <div className="geo-circle geo-circle-1"></div>
-          <div className="geo-circle geo-circle-2"></div>
         </div>
       </div>
 
-      {/* 右侧登录表单 */}
-      <div className="login-right">
-        <div className="login-container">
-          <div className="login-header">
-            <Title level={2} className="login-title">
-              欢迎回来
-            </Title>
-            <Text className="login-subtitle">
-              登录您的账户，继续创作之旅
-            </Text>
+      {/* 右侧表单区 */}
+      <div className="login-form-section">
+        <div className="form-container">
+          <div className="form-header">
+            <h2 className="form-title">登录账户</h2>
+            <p className="form-subtitle">还没有账户？<Link to="/register">立即注册</Link></p>
           </div>
 
-          <Form
-            name="login"
-            className="login-form"
-            onFinish={onFinish}
-            autoComplete="off"
-            initialValues={{ rememberMe: true }}
-          >
+          <Form onFinish={onFinish} layout="vertical" requiredMark={false} initialValues={{ remember: true }}>
             <Form.Item
               name="usernameOrEmail"
-              rules={[
-                { required: true, message: '请输入用户名或邮箱' },
-              ]}
+              rules={[{ required: true, message: '请输入用户名或邮箱' }]}
             >
-              <div className="input-wrapper">
-                <label className="input-label">用户名或邮箱</label>
-                <Input
-                  placeholder="请输入用户名或邮箱"
-                  autoComplete="username"
-                  className="modern-input"
-                />
-              </div>
+              <Input placeholder="用户名或邮箱" />
             </Form.Item>
 
             <Form.Item
               name="password"
-              rules={[
-                { required: true, message: '请输入密码' },
-                { min: 6, message: '密码长度不能少于6位' },
-              ]}
+              rules={[{ required: true, message: '请输入密码' }]}
             >
-              <div className="input-wrapper">
-                <label className="input-label">密码</label>
-                <Input.Password
-                  placeholder="请输入密码"
-                  autoComplete="current-password"
-                  className="modern-input"
-                />
-              </div>
+              <Input.Password placeholder="密码" />
             </Form.Item>
 
-            <div className="login-options">
-              <Form.Item name="rememberMe" valuePropName="checked" noStyle>
-                <Checkbox className="modern-checkbox">记住我</Checkbox>
+            <div className="options-row">
+              <Form.Item name="remember" valuePropName="checked" noStyle>
+                <Checkbox>记住我</Checkbox>
               </Form.Item>
-              <Link to="/forgot-password" className="forgot-link">
-                忘记密码？
-              </Link>
+              <Link to="/forgot-password" className="forgot-link">忘记密码？</Link>
             </div>
 
-            <Form.Item style={{ marginTop: '32px' }}>
-              <Button
-                type="primary"
-                htmlType="submit"
-                className="login-button"
-                loading={loading}
-                block
-                size="large"
-              >
-                {loading ? '登录中...' : '登录'}
+            <Form.Item>
+              <Button type="primary" htmlType="submit" loading={loading} block className="submit-btn">
+                登录
               </Button>
             </Form.Item>
-
-            <div className="login-footer">
-              <Text className="footer-text">
-                还没有账户？{' '}
-                <Link to="/register" className="register-link">
-                  立即注册
-                </Link>
-              </Text>
-            </div>
           </Form>
 
-          {/* 底部提示 */}
-          <div className="login-bottom">
-            <Text className="bottom-text">
-              登录即表示您同意我们的
-              <a href="#" className="policy-link">服务条款</a>
-              和
-              <a href="#" className="policy-link">隐私政策</a>
-            </Text>
+          <div className="divider-row">
+            <span>其他登录方式</span>
           </div>
+
+          <div className="social-login">
+            <WechatLoginButton block />
+          </div>
+
+          <p className="terms">
+            登录即表示同意 <a href="#">服务条款</a> 和 <a href="#">隐私政策</a>
+          </p>
         </div>
       </div>
     </div>
   )
 }
 
-export default LoginPage 
+export default LoginPage

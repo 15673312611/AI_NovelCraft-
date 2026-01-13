@@ -120,7 +120,7 @@ public class GraphManagementController {
     }
 
     /**
-     * 更新角色状态（位置 / 境界 / 存活状态）
+     * 更新角色状态（位置 / 境界 / 存活状态 / 人物信息）
      */
     @PutMapping("/character-state")
     public Map<String, Object> updateCharacterState(@RequestBody Map<String, Object> request) {
@@ -132,6 +132,7 @@ public class GraphManagementController {
             String characterName = (String) request.get("name");
             String location = (String) request.get("location");
             String realm = (String) request.get("realm");
+            String characterInfo = (String) request.get("characterInfo");
 
             Boolean alive = null;
             Object aliveObj = request.get("alive");
@@ -142,7 +143,7 @@ public class GraphManagementController {
             Number chapterNum = request.get("chapter") instanceof Number ? (Number) request.get("chapter") : null;
             Integer chapterNumber = chapterNum != null ? chapterNum.intValue() : 0;
 
-            graphService.upsertCharacterState(novelId, characterName, location, realm, alive, chapterNumber);
+            graphService.upsertCharacterStateWithInfo(novelId, characterName, location, realm, alive, characterInfo, chapterNumber);
             return CollectionUtils.mapOf("status", "success", "message", "角色状态已更新");
         } catch (Exception e) {
             logger.error("更新角色状态失败", e);

@@ -169,18 +169,16 @@ const NovelEditPage: React.FC = () => {
             label="小说简介"
             rules={[
               { required: true, message: '请输入小说简介' },
-              { max: 500, message: '简介长度不能超过500个字符' },
+              { max: 1000, message: '简介长度不能超过1000个字符' },
             ]}
           >
             <TextArea 
               placeholder="请输入小说简介" 
               rows={4}
               showCount
-              maxLength={500}
+              maxLength={1000}
             />
           </Form.Item>
-
-
 
           <Form.Item
             name="status"
@@ -243,15 +241,15 @@ const NovelEditPage: React.FC = () => {
               label="计划卷数"
               rules={[
                 { required: true, message: '请输入计划卷数' },
-                { type: 'number', min: 1, max: 20, message: '卷数应在1-20之间' },
+                { type: 'number', min: 3, max: 8, message: '卷数应在3-8之间' },
               ]}
             >
               <InputNumber 
-                placeholder="例如：3" 
+                placeholder="建议3-8卷，默认5卷" 
                 addonAfter="卷"
                 size="large"
-                min={1}
-                max={20}
+                min={3}
+                max={8}
                 style={{ width: '100%' }}
               />
             </Form.Item>

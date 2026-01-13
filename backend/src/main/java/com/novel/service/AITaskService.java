@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.novel.dto.AITaskDto;
 import com.novel.domain.entity.AITask;
 import com.novel.repository.AITaskRepository;
+import com.novel.common.security.AuthUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,8 +55,19 @@ public class AITaskService {
      * 根据ID获取AI任务
      */
     public AITaskDto getTaskById(Long id) {
+        Long currentUserId = AuthUtils.getCurrentUserId();
         AITask task = aiTaskRepository.selectById(id);
-        return task != null ? AITaskDto.fromEntity(task) : null;
+        
+        if (task == null) {
+            return null;
+        }
+        
+        // 验证权限：只能查看自己的任务（系统任务userId为null，允许所有人查看）
+        if (task.getUserId() != null && !task.getUserId().equals(currentUserId)) {
+            throw new RuntimeException("无权查看此任务");
+        }
+        
+        return AITaskDto.fromEntity(task);
     }
 
     /**
@@ -89,25 +101,45 @@ public class AITaskService {
      * 更新AI任务
      */
     public AITaskDto updateTask(Long id, AITask taskDetails) {
+        Long currentUserId = AuthUtils.getCurrentUserId();
         AITask task = aiTaskRepository.selectById(id);
-        if (task != null) {
-            task.setName(taskDetails.getName());
-            task.setType(taskDetails.getType());
-            task.setStatus(taskDetails.getStatus());
-            task.setInput(taskDetails.getInput());
-            task.setOutput(taskDetails.getOutput());
-            task.setParameters(taskDetails.getParameters());
-
-            aiTaskRepository.updateById(task);
-            return AITaskDto.fromEntity(task);
+        
+        if (task == null) {
+            throw new RuntimeException("任务不存在");
         }
-        return null;
+        
+        // 验证权限：只能更新自己的任务（系统任务userId为null，不允许更新）
+        if (task.getUserId() == null || !task.getUserId().equals(currentUserId)) {
+            throw new RuntimeException("无权更新此任务");
+        }
+        
+        task.setName(taskDetails.getName());
+        task.setType(taskDetails.getType());
+        task.setStatus(taskDetails.getStatus());
+        task.setInput(taskDetails.getInput());
+        task.setOutput(taskDetails.getOutput());
+        task.setParameters(taskDetails.getParameters());
+
+        aiTaskRepository.updateById(task);
+        return AITaskDto.fromEntity(task);
     }
 
     /**
      * 删除AI任务
      */
     public void deleteTask(Long id) {
+        Long currentUserId = AuthUtils.getCurrentUserId();
+        AITask task = aiTaskRepository.selectById(id);
+        
+        if (task == null) {
+            throw new RuntimeException("任务不存在");
+        }
+        
+        // 验证权限：只能删除自己的任务（系统任务userId为null，不允许删除）
+        if (task.getUserId() == null || !task.getUserId().equals(currentUserId)) {
+            throw new RuntimeException("无权删除此任务");
+        }
+        
         aiTaskRepository.deleteById(id);
     }
 
@@ -146,44 +178,68 @@ public class AITaskService {
      * 启动任务
      */
     public AITaskDto startTask(Long id) {
+        Long currentUserId = AuthUtils.getCurrentUserId();
         AITask task = aiTaskRepository.selectById(id);
-        if (task != null) {
-            task.setStatus(AITask.AITaskStatus.RUNNING);
-            task.setStartedAt(LocalDateTime.now());
-
-            aiTaskRepository.updateById(task);
-            return AITaskDto.fromEntity(task);
+        
+        if (task == null) {
+            throw new RuntimeException("任务不存在");
         }
-        return null;
+        
+        // 验证权限：只能启动自己的任务（系统任务userId为null，允许启动）
+        if (task.getUserId() != null && !task.getUserId().equals(currentUserId)) {
+            throw new RuntimeException("无权启动此任务");
+        }
+        
+        task.setStatus(AITask.AITaskStatus.RUNNING);
+        task.setStartedAt(LocalDateTime.now());
+
+        aiTaskRepository.updateById(task);
+        return AITaskDto.fromEntity(task);
     }
 
     /**
      * 停止任务
      */
     public AITaskDto stopTask(Long id) {
+        Long currentUserId = AuthUtils.getCurrentUserId();
         AITask task = aiTaskRepository.selectById(id);
-        if (task != null) {
-            task.setStatus(AITask.AITaskStatus.CANCELLED);
-
-            aiTaskRepository.updateById(task);
-            return AITaskDto.fromEntity(task);
+        
+        if (task == null) {
+            throw new RuntimeException("任务不存在");
         }
-        return null;
+        
+        // 验证权限：只能停止自己的任务（系统任务userId为null，允许停止）
+        if (task.getUserId() != null && !task.getUserId().equals(currentUserId)) {
+            throw new RuntimeException("无权停止此任务");
+        }
+        
+        task.setStatus(AITask.AITaskStatus.CANCELLED);
+
+        aiTaskRepository.updateById(task);
+        return AITaskDto.fromEntity(task);
     }
 
     /**
      * 重试任务
      */
     public AITaskDto retryTask(Long id) {
+        Long currentUserId = AuthUtils.getCurrentUserId();
         AITask task = aiTaskRepository.selectById(id);
-        if (task != null) {
-            task.setStatus(AITask.AITaskStatus.PENDING);
-            task.setRetryCount(task.getRetryCount() + 1);
-
-            aiTaskRepository.updateById(task);
-            return AITaskDto.fromEntity(task);
+        
+        if (task == null) {
+            throw new RuntimeException("任务不存在");
         }
-        return null;
+        
+        // 验证权限：只能重试自己的任务（系统任务userId为null，允许重试）
+        if (task.getUserId() != null && !task.getUserId().equals(currentUserId)) {
+            throw new RuntimeException("无权重试此任务");
+        }
+        
+        task.setStatus(AITask.AITaskStatus.PENDING);
+        task.setRetryCount(task.getRetryCount() + 1);
+
+        aiTaskRepository.updateById(task);
+        return AITaskDto.fromEntity(task);
     }
 
     /**

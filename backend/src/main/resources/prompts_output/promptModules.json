@@ -1,7 +1,7 @@
 {
   "baseRules": [
-    { "file": "都市通用正文_-_无需消痕！.txt" }
+    { "file": "古代权谋.txt" }
     ],
-  "stylePrompt": { "file": "都市通用正文_-_无需消痕！.txt" }
+  "stylePrompt": { "file": "古代权谋.txt" }
 }
 

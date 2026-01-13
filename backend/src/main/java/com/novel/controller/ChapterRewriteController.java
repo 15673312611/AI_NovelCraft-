@@ -7,10 +7,8 @@ import com.novel.service.NovelService;
 import com.novel.service.ChapterService;
 import com.novel.service.ContextManagementService;
 import com.novel.domain.entity.Novel;
-import com.novel.domain.entity.Chapter;
 import com.novel.agentic.service.PromptAssembler;
 import com.novel.agentic.service.StructuredMessageBuilder;
-import com.novel.agentic.model.WritingContext;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,7 +17,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.List;
-import java.util.ArrayList;
 
 /**
  * 章节重写控制器
@@ -81,7 +78,6 @@ public class ChapterRewriteController {
             // 提取基本请求参数
             String content = (String) requestMap.get("content");
             String requirements = (String) requestMap.get("requirements");
-            Boolean concise = (Boolean) requestMap.get("concise");
 
             if (content == null || content.trim().isEmpty()) {
                 emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
@@ -133,24 +129,18 @@ public class ChapterRewriteController {
                 }
             }
 
-            boolean isConcise = Boolean.TRUE.equals(concise);
-
             // 构建带上下文的prompt
             String prompt;
             if (chapterNumber != null && chapterNumber > 0) {
-                // 使用上下文增强的prompt
-                prompt = isConcise
-                        ? buildConcisePromptWithContext(novelId, chapterNumber, content)
-                        : buildRewritePromptWithContext(novelId, chapterNumber, content, requirements);
-                log.info("🔄 开始章节重写流式处理（带上下文），章节号: {}, 内容长度: {}, 使用模型: {}, 精炼模式: {}",
-                    chapterNumber, content.length(), aiConfig.getModel(), isConcise);
+                // 使用上下文增强的重写prompt（智能修改）
+                prompt = buildRewritePromptWithContext(novelId, chapterNumber, content, requirements);
+                log.info("🔄 开始章节重写流式处理（带上下文），章节号: {}, 内容长度: {}, 使用模型: {}",
+                    chapterNumber, content.length(), aiConfig.getModel());
             } else {
-                // 降级为简单prompt
-                prompt = isConcise
-                        ? buildConcisePrompt(content)
-                        : buildRewritePrompt(content, requirements);
-                log.info("🔄 开始章节重写流式处理（无上下文），内容长度: {}, 使用模型: {}, 精炼模式: {}",
-                    content.length(), aiConfig.getModel(), isConcise);
+                // 降级为简单重写prompt
+                prompt = buildRewritePrompt(content, requirements);
+                log.info("🔄 开始章节重写流式处理（无上下文），内容长度: {}, 使用模型: {}",
+                    content.length(), aiConfig.getModel());
             }
 
             // 异步执行流式重写
@@ -158,7 +148,7 @@ public class ChapterRewriteController {
                 try {
                     aiWritingService.streamGenerateContent(
                         prompt,
-                        isConcise ? "chapter_concise" : "chapter_rewrite",
+                        "chapter_rewrite",
                         aiConfig,
                         chunk -> {
                             try {
@@ -189,6 +179,120 @@ public class ChapterRewriteController {
 
         } catch (Exception e) {
             log.error("章节重写初始化失败", e);
+            try {
+                emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                    .name("error").data("初始化失败: " + e.getMessage()));
+                emitter.completeWithError(e);
+            } catch (Exception ex) {
+                log.error("发送错误事件失败", ex);
+            }
+        }
+
+        return emitter;
+    }
+
+    @PostMapping(value = "/concise-stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter conciseStream(
+            @PathVariable("novelId") Long novelId,
+            @RequestBody Map<String, Object> requestMap
+    ) {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter =
+            new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(300000L);
+
+        try {
+            String content = (String) requestMap.get("content");
+
+            if (content == null || content.trim().isEmpty()) {
+                emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                    .name("error").data("正文不能为空"));
+                emitter.completeWithError(new Exception("正文不能为空"));
+                return emitter;
+            }
+
+            AIConfigRequest aiConfig = new AIConfigRequest();
+            if (requestMap.containsKey("provider")) {
+                aiConfig.setProvider((String) requestMap.get("provider"));
+                aiConfig.setApiKey((String) requestMap.get("apiKey"));
+                aiConfig.setModel((String) requestMap.get("model"));
+                aiConfig.setBaseUrl((String) requestMap.get("baseUrl"));
+
+                log.info("✅ 章节精炼流式 - 收到AI配置: provider={}, model={}",
+                    aiConfig.getProvider(), aiConfig.getModel());
+            } else if (requestMap.get("aiConfig") instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, String> aiConfigMap = (Map<String, String>) requestMap.get("aiConfig");
+                aiConfig.setProvider(aiConfigMap.get("provider"));
+                aiConfig.setApiKey(aiConfigMap.get("apiKey"));
+                aiConfig.setModel(aiConfigMap.get("model"));
+                aiConfig.setBaseUrl(aiConfigMap.get("baseUrl"));
+            }
+
+            if (!aiConfig.isValid()) {
+                log.error("❌ 章节精炼流式 - AI配置无效: requestMap={}", requestMap);
+                emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                    .name("error").data("AI配置无效，请先在设置页面配置AI服务"));
+                emitter.completeWithError(new Exception("AI配置无效"));
+                return emitter;
+            }
+
+            Integer chapterNumber = null;
+            if (requestMap.containsKey("chapterNumber")) {
+                Object chapterNumObj = requestMap.get("chapterNumber");
+                if (chapterNumObj instanceof Integer) {
+                    chapterNumber = (Integer) chapterNumObj;
+                } else if (chapterNumObj instanceof String) {
+                    try {
+                        chapterNumber = Integer.parseInt((String) chapterNumObj);
+                    } catch (NumberFormatException e) {
+                        log.warn("无法解析章节号: {}", chapterNumObj);
+                    }
+                }
+            }
+
+            String prompt;
+            if (chapterNumber != null && chapterNumber > 0) {
+                prompt = buildConcisePromptWithContext(novelId, chapterNumber, content);
+                log.info("🔄 开始章节精炼流式处理（带上下文），章节号: {}, 内容长度: {}, 使用模型: {}",
+                    chapterNumber, content.length(), aiConfig.getModel());
+            } else {
+                prompt = buildConcisePrompt(content);
+                log.info("🔄 开始章节精炼流式处理（无上下文），内容长度: {}, 使用模型: {}",
+                    content.length(), aiConfig.getModel());
+            }
+
+            java.util.concurrent.CompletableFuture.runAsync(() -> {
+                try {
+                    aiWritingService.streamGenerateContent(
+                        prompt,
+                        "chapter_concise",
+                        aiConfig,
+                        chunk -> {
+                            try {
+                                java.util.Map<String, String> eventData = new java.util.HashMap<>();
+                                eventData.put("content", chunk);
+                                emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                                    .data(eventData));
+                            } catch (Exception e) {
+                                log.error("发送流式数据失败", e);
+                            }
+                        }
+                    );
+                    emitter.complete();
+                    log.info("✅ 章节精炼流式处理完成");
+                } catch (Exception e) {
+                    log.error("章节精炼流式处理失败", e);
+                    try {
+                        emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                            .name("error").data("精炼失败: " + e.getMessage()));
+                        emitter.completeWithError(e);
+                    } catch (Exception ex) {
+                        log.error("发送错误事件失败", ex);
+                    }
+                }
+            });
+
+        } catch (Exception e) {
+            log.error("章节精炼初始化失败", e);
             try {
                 emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
                     .name("error").data("初始化失败: " + e.getMessage()));
@@ -266,17 +370,16 @@ public class ChapterRewriteController {
 
     private String buildRewritePrompt(String content, String userReq) {
         StringBuilder sb = new StringBuilder();
-        sb.append("你是一名资深网络小说编辑，请在严格保持世界设定、人物名称与关系、事件因果不变的前提下，对下文进行高质量重写。\\n");
-        sb.append("目标：节奏更快、信息更密、可读性更强，但整体长度保持在±10%范围内。\\n");
-        sb.append("硬性约束：\\n");
-        sb.append("- 严禁改动任何专有名词（人名、称呼、组织、地名、术语）。\\n");
-        sb.append("- 不改变已发生的情节事实和事件因果，只优化叙述与表达。\\n");
-        sb.append("- 语气、叙述视角与人设一致。\\n");
+        sb.append("你是一名资深网络小说编辑，现在处于【编辑模式】：不是从零重写整章，而是在保持世界设定、人物关系和既有剧情事实完全不变的前提下，对已有正文做精确、克制的修改。\\n\\n");
+        sb.append("【编辑规则】\\n");
+        sb.append("- 只根据“修改要求”相关的内容做最小必要修改；\\n");
+        sb.append("- 未被要求修改的句子一个字都不要改（包括标点和换行），避免无意义的同义改写；\\n");
+        sb.append("- 不新增或删减剧情信息，不引入新设定，不改变事件因果；\\n");
+        sb.append("- 始终保持叙述视角、人物语气和整体文风与原文一致。\\n\\n");
         if (userReq != null && !userReq.trim().isEmpty()) {
-            sb.append("用户额外要求：").append(userReq.trim()).append("\\n");
+            sb.append("【修改要求】\\n").append(userReq.trim()).append("\\n\\n");
         }
-        sb.append("输出：只输出重写后的正文，不要任何解释。\\n\\n");
-        sb.append("【待重写正文】\\n");
+        sb.append("【待修改正文】\\n");
         sb.append(content);
         return sb.toString();
     }
@@ -313,16 +416,16 @@ public class ChapterRewriteController {
                 return buildRewritePrompt(content, userReq);
             }
 
-            // 使用ContextManagementService构建完整上下文（与agentic生成相同）
+            // 使用ContextManagementService构建完整上下文（与agentic生成相同，已调整为编辑模式身份）
             Map<String, Object> chapterPlan = new HashMap<>();
             chapterPlan.put("chapterNumber", chapterNumber);
 
             // 获取完整上下文消息列表
             List<Map<String, String>> contextMessages =
-                contextManagementService.buildFullContextMessages(novel, chapterPlan, null, null);
+                contextManagementService.buildFullContextMessages(novel, chapterPlan, userReq, null);
 
-            // 构建重写prompt
-            sb.append("你是一名资深网络小说编辑，请在严格保持世界设定、人物名称与关系、事件因果不变的前提下，对下文进行高质量重写。\\n\\n");
+            // 构建重写prompt（编辑模式）
+            sb.append("你是一名资深网络小说编辑，下面是与本章相关的上下文信息和编辑/重写要求，请在此基础上对给定正文做“最小必要修改”。\\n\\n");
 
             // 添加所有上下文信息（除了最后的user消息）
             for (Map<String, String> msg : contextMessages) {
@@ -331,18 +434,7 @@ public class ChapterRewriteController {
                 }
             }
 
-            sb.append("【重写要求】\\n");
-            sb.append("目标：节奏更快、信息更密、可读性更强，但整体长度保持在±10%范围内。\\n");
-            sb.append("硬性约束：\\n");
-            sb.append("- 严禁改动任何专有名词（人名、称呼、组织、地名、术语），必须与上下文完全一致。\\n");
-            sb.append("- 不改变已发生的情节事实和事件因果，只优化叙述与表达。\\n");
-            sb.append("- 语气、叙述视角与人设一致。\\n");
-            sb.append("- 人物关系、世界设定必须与上下文保持一致。\\n");
-            if (userReq != null && !userReq.trim().isEmpty()) {
-                sb.append("用户额外要求：").append(userReq.trim()).append("\\n");
-            }
-            sb.append("输出：只输出重写后的正文，不要任何解释。\\n\\n");
-            sb.append("【待重写正文】\\n");
+            sb.append("【待修改正文】\\n");
             sb.append(content);
 
             return sb.toString();

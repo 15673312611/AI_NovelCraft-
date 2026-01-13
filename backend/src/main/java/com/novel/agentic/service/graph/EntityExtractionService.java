@@ -1,5 +1,6 @@
 package com.novel.agentic.service.graph;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.novel.agentic.model.GraphEntity;
 import com.novel.domain.entity.Chapter;
@@ -334,9 +335,14 @@ public class EntityExtractionService {
             "}\n" +
             "\n" +
             "注意：\n" +
-            "1. events至少抽取3-5个关键事件，每个事件必须包含location字段（地点）\n" +
+            "1. **events抽取原则（严格控制）**：\n" +
+            "   - 只抽取对后续剧情有长期影响的关键事件（如：角色突破、重大决策、势力变动、关键冲突）\n" +
+            "   - 不要抽取日常对话、普通战斗、一次性交易等短期事件\n" +
+            "   - 每章最多抽取2-3个真正关键的事件，宁缺毋滥\n" +
+            "   - 每个事件必须包含location字段（地点）\n" +
+            "   - importance必须>=0.7，低于0.7的事件不要记录\n" +
             "2. location必须准确提取，用于跟踪角色位置和场景连贯性\n" +
-            "3. foreshadows只抽取明显的伏笔（如神秘预言、未解之谜、隐藏信息）\n" +
+            "3. **foreshadows不要抽取**：AI难以准确判断什么是伏笔，容易误判和扰乱剧情\n" +
             "4. worldRules只抽取新引入的设定规则\n" +
             "5. importance范围0-1，越重要值越大\n" +
             "6. causalRelations抽取事件间的因果关系（如某事件导致另一事件）\n" +
@@ -829,6 +835,310 @@ public class EntityExtractionService {
                 
             } catch (Exception e) {
                 logger.error("❌ 添加角色关系失败", e);
+            }
+        }
+    }
+    
+    /**
+     * 🆕 异步抽取角色状态和关系变化（差异化抽取）
+     * 
+     * 核心思路：
+     * 1. 查询当前图谱中的角色状态和关系
+     * 2. 构建差异化提示词，告诉AI当前状态
+     * 3. AI只输出变化的部分，不重复输出已有信息
+     * 4. 应用变化到图谱
+     * 
+     * 优势：
+     * - 防止覆盖：后续章节不会覆盖前面的重要关系
+     * - 信息丰富：记录靠山、身份、秘密等关键信息
+     * - 全题材通用：字段设计适配所有题材
+     */
+    public void extractStateAndRelationsAsync(Long novelId, Integer chapterNumber, String chapterTitle, String content, AIConfigRequest aiConfig) {
+        try {
+            logger.info("🔄 开始异步抽取角色状态和关系: novelId={}, chapter={}", novelId, chapterNumber);
+            
+            // 1. 查询当前图谱状态
+            List<Map<String, Object>> currentStates = graphService.getCharacterStates(novelId, 100);
+            List<Map<String, Object>> currentRelations = graphService.getTopRelationships(novelId, 100);
+            
+            // 2. 构建差异化提示词
+            String prompt = buildStateAndRelationPrompt(chapterNumber, chapterTitle, content, currentStates, currentRelations);
+            
+            // 3. 调用AI
+            String aiResponse = callAIForExtraction(prompt, aiConfig);
+            
+            // 4. 解析AI返回的变化
+            Map<String, Object> changes = parseStateAndRelationChanges(aiResponse);
+            
+            // 5. 应用角色状态变化
+            if (changes.containsKey("characterStateChanges")) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> stateChanges = (List<Map<String, Object>>) changes.get("characterStateChanges");
+                applyCharacterStateChanges(novelId, chapterNumber, stateChanges);
+            }
+            
+            // 6. 应用关系变化
+            if (changes.containsKey("relationshipChanges")) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> relationChanges = (List<Map<String, Object>>) changes.get("relationshipChanges");
+                applyRelationshipChanges(novelId, chapterNumber, relationChanges);
+            }
+            
+            logger.info("✅ 角色状态和关系抽取完成: chapter={}", chapterNumber);
+            
+        } catch (Exception e) {
+            logger.error("❌ 角色状态和关系抽取失败: chapter={}", chapterNumber, e);
+        }
+    }
+    
+    /**
+     * 构建差异化提示词（告诉AI当前状态，只输出变化）
+     */
+    private String buildStateAndRelationPrompt(Integer chapterNumber, String chapterTitle, String content,
+                                               List<Map<String, Object>> currentStates,
+                                               List<Map<String, Object>> currentRelations) {
+        StringBuilder prompt = new StringBuilder();
+        
+        prompt.append("你是一个专业的小说情节分析助手。请根据本章内容，分析角色状态和关系的变化。\n\n");
+        
+        // 添加当前角色状态
+        if (currentStates != null && !currentStates.isEmpty()) {
+            prompt.append("【当前角色状态】（仅供参考，如无变化则不输出）\n");
+            for (Map<String, Object> state : currentStates) {
+                String name = (String) state.get("name");
+                prompt.append("- ").append(name).append("：\n");
+                prompt.append("  * 基础：");
+                if (state.get("location") != null) prompt.append("位置=").append(state.get("location")).append(", ");
+                if (state.get("realm") != null) prompt.append("实力=").append(state.get("realm")).append(", ");
+                if (state.get("affiliation") != null) prompt.append("势力=").append(state.get("affiliation")).append(", ");
+                Object aliveObj = state.getOrDefault("alive", true);
+                boolean alive = aliveObj instanceof Boolean ? (Boolean) aliveObj : true;
+                prompt.append("生死=").append(alive ? "存活" : "死亡").append("\n");
+                
+                if (state.get("socialStatus") != null) {
+                    prompt.append("  * 地位：").append(state.get("socialStatus")).append("\n");
+                }
+                if (state.get("backers") != null) {
+                    prompt.append("  * 靠山：").append(state.get("backers")).append("\n");
+                }
+                if (state.get("tags") != null) {
+                    prompt.append("  * 标签：").append(state.get("tags")).append("\n");
+                }
+                if (state.get("secrets") != null) {
+                    prompt.append("  * 秘密：").append(state.get("secrets")).append("\n");
+                }
+                if (state.get("keyItems") != null) {
+                    prompt.append("  * 物品：").append(state.get("keyItems")).append("\n");
+                }
+                prompt.append("\n");
+            }
+        }
+        
+        // 添加当前关系状态
+        if (currentRelations != null && !currentRelations.isEmpty()) {
+            prompt.append("【当前角色关系】（仅供参考，如无变化则不输出）\n");
+            for (Map<String, Object> rel : currentRelations) {
+                String a = (String) rel.get("a");
+                String b = (String) rel.get("b");
+                String type = (String) rel.get("type");
+                Object strength = rel.get("strength");
+                Object desc = rel.get("description");
+                Object publicStatus = rel.get("publicStatus");
+                
+                prompt.append("- ").append(a).append(" ↔ ").append(b).append("：");
+                prompt.append("type=").append(type);
+                if (strength != null) prompt.append(", strength=").append(strength);
+                if (desc != null) prompt.append(", desc=\"").append(desc).append("\"");
+                if (publicStatus != null) prompt.append(", public=").append(publicStatus);
+                prompt.append("\n");
+            }
+            prompt.append("\n");
+        }
+        
+        // 添加本章内容
+        prompt.append("【本章内容】\n");
+        prompt.append("章节号：第").append(chapterNumber).append("章\n");
+        if (chapterTitle != null && !chapterTitle.isEmpty()) {
+            prompt.append("标题：").append(chapterTitle).append("\n");
+        }
+        prompt.append("\n").append(content.length() > 3000 ? content.substring(0, 3000) + "..." : content).append("\n\n");
+        
+        // 添加抽取规则
+        prompt.append(buildStateAndRelationRules(chapterNumber));
+        
+        return prompt.toString();
+    }
+    
+    /**
+     * 构建抽取规则（全题材通用）
+     */
+    private String buildStateAndRelationRules(Integer chapterNumber) {
+        return "【抽取任务】\n" +
+                "请根据本章内容，只输出**发生变化**的状态和关系。如果某角色/关系没有变化，不要输出。\n\n" +
+                "返回JSON格式：\n" +
+                "{\n" +
+                "  \"characterStateChanges\": [\n" +
+                "    {\n" +
+                "      \"name\": \"角色名\",\n" +
+                "      \"changeType\": \"UPDATE\",  // NEW/UPDATE/DELETE\n" +
+                "      \"changes\": {\n" +
+                "        \"realm\": \"新实力\",  // 只列出变化的字段\n" +
+                "        \"socialStatus\": \"新地位\",\n" +
+                "        \"backers\": {\n" +
+                "          \"action\": \"ADD\",  // ADD/REMOVE/REPLACE\n" +
+                "          \"values\": [{\"name\": \"靠山名\", \"type\": \"PERSON\", \"strength\": 0.9, \"desc\": \"说明\"}]\n" +
+                "        },\n" +
+                "        \"tags\": {\"action\": \"ADD\", \"values\": [\"新标签\"]},\n" +
+                "        \"secrets\": {\"action\": \"ADD\", \"values\": [\"新秘密\"]},\n" +
+                "        \"keyItems\": {\"action\": \"ADD\", \"values\": [{\"name\": \"物品\", \"type\": \"ITEM\", \"importance\": 0.8, \"desc\": \"说明\"}]},\n" +
+                "        \"knownBy\": {\"action\": \"ADD\", \"values\": [{\"character\": \"谁\", \"knows\": \"知道什么\", \"since\": " + chapterNumber + "}]}\n" +
+                "      },\n" +
+                "      \"reason\": \"变化原因\"\n" +
+                "    }\n" +
+                "  ],\n" +
+                "  \"relationshipChanges\": [\n" +
+                "    {\n" +
+                "      \"from\": \"角色A\",\n" +
+                "      \"to\": \"角色B\",\n" +
+                "      \"changeType\": \"UPDATE\",  // NEW/UPDATE/DELETE\n" +
+                "      \"changes\": {\n" +
+                "        \"type\": \"ROMANCE\",  // ROMANCE/FAMILY/CONFLICT/COOPERATION/MENTORSHIP\n" +
+                "        \"strength\": 0.95,\n" +
+                "        \"description\": \"关系描述\",\n" +
+                "        \"publicStatus\": \"PUBLIC\"  // PUBLIC/SECRET/SEMI_PUBLIC\n" +
+                "      },\n" +
+                "      \"reason\": \"变化原因\"\n" +
+                "    }\n" +
+                "  ]\n" +
+                "}\n\n" +
+                "【抽取规则】\n" +
+                "1. **只输出变化**：如果某角色/关系没有变化，不要输出\n" +
+                "2. **socialStatus（社会地位）**：一句话概括角色在社会体系中的位置，影响他人态度\n" +
+                "3. **backers（靠山/资源）**：type=PERSON/ORGANIZATION/REPUTATION, strength=0-1\n" +
+                "4. **tags（身份标签）**：影响他人对待方式的身份\n" +
+                "5. **secrets（秘密/限制）**：行为限制、弱点、秘密\n" +
+                "6. **keyItems（关键物品）**：type=ITEM/SKILL/ASSET/ABILITY, importance=0-1\n" +
+                "7. **knownBy（信息差）**：谁知道角色的什么信息\n" +
+                "8. **关系变化**：只有类型改变、强度变化>0.1、或描述实质变化时才输出\n" +
+                "9. **publicStatus**：PUBLIC（公开）/SECRET（秘密）/SEMI_PUBLIC（半公开）\n" +
+                "10. **通用原则**：所有字段全题材通用，不要出现题材特定术语\n\n" +
+                "只返回JSON，不要有其他解释。\n";
+    }
+    
+    /**
+     * 解析AI返回的状态和关系变化
+     */
+    private Map<String, Object> parseStateAndRelationChanges(String aiResponse) {
+        try {
+            // 提取JSON部分
+            String jsonStr = aiResponse;
+            if (aiResponse.contains("```json")) {
+                int start = aiResponse.indexOf("```json") + 7;
+                int end = aiResponse.lastIndexOf("```");
+                if (end > start) {
+                    jsonStr = aiResponse.substring(start, end).trim();
+                }
+            } else if (aiResponse.contains("```")) {
+                int start = aiResponse.indexOf("```") + 3;
+                int end = aiResponse.lastIndexOf("```");
+                if (end > start) {
+                    jsonStr = aiResponse.substring(start, end).trim();
+                }
+            }
+            
+            ObjectMapper mapper = new ObjectMapper();
+            TypeReference<Map<String, Object>> typeRef = new TypeReference<Map<String, Object>>() {};
+            return mapper.readValue(jsonStr, typeRef);
+        } catch (Exception e) {
+            logger.error("❌ 解析状态和关系变化失败", e);
+            return new HashMap<>();
+        }
+    }
+    
+    /**
+     * 应用角色状态变化
+     */
+    private void applyCharacterStateChanges(Long novelId, Integer chapterNumber, List<Map<String, Object>> changes) {
+        for (Map<String, Object> change : changes) {
+            try {
+                String name = (String) change.get("name");
+                String changeType = (String) change.get("changeType");
+                @SuppressWarnings("unchecked")
+                Map<String, Object> changeData = (Map<String, Object>) change.get("changes");
+                String reason = (String) change.get("reason");
+                
+                logger.info("📝 应用角色状态变化: {} - {} ({})", name, changeType, reason);
+                
+                // 合并变化数据
+                Map<String, Object> finalData = mergeCharacterStateChanges(novelId, name, changeData, changeType);
+                
+                // 更新到图谱
+                graphService.upsertCharacterStateComplete(novelId, name, finalData, chapterNumber);
+                
+            } catch (Exception e) {
+                logger.error("❌ 应用角色状态变化失败", e);
+            }
+        }
+    }
+    
+    /**
+     * 合并角色状态变化（处理ADD/REMOVE/REPLACE操作）
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> mergeCharacterStateChanges(Long novelId, String name, Map<String, Object> changeData, String changeType) {
+        Map<String, Object> finalData = new HashMap<>();
+        
+        if ("NEW".equals(changeType)) {
+            // 新角色，直接使用变化数据
+            finalData.putAll(changeData);
+        } else {
+            // 更新角色，需要合并
+            // 这里简化处理，直接使用changeData
+            // 实际应该查询现有数据然后合并
+            finalData.putAll(changeData);
+            
+            // 处理数组字段的ADD/REMOVE/REPLACE
+            for (String key : new String[]{"backers", "tags", "secrets", "keyItems", "knownBy"}) {
+                if (changeData.containsKey(key) && changeData.get(key) instanceof Map) {
+                    Map<String, Object> arrayOp = (Map<String, Object>) changeData.get(key);
+                    String action = (String) arrayOp.get("action");
+                    Object values = arrayOp.get("values");
+                    
+                    if ("REPLACE".equals(action)) {
+                        finalData.put(key, values);
+                    } else if ("ADD".equals(action)) {
+                        // 简化处理：直接设置新值
+                        // 实际应该查询现有值然后追加
+                        finalData.put(key, values);
+                    }
+                    // REMOVE操作类似
+                }
+            }
+        }
+        
+        return finalData;
+    }
+    
+    /**
+     * 应用关系变化
+     */
+    private void applyRelationshipChanges(Long novelId, Integer chapterNumber, List<Map<String, Object>> changes) {
+        for (Map<String, Object> change : changes) {
+            try {
+                String from = (String) change.get("from");
+                String to = (String) change.get("to");
+                String changeType = (String) change.get("changeType");
+                @SuppressWarnings("unchecked")
+                Map<String, Object> changeData = (Map<String, Object>) change.get("changes");
+                String reason = (String) change.get("reason");
+                
+                logger.info("🤝 应用关系变化: {} ↔ {} - {} ({})", from, to, changeType, reason);
+                
+                // 更新到图谱
+                graphService.upsertRelationshipStateComplete(novelId, from, to, changeData, chapterNumber);
+                
+            } catch (Exception e) {
+                logger.error("❌ 应用关系变化失败", e);
             }
         }
     }

@@ -123,10 +123,22 @@ public class AgenticWritingController {
         // 解析其他可选参数
         request.setUserAdjustment((String) requestMap.get("userAdjustment"));
         request.setStylePromptFile((String) requestMap.get("stylePromptFile"));
+        request.setPromptTemplateId(extractPromptTemplateId(requestMap));
         request.setReferenceContents(extractReferenceContents(requestMap));
         request.setAiConfig(extractAIConfig(requestMap));
         
         return request;
+    }
+    
+    /**
+     * 提取提示词模板ID
+     */
+    private Long extractPromptTemplateId(Map<String, Object> requestMap) {
+        Object templateIdObj = requestMap.get("promptTemplateId");
+        if (templateIdObj instanceof Number) {
+            return ((Number) templateIdObj).longValue();
+        }
+        return null;
     }
     
     /**
@@ -210,6 +222,7 @@ public class AgenticWritingController {
                         request.getUserAdjustment(),
                         request.getAiConfig(),
                         request.getStylePromptFile(),
+                        request.getPromptTemplateId(),
                         request.getReferenceContents(),
                         emitter
                     );
@@ -220,6 +233,7 @@ public class AgenticWritingController {
                         request.getCount(),
                         request.getAiConfig(),
                         request.getStylePromptFile(),
+                        request.getPromptTemplateId(),
                         request.getReferenceContents(),
                         emitter
                     );
@@ -268,12 +282,12 @@ public class AgenticWritingController {
      */
     @SuppressWarnings("unchecked")
     private AIConfigRequest extractAIConfig(Map<String, Object> request) {
-        Object aiConfigObj = request.get("aiConfig");
+        AIConfigRequest config = new AIConfigRequest();
         
+        // 首先尝试从 aiConfig 对象中提取
+        Object aiConfigObj = request.get("aiConfig");
         if (aiConfigObj instanceof Map) {
             Map<String, Object> configMap = (Map<String, Object>) aiConfigObj;
-            
-            AIConfigRequest config = new AIConfigRequest();
             
             if (configMap.containsKey("provider")) {
                 config.setProvider((String) configMap.get("provider"));
@@ -287,10 +301,26 @@ public class AgenticWritingController {
             if (configMap.containsKey("baseUrl")) {
                 config.setBaseUrl((String) configMap.get("baseUrl"));
             }
-            return config;
+            if (configMap.containsKey("temperature")) {
+                Object temp = configMap.get("temperature");
+                if (temp instanceof Number) {
+                    config.setTemperature(((Number) temp).doubleValue());
+                }
+            }
         }
         
-        return new AIConfigRequest();
+        // 然后从顶层参数提取（优先级更高）
+        if (request.containsKey("preferredModel")) {
+            config.setModel((String) request.get("preferredModel"));
+        }
+        if (request.containsKey("temperature")) {
+            Object temp = request.get("temperature");
+            if (temp instanceof Number) {
+                config.setTemperature(((Number) temp).doubleValue());
+            }
+        }
+        
+        return config;
     }
 
     /**

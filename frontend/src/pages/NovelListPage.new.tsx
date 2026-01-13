@@ -1,16 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Row, Col, Button, Input, Empty, Spin, Modal, message, Tag, Form } from 'antd'
+import { Button, Input, Empty, Spin, Modal, message, Tag, Form } from 'antd'
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, FileTextOutlined, DownOutlined, CheckOutlined, ClockCircleOutlined, NodeIndexOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { AppDispatch, RootState } from '@/store'
 import { fetchNovels, deleteNovel, updateNovel } from '@/store/slices/novelSlice'
-import EnhancedEmptyState from '@/components/common/EnhancedEmptyState'
-import EnhancedStatsCard from '@/components/common/EnhancedStatsCard'
-import PageBackground from '@/components/common/PageBackground'
+import NovelCardIcon from '@/components/common/NovelCardIcon'
 import GraphDataModal from '@/components/graph/GraphDataModal'
 import novelVolumeService, { NovelVolume } from '@/services/novelVolumeService'
-import './NovelListPage.new.css'
+import './NovelListPage.modern.css'
 
 const sortOptions = [
   { key: 'updatedAt', label: '最近更新' },
@@ -27,6 +25,7 @@ const NovelListPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState<string>('updatedAt') // 排序方式：updatedAt, createdAt, title, wordCount
   const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [isFirstLoad, setIsFirstLoad] = useState(true) // 新增：是否首次加载
   const [editModalVisible, setEditModalVisible] = useState(false)
   const [editingNovel, setEditingNovel] = useState<any | null>(null)
   const [editForm] = Form.useForm()
@@ -72,7 +71,14 @@ const NovelListPage: React.FC = () => {
 
   // 初始加载
   useEffect(() => {
-    dispatch(fetchNovels({ page: 0, size: 40, append: false }))
+    const init = async () => {
+      try {
+        await dispatch(fetchNovels({ page: 0, size: 40, append: false })).unwrap()
+      } finally {
+        setIsFirstLoad(false)
+      }
+    }
+    init()
   }, [dispatch])
 
   // 无限滚动：监听滚动事件
@@ -126,10 +132,6 @@ const NovelListPage: React.FC = () => {
   }
 
   const novelsArray = Array.isArray(novels) ? novels : []
-
-  const totalNovels = novelsArray.length
-  const totalChapters = novelsArray.reduce((sum, n) => sum + (n.chapterCount || 0), 0)
-  const totalWords = novelsArray.reduce((sum, n) => sum + (n.wordCount || 0), 0)
 
   // 筛选和排序
   const filteredAndSortedNovels = novelsArray
@@ -243,7 +245,7 @@ const NovelListPage: React.FC = () => {
 
     } catch (error: any) {
       console.error('[handleStartWriting] 错误:', error)
-      message.error('跳转失败，请重试')
+      message.error(error?.message || '跳转失败，请重试')
       // 出错时跳转到卷管理页面作为兜底
       navigate(`/novels/${novel.id}/volumes`)
     }
@@ -251,214 +253,230 @@ const NovelListPage: React.FC = () => {
 
   return (
     <div className="modern-novel-list">
-      {/* 装饰性背景 */}
-      <PageBackground />
-      
-      {/* 顶部统计区 */}
-      <div className="page-header">
-        <div className="header-content">
-          <div>
-            <h1 className="page-title">我的作品</h1>
-            <p className="page-subtitle">创作你的故事世界</p>
+      {/* 顶部标题区 */}
+      <div className="page-header-modern">
+        <div className="page-title-group">
+          <h1>我的作品</h1>
+          <p>这里是你创造的所有世界，继续书写传奇。</p>
+        </div>
+      </div>
+
+      {/* 工具栏：搜索、排序、新建 */}
+      <div className="toolbar-container">
+        <div className="search-section">
+          <Input
+            placeholder="搜索你的故事..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            prefix={<SearchOutlined style={{ color: '#94a3b8', fontSize: 18 }} />}
+            allowClear
+            className="modern-search-input-large"
+          />
+        </div>
+
+        <div className="actions-section">
+          {/* 排序下拉 */}
+          <div className="sort-dropdown-wrapper" ref={sortDropdownRef} style={{ position: 'relative' }}>
+            <div className={`sort-trigger-modern ${sortMenuOpen ? 'active' : ''}`} onClick={handleToggleSortMenu}>
+              <span className="sort-icon">
+                {sortBy === 'updatedAt' || sortBy === 'createdAt' ? <ClockCircleOutlined /> : <NodeIndexOutlined />}
+              </span>
+              <span className="sort-label">{sortOptions.find(o => o.key === sortBy)?.label || '排序'}</span>
+              <DownOutlined className="dropdown-arrow" style={{ fontSize: 10, marginLeft: 4 }} />
+            </div>
+
+            {sortMenuOpen && (
+              <div className="sort-menu-modern">
+                {sortOptions.map(({ key, label }) => (
+                  <div
+                    key={key}
+                    className={`sort-option ${sortBy === key ? 'active' : ''}`}
+                    onClick={() => handleSelectSort(key)}
+                  >
+                    <span>{label}</span>
+                    {sortBy === key && <CheckOutlined />}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+
+          {/* 新建按钮 */}
           <Button 
             type="primary" 
-            size="large" 
+            className="create-novel-btn-modern"
             icon={<PlusOutlined />} 
             onClick={() => navigate('/novels/new')}
-            className="create-button"
           >
             新建小说
           </Button>
         </div>
-
-        {/* 统计卡片 - 使用增强版本 */}
-        <EnhancedStatsCard 
-          totalNovels={totalNovels}
-          totalChapters={totalChapters}
-          totalWords={totalWords}
-        />
-      </div>
-
-      {/* 搜索和排序 */}
-      <div className="filters-section">
-        <Input
-          placeholder="搜索小说标题或描述..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          prefix={<SearchOutlined />}
-          allowClear
-          size="large"
-          className="search-input"
-        />
-
-        <div className="sort-dropdown-wrapper" ref={sortDropdownRef}>
-          <Button className="sort-button" onClick={handleToggleSortMenu}>
-            <span>排序方式</span>
-            <DownOutlined />
-          </Button>
-
-          {sortMenuOpen && (
-            <div className="sort-dropdown">
-              {sortOptions.map(({ key, label }) => (
-                <button
-                  key={key}
-                  className={`sort-dropdown-item ${sortBy === key ? 'selected' : ''}`}
-                  onClick={() => handleSelectSort(key)}
-                >
-                  {sortBy === key ? <CheckOutlined className="sort-dropdown-check" /> : <span className="sort-dropdown-placeholder" />}
-                  <span>{label}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* 小说列表 */}
-      {loading ? (
-        <div className="loading-state">
-          <Spin size="large" />
-          <p>加载中...</p>
-        </div>
-      ) : filteredAndSortedNovels.length > 0 ? (
-        <Row gutter={[24, 24]} className="novels-grid">
-          {filteredAndSortedNovels.map(novel => (
-            <Col xs={24} sm={12} lg={8} xl={6} key={novel.id}>
-              <div
-                className="novel-card"
-                onClick={(e) => {
-                  // 点击卡片时使用智能跳转
-                  e.preventDefault()
-                  handleStartWriting(novel)
-                }}
-              >
-                <div className="card-header">
-                  <h3 className="card-title">{novel.title}</h3>
-                  <div className="card-tags">
-                    {novel.genre && (
-                      <Tag className="genre-tag">{novel.genre}</Tag>
-                    )}
-                  </div>
-                </div>
-
-                <p className="card-description">{novel.description}</p>
-
-                <div className="card-stats">
-                  <div className="stat-item stat-item-full">
-                    <span className="stat-label">
-                      <ClockCircleOutlined style={{ fontSize: 14, marginRight: 6 }} />
-                      最近更新
-                    </span>
-                    <span className="stat-time">
-                      {new Date(novel.updatedAt || novel.createdAt).toLocaleString('zh-CN', {
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="card-actions">
-                  <Button
-                    type="primary"
-                    icon={<EditOutlined />}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleStartWriting(novel)
-                    }}
-                    block
-                  >
-                    开始写作
-                  </Button>
-                  <div className="action-buttons">
-                    <Button
-                      icon={<NodeIndexOutlined />}
-                      onClick={(e) => { 
-                        e.stopPropagation()
-                        handleViewGraph(novel.id, novel.title)
-                      }}
-                    >
-                      图谱
-                    </Button>
-                    <Button
-                      icon={<FileTextOutlined />}
-                      onClick={(e) => { 
-                        e.stopPropagation()
-                        setEditingNovel(novel as any)
-                        editForm.setFieldsValue({ title: (novel as any).title, description: (novel as any).description })
-                        setEditModalVisible(true)
-                      }}
-                    >
-                      编辑
-                    </Button>
-                    <Button
-                      danger
-                      icon={<DeleteOutlined />}
-                      onClick={(e) => { 
-                        e.stopPropagation()
-                        handleDeleteNovel(novel.id, novel.title)
-                      }}
-                    >
-                      删除
-                    </Button>
-                  </div>
+      {loading || isFirstLoad ? (
+        <div className="novels-grid-modern">
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+            <div key={i} className="novel-card-modern" style={{ pointerEvents: 'none', border: '1px solid #f1f5f9', boxShadow: 'none' }}>
+              <div className="card-cover-area" style={{ background: '#f8fafc' }}>
+                 {/* 骨架屏占位 */}
+              </div>
+              <div className="card-content">
+                <div style={{ height: 24, background: '#f1f5f9', marginBottom: 12, borderRadius: 6, width: '70%' }}></div>
+                <div style={{ height: 16, background: '#f1f5f9', marginBottom: 8, borderRadius: 4 }}></div>
+                <div style={{ height: 16, background: '#f1f5f9', width: '60%', borderRadius: 4 }}></div>
+                <div style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between' }}>
+                   <div style={{ width: 60, height: 16, background: '#f1f5f9', borderRadius: 4 }}></div>
+                   <div style={{ width: 40, height: 16, background: '#f1f5f9', borderRadius: 4 }}></div>
                 </div>
               </div>
-            </Col>
+            </div>
           ))}
-        </Row>
+        </div>
+      ) : filteredAndSortedNovels.length > 0 ? (
+        <div className="novels-grid-modern">
+          {filteredAndSortedNovels.map(novel => (
+            <div
+              key={novel.id}
+              className="novel-card-modern"
+              onClick={(e) => {
+                e.preventDefault()
+                handleStartWriting(novel)
+              }}
+            >
+              <div className="card-cover-area">
+                {/* 状态标签 */}
+                {novel.creationStage === 'WRITING_IN_PROGRESS' && (
+                  <div className="status-badge in-progress">进行中</div>
+                )}
+                {novel.creationStage === 'WRITING_COMPLETED' && (
+                  <div className="status-badge completed">已完成</div>
+                )}
+                {(novel.creationStage === 'OUTLINE_PENDING' || novel.creationStage === 'OUTLINE_CONFIRMED') && (
+                  <div className="status-badge draft">草稿</div>
+                )}
+                
+                <span className="novel-icon-placeholder" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <NovelCardIcon />
+                </span>
+              </div>
+
+              {/* 悬浮操作栏 */}
+              <div className="card-hover-actions" onClick={(e) => e.stopPropagation()}>
+                <div 
+                  className="action-btn-mini" 
+                  onClick={(e) => { 
+                    e.preventDefault()
+                    e.stopPropagation()
+                    console.log('编辑按钮被点击', novel)
+                    setEditingNovel(novel)
+                    editForm.setFieldsValue({ title: novel.title, description: novel.description })
+                    setEditModalVisible(true)
+                  }}
+                  title="编辑信息"
+                >
+                  <EditOutlined />
+                </div>
+                <div 
+                  className="action-btn-mini" 
+                  onClick={(e) => { 
+                    e.preventDefault()
+                    e.stopPropagation()
+                    handleViewGraph(novel.id, novel.title)
+                  }}
+                  title="查看图谱"
+                >
+                  <NodeIndexOutlined />
+                </div>
+                <div 
+                  className="action-btn-mini danger" 
+                  onClick={(e) => { 
+                    e.preventDefault()
+                    e.stopPropagation()
+                    handleDeleteNovel(novel.id, novel.title)
+                  }}
+                  title="删除小说"
+                >
+                  <DeleteOutlined />
+                </div>
+              </div>
+
+              <div className="card-content">
+                <h3 className="card-title">{novel.title}</h3>
+                <p className="card-desc">{novel.description || '暂无简介，点击编辑添加...'}</p>
+
+                <div className="card-meta">
+                  <div className="meta-item">
+                    <ClockCircleOutlined style={{ fontSize: 11 }} />
+                    {new Date(novel.updatedAt || novel.createdAt).toLocaleDateString()}
+                  </div>
+                  {novel.wordCount > 0 && (
+                    <Tag style={{ margin: 0, border: 'none', background: '#f1f5f9', color: '#64748b', fontSize: '11px' }}>
+                      {(novel.wordCount / 1000).toFixed(1)}k字
+                    </Tag>
+                  )}
+                </div>
+                
+                {/* 进度条 */}
+                {novel.wordCount > 0 && (
+                  <div className="progress-bar-wrapper">
+                    <div className="progress-label">
+                      <span>创作进度</span>
+                      <span>{Math.min(100, Math.floor((novel.wordCount / 100000) * 100))}%</span>
+                    </div>
+                    <div className="progress-bar">
+                      <div 
+                        className="progress-fill" 
+                        style={{ width: `${Math.min(100, (novel.wordCount / 100000) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
-        // 空状态 - 区分搜索和无数据
+        // 空状态
         searchQuery ? (
-          <div className="empty-state">
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={<p className="empty-text">没有找到匹配的小说</p>}
-            />
+          <div style={{ textAlign: 'center', padding: '60px 0', color: '#94a3b8' }}>
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到相关小说" />
           </div>
         ) : (
-          <EnhancedEmptyState onCreateNovel={() => navigate('/novels/new')} />
+          <div style={{ textAlign: 'center', padding: '80px 0' }}>
+            <Empty
+              image="https://gw.alipayobjects.com/zos/antfincdn/ZHrcdLPrvN/empty.svg"
+              imageStyle={{ height: 100 }}
+              description={
+                <div style={{ color: '#64748b' }}>
+                  <p style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>还没有开始创作</p>
+                  <p>创建一个新的小说，开始你的故事之旅</p>
+                </div>
+              }
+            >
+              <Button type="primary" onClick={() => navigate('/novels/new')}>立即创建</Button>
+            </Empty>
+          </div>
         )
       )}
 
-      {/* 加载更多提示 */}
+      {/* 加载更多 */}
       {filteredAndSortedNovels.length > 0 && (
-        <div style={{ 
-          textAlign: 'center', 
-          padding: '32px 0',
-          marginTop: '24px'
-        }}>
-          {isLoadingMore ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
-              <Spin />
-              <span style={{ color: '#64748b', fontSize: '14px' }}>加载中...</span>
-            </div>
-          ) : hasMore ? (
-            <div style={{ color: '#94a3b8', fontSize: '13px' }}>
-              向下滚动加载更多
-            </div>
-          ) : novelsArray.length > 0 ? (
-            <div style={{ 
-              color: '#94a3b8', 
-              fontSize: '13px',
-              padding: '12px 24px',
-              background: '#f8fafc',
-              borderRadius: '8px',
-              display: 'inline-block'
-            }}>
-              已加载全部 {novelsArray.length} 部作品
-            </div>
-          ) : null}
+        <div style={{ textAlign: 'center', marginTop: 40, marginBottom: 20 }}>
+           {isLoadingMore ? <Spin /> : hasMore && (
+             <span style={{ color: '#cbd5e1', fontSize: 12 }}>滚动加载更多</span>
+           )}
         </div>
       )}
 
       {/* 编辑小说元数据弹窗 */}
       <Modal
-        title="编辑小说"
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <FileTextOutlined style={{ color: '#3b82f6', fontSize: '18px' }} />
+            <span style={{ fontWeight: 600 }}>编辑小说信息</span>
+          </div>
+        }
         open={editModalVisible}
         onCancel={() => { setEditModalVisible(false); setEditingNovel(null); editForm.resetFields() }}
         onOk={async () => {
@@ -474,15 +492,51 @@ const NovelListPage: React.FC = () => {
             if (err && err.message) message.error(err.message)
           }
         }}
-        okText="保存"
+        okText="保存修改"
         cancelText="取消"
+        okButtonProps={{ 
+          style: { 
+            background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+            border: 'none',
+            borderRadius: '8px',
+            fontWeight: 600,
+            height: '40px',
+            paddingLeft: '24px',
+            paddingRight: '24px'
+          } 
+        }}
+        cancelButtonProps={{
+          style: {
+            borderRadius: '8px',
+            height: '40px'
+          }
+        }}
+        width={520}
       >
-        <Form form={editForm} layout="vertical">
-          <Form.Item name="title" label="小说名称" rules={[{ required: true, message: '请输入小说名称' }]}>
-            <Input maxLength={80} placeholder="输入名称" />
+        <Form form={editForm} layout="vertical" style={{ marginTop: '24px' }}>
+          <Form.Item 
+            name="title" 
+            label="小说名称"
+            rules={[{ required: true, message: '请输入小说名称' }]}
+          >
+            <Input 
+              maxLength={80} 
+              placeholder="请输入小说名称" 
+              style={{ borderRadius: '8px', height: '40px' }}
+              showCount
+            />
           </Form.Item>
-          <Form.Item name="description" label="小说描述">
-            <Input.TextArea rows={4} maxLength={500} placeholder="输入描述" />
+          <Form.Item 
+            name="description" 
+            label="小说简介"
+          >
+            <Input.TextArea 
+              rows={4} 
+              maxLength={1000} 
+              placeholder="请输入小说简介..." 
+              showCount
+              style={{ borderRadius: '8px', resize: 'none' }}
+            />
           </Form.Item>
         </Form>
       </Modal>

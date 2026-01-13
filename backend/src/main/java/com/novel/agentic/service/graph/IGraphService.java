@@ -179,8 +179,11 @@ public interface IGraphService {
 
     // 🆕 核心记忆账本写入（受控管道，不接受AI自由写入）
     void upsertCharacterState(Long novelId, String characterName, String location, String realm, Boolean alive, Integer chapterNumber);
+    void upsertCharacterStateWithInfo(Long novelId, String characterName, String location, String realm, Boolean alive, String characterInfo, Integer chapterNumber);
+    void upsertCharacterStateComplete(Long novelId, String characterName, Map<String, Object> stateData, Integer chapterNumber);
     void updateCharacterInventory(Long novelId, String characterName, List<String> items, Integer chapterNumber);
     void upsertRelationshipState(Long novelId, String characterA, String characterB, String type, Double strength, Integer chapterNumber);
+    void upsertRelationshipStateComplete(Long novelId, String characterA, String characterB, Map<String, Object> relationData, Integer chapterNumber);
     void upsertOpenQuest(Long novelId, String questId, String description, String status, Integer introducedChapter, Integer dueByChapter, Integer lastUpdatedChapter);
     void resolveOpenQuest(Long novelId, String questId, Integer resolvedChapter);
     void addSummarySignals(Long novelId, Integer chapterNumber, Map<String, String> signals);

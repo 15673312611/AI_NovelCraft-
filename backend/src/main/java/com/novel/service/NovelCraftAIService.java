@@ -2658,91 +2658,91 @@ public class NovelCraftAIService {
     @Autowired
     private ObjectMapper objectMapper;
 
-    public void executeMultiStageStreamingChapterWriting(
-            Novel novel,
-            Map<String, Object> chapterPlan,
-            String userAdjustment,
-            SseEmitter emitter,
-            AIConfigRequest aiConfig,
-            Long promptTemplateId
-    ) throws IOException {
-
-        try {
-            Object chapterNumberObj = chapterPlan.get("chapterNumber");
-            String chapterTitle = (String) chapterPlan.get("title");
-            String displayTitle = chapterTitle != null ? chapterTitle : "第" + chapterNumberObj + "章";
-            logger.info("🎬 开始生成{}（直接写作模式）", displayTitle);
-
-            // 构建完整写作上下文（不再使用memoryBank）
-            List<Map<String, String>> writingMessages = contextManagementService.buildFullContextMessages(
-                    novel, chapterPlan, userAdjustment, promptTemplateId
-            );
-
-            StringBuilder fullContent = new StringBuilder();
-
-            // 流式调用AI写作
-            aiWritingService.streamGenerateContentWithMessages(
-                    writingMessages, "chapter_writing", aiConfig,
-                    chunk -> {
-                        try {
-                            if (chunk != null && !chunk.isEmpty()) {
-                                fullContent.append(chunk);
-                            }
-                            // 发送JSON格式数据，包裹在content字段中
-                            Map<String, String> data = new HashMap<>();
-                            data.put("content", chunk);
-                            emitter.send(SseEmitter.event().data(data));
-                        } catch (IOException e) {
-                            logger.error("发送chunk失败", e);
-                        }
-                    }
-            );
-
-            // 写入AI生成历史（用于前端“历史生成”查看）
-            try {
-                String finalText = fullContent.toString();
-                if (!finalText.isEmpty()) {
-                    AIConversation conversation = new AIConversation();
-                    conversation.setNovelId(novel.getId());
-
-                    // chapterPlan 中的 chapterNumber 在当前实现里通常是章节ID
-                    Long documentId = null;
-                    if (chapterNumberObj instanceof Number) {
-                        documentId = ((Number) chapterNumberObj).longValue();
-                    }
-                    conversation.setDocumentId(documentId);
-                    conversation.setGeneratorId(null);
-                    conversation.setUserMessage(userAdjustment != null ? userAdjustment : "");
-                    conversation.setAssistantMessage(finalText);
-
-                    // 上下文数据简单序列化，便于后续扩展使用
-                    try {
-                        Map<String, Object> ctx = new HashMap<>();
-                        ctx.put("chapterPlan", chapterPlan);
-                        ctx.put("promptTemplateId", promptTemplateId);
-                        String ctxJson = objectMapper.writeValueAsString(ctx);
-                        conversation.setContextData(ctxJson);
-                    } catch (Exception ex) {
-                        logger.warn("序列化AI对话上下文失败（不影响版本记录）: {}", ex.getMessage());
-                    }
-
-                    aiConversationService.saveConversation(conversation);
-                }
-            } catch (Exception ex) {
-                logger.warn("保存AI生成历史失败（不影响章节生成）: {}", ex.getMessage());
-            }
-
-            emitter.complete();
-
-        } catch (Exception e) {
-            logger.error("章节生成失败", e);
-            try {
-                emitter.send(SseEmitter.event().name("error").data("生成失败: " + e.getMessage()));
-                emitter.completeWithError(e);
-            } catch (IllegalStateException | IOException ex) {
-                logger.warn("⚠️ 发送错误消息失败: {}", ex.getMessage());
-            }
-        }
-    }
+//    public void executeMultiStageStreamingChapterWriting(
+//            Novel novel,
+//            Map<String, Object> chapterPlan,
+//            String userAdjustment,
+//            SseEmitter emitter,
+//            AIConfigRequest aiConfig,
+//            Long promptTemplateId
+//    ) throws IOException {
+//
+//        try {
+//            Object chapterNumberObj = chapterPlan.get("chapterNumber");
+//            String chapterTitle = (String) chapterPlan.get("title");
+//            String displayTitle = chapterTitle != null ? chapterTitle : "第" + chapterNumberObj + "章";
+//            logger.info("🎬 开始生成{}（直接写作模式）", displayTitle);
+//
+//            // 构建完整写作上下文（不再使用memoryBank）
+//            List<Map<String, String>> writingMessages = contextManagementService.buildFullContextMessages(
+//                    novel, chapterPlan, userAdjustment, promptTemplateId
+//            );
+//
+//            StringBuilder fullContent = new StringBuilder();
+//
+//            // 流式调用AI写作
+//            aiWritingService.streamGenerateContentWithMessages(
+//                    writingMessages, "chapter_writing", aiConfig,
+//                    chunk -> {
+//                        try {
+//                            if (chunk != null && !chunk.isEmpty()) {
+//                                fullContent.append(chunk);
+//                            }
+//                            // 发送JSON格式数据，包裹在content字段中
+//                            Map<String, String> data = new HashMap<>();
+//                            data.put("content", chunk);
+//                            emitter.send(SseEmitter.event().data(data));
+//                        } catch (IOException e) {
+//                            logger.error("发送chunk失败", e);
+//                        }
+//                    }
+//            );
+//
+//            // 写入AI生成历史（用于前端“历史生成”查看）
+//            try {
+//                String finalText = fullContent.toString();
+//                if (!finalText.isEmpty()) {
+//                    AIConversation conversation = new AIConversation();
+//                    conversation.setNovelId(novel.getId());
+//
+//                    // chapterPlan 中的 chapterNumber 在当前实现里通常是章节ID
+//                    Long documentId = null;
+//                    if (chapterNumberObj instanceof Number) {
+//                        documentId = ((Number) chapterNumberObj).longValue();
+//                    }
+//                    conversation.setDocumentId(documentId);
+//                    conversation.setGeneratorId(null);
+//                    conversation.setUserMessage(userAdjustment != null ? userAdjustment : "");
+//                    conversation.setAssistantMessage(finalText);
+//
+//                    // 上下文数据简单序列化，便于后续扩展使用
+//                    try {
+//                        Map<String, Object> ctx = new HashMap<>();
+//                        ctx.put("chapterPlan", chapterPlan);
+//                        ctx.put("promptTemplateId", promptTemplateId);
+//                        String ctxJson = objectMapper.writeValueAsString(ctx);
+//                        conversation.setContextData(ctxJson);
+//                    } catch (Exception ex) {
+//                        logger.warn("序列化AI对话上下文失败（不影响版本记录）: {}", ex.getMessage());
+//                    }
+//
+//                    aiConversationService.saveConversation(conversation);
+//                }
+//            } catch (Exception ex) {
+//                logger.warn("保存AI生成历史失败（不影响章节生成）: {}", ex.getMessage());
+//            }
+//
+//            emitter.complete();
+//
+//        } catch (Exception e) {
+//            logger.error("章节生成失败", e);
+//            try {
+//                emitter.send(SseEmitter.event().name("error").data("生成失败: " + e.getMessage()));
+//                emitter.completeWithError(e);
+//            } catch (IllegalStateException | IOException ex) {
+//                logger.warn("⚠️ 发送错误消息失败: {}", ex.getMessage());
+//            }
+//        }
+//    }
 
 }

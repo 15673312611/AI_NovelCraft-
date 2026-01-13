@@ -15,7 +15,7 @@ import java.util.Map;
  * 诊断和监控API
  */
 @RestController
-@RequestMapping("/api/agentic/diagnostics")
+@RequestMapping("/agentic/diagnostics")
 public class DiagnosticsController {
     
     private static final Logger logger = LoggerFactory.getLogger(DiagnosticsController.class);

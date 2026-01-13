@@ -95,6 +95,25 @@ export const updateChapterOutline = async (
 }
 
 /**
+ * 创建单章章纲
+ */
+export const createChapterOutline = async (
+  payload: {
+    novelId: number
+    volumeId: number
+    globalChapterNumber: number
+    chapterInVolume?: number
+    volumeNumber?: number
+    direction?: string
+    foreshadowAction?: string
+    foreshadowDetail?: string
+  }
+): Promise<VolumeChapterOutline> => {
+  const res: any = await api.post('/volumes/chapter-outline', payload)
+  return res as VolumeChapterOutline
+}
+
+/**
  * 为指定卷批量生成章纲
  * 实际上是“本卷章纲批量生成”，生成后需要重新拉取列表/当前章纲
  */

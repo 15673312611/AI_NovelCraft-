@@ -1,5 +1,18 @@
-import React, { useEffect, useState } from 'react'
-import { Button, Checkbox, Input, Modal, Radio, Space, message, Select } from 'antd'
+import React, { useEffect, useState, useMemo } from 'react'
+import { Button, Checkbox, Input, Modal, Radio, Space, message, Slider, Tabs, Tag, Dropdown, type MenuProps } from 'antd'
+import type { ReferenceFile } from '@/services/referenceFileService'
+import type { NovelDocument } from '@/services/documentService'
+import type { NovelFolder } from '@/services/folderService'
+import {
+  getWritingStyleTemplates,
+  getUserCustomTemplates,
+  getUserFavoriteTemplates,
+  favoriteTemplate,
+  unfavoriteTemplate,
+  type PromptTemplate
+} from '@/services/promptTemplateService'
+import creditService, { type AIModel } from '@/services/creditService'
+import type { AiGenerator } from '@/services/aiGeneratorService'
 import {
   CopyOutlined,
   SwapOutlined,
@@ -9,15 +22,18 @@ import {
   FolderOpenOutlined,
   BgColorsOutlined,
   ExperimentOutlined,
+  CheckOutlined,
+  SettingOutlined,
+  StarOutlined,
+  StarFilled,
+  AppstoreOutlined,
+  UserOutlined,
+  HeartOutlined,
+  EyeOutlined,
+  SendOutlined,
+  ThunderboltFilled,
 } from '@ant-design/icons'
-import type { ReferenceFile } from '@/services/referenceFileService'
-import type { NovelDocument } from '@/services/documentService'
-import type { NovelFolder } from '@/services/folderService'
-import { getWritingStyleTemplates, type PromptTemplate } from '@/services/promptTemplateService'
-import type { AiGenerator } from '@/services/aiGeneratorService'
 import './ToolPanel.css'
-
-const { TextArea } = Input
 
 export interface SimpleAIHistoryItem {
   id: number
@@ -73,6 +89,10 @@ export interface ToolPanelProps {
   // 模型选择
   selectedModel?: string
   onModelChange?: (model: string) => void
+  
+  // 温度参数
+  temperature?: number
+  onTemperatureChange?: (temp: number) => void
 
   // 额外上下文（目前不在本组件内直接使用）
   novelId?: number
@@ -105,34 +125,166 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
   onShowChapterOutline,
   aiHistory = [],
   onClearAIHistory,
-  selectedModel = 'gemini-3-pro-preview',
+  selectedModel = '',
   onModelChange,
+  temperature: propTemperature = 1.0,
+  onTemperatureChange,
 }) => {
   const [isLinkedModalVisible, setIsLinkedModalVisible] = useState(false)
   const [isWritingStyleModalVisible, setIsWritingStyleModalVisible] = useState(false)
-  const [isModelDropdownVisible, setIsModelDropdownVisible] = useState(false)
+  const [isModelModalVisible, setIsModelModalVisible] = useState(false)
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false)
+  const [localTemperature, setLocalTemperature] = useState<number>(propTemperature)
   const [searchKeyword, setSearchKeyword] = useState('')
   const [defaultContextSize, setDefaultContextSize] = useState({ summaries: 30, fullTexts: 3 })
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null)
+  
+  // 模板相关状态
   const [writingStyles, setWritingStyles] = useState<PromptTemplate[]>([])
   const [selectedWritingStyleId, setSelectedWritingStyleId] = useState<number | null>(writingStyleId ?? null)
+  const [activeTemplateTab, setActiveTemplateTab] = useState<'public' | 'custom' | 'favorites'>('public')
+  const [templateSearchKeyword, setTemplateSearchKeyword] = useState('')
+  // 强制过滤分类为'chapter'(写作正文)
+  const [templateCategory, setTemplateCategory] = useState<string>('chapter')
+  
+  const [availableModels, setAvailableModels] = useState<AIModel[]>([])
+  const [loadingModels, setLoadingModels] = useState(false)
 
   // 同步外部写作风格 ID
   useEffect(() => {
     setSelectedWritingStyleId(writingStyleId ?? null)
   }, [writingStyleId])
 
-  // 加载写作模板（写作风格）
+  // 初始化：自动加载默认模板
   useEffect(() => {
+    const initDefaultTemplate = async () => {
+      // 这里的逻辑只在组件挂载时执行一次
+      try {
+        // 获取 'chapter' 分类的公开模板
+        console.log('🚀 初始化：自动加载默认写作模板...')
+        const styles = await getWritingStyleTemplates('chapter')
+        
+        // 保存模板列表以便显示名称
+        setWritingStyles(styles)
+        
+        // 如果当前没有选中的模板，则自动选中默认模板
+        if (!selectedWritingStyleId) {
+          const defaultStyle = styles.find(s => s.isDefault)
+          if (defaultStyle) {
+            console.log('✅ 自动选中默认模板:', defaultStyle.name)
+            setSelectedWritingStyleId(defaultStyle.id)
+            onWritingStyleChange?.(defaultStyle.id)
+          }
+        }
+      } catch (error) {
+        console.error('❌ 初始化默认模板失败:', error)
+      }
+    }
+    
+    initDefaultTemplate()
+  }, []) // 仅挂载时执行一次
+
+  // 加载写作模板（写作风格）- 弹窗打开时刷新
+  useEffect(() => {
+    // 只有弹窗打开时才加载模板
+    if (!isWritingStyleModalVisible) {
+      return
+    }
+
     const loadWritingStyles = async () => {
       try {
-        const styles = await getWritingStyleTemplates()
+        console.log('🔍 开始加载模板, category:', templateCategory, 'tab:', activeTemplateTab)
+        let styles: PromptTemplate[] = []
+        if (activeTemplateTab === 'public') {
+          styles = await getWritingStyleTemplates(templateCategory || undefined)
+        } else if (activeTemplateTab === 'custom') {
+          styles = await getUserCustomTemplates(templateCategory || undefined)
+        } else if (activeTemplateTab === 'favorites') {
+          styles = await getUserFavoriteTemplates(templateCategory || undefined)
+        }
+        
+        console.log('✅ 模板加载成功, 数量:', styles.length)
+        
+        // 过滤搜索
+        if (templateSearchKeyword) {
+          const lower = templateSearchKeyword.toLowerCase()
+          styles = styles.filter(s => 
+            s.name.toLowerCase().includes(lower) || 
+            s.description?.toLowerCase().includes(lower)
+          )
+        }
+        
         setWritingStyles(styles)
+        
+        // 仅在首次加载且未选且是公开Tab时自动选中默认
+        if (writingStyleId === null && activeTemplateTab === 'public' && !selectedWritingStyleId) {
+          const defaultStyle = styles.find(s => s.isDefault)
+          if (defaultStyle) {
+            setSelectedWritingStyleId(defaultStyle.id)
+            onWritingStyleChange?.(defaultStyle.id)
+          }
+        }
       } catch (error) {
-        console.error('加载写作模板失败:', error)
+        console.error('❌ 加载写作模板失败:', error)
       }
     }
     loadWritingStyles()
+  }, [isWritingStyleModalVisible, activeTemplateTab, templateCategory, templateSearchKeyword])
+
+  const handleToggleFavorite = async (e: React.MouseEvent, template: PromptTemplate) => {
+    e.stopPropagation()
+    try {
+      if (template.isFavorited) {
+        await unfavoriteTemplate(template.id)
+        message.success('已取消收藏')
+      } else {
+        await favoriteTemplate(template.id)
+        message.success('收藏成功')
+      }
+      // 刷新列表
+      const styles = await (activeTemplateTab === 'public' 
+        ? getWritingStyleTemplates(templateCategory || undefined)
+        : activeTemplateTab === 'custom'
+        ? getUserCustomTemplates(templateCategory || undefined)
+        : getUserFavoriteTemplates(templateCategory || undefined))
+      setWritingStyles(styles)
+    } catch (error) {
+      console.error('收藏操作失败:', error)
+      message.error('操作失败')
+    }
+  }
+
+  // 加载可用模型列表，并设置默认模型
+  useEffect(() => {
+    const loadModels = async () => {
+      setLoadingModels(true)
+      try {
+        const models = await creditService.getAvailableModels()
+        setAvailableModels(models)
+        console.log('✅ 加载可用模型:', models)
+        
+        // 优先选择后台配置的默认模型
+        if (models.length > 0) {
+          const defaultModel = models.find(m => m.isDefault)
+          const currentModelExists = models.some(m => m.modelId === selectedModel)
+          
+          if (defaultModel && !currentModelExists) {
+            // 如果有默认模型且当前选中的模型不在列表中，使用默认模型
+            onModelChange?.(defaultModel.modelId)
+            console.log('✅ 使用后台配置的默认模型:', defaultModel.modelId)
+          } else if (!currentModelExists) {
+            // 如果没有默认模型且当前选中的模型不在列表中，使用第一个
+            onModelChange?.(models[0].modelId)
+            console.log('✅ 使用第一个模型:', models[0].modelId)
+          }
+        }
+      } catch (error) {
+        console.error('加载模型列表失败:', error)
+      } finally {
+        setLoadingModels(false)
+      }
+    }
+    loadModels()
   }, [])
 
   const handleLinkedDocumentToggle = (checked: boolean, id: number) => {
@@ -164,6 +316,12 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
     )
   })
 
+  // 获取已选文档详情
+  const selectedDocs = useMemo(() => {
+    const allDocs = Object.values(documentsMap).flat()
+    return allDocs.filter(d => selectedLinkedDocumentIds.includes(d.id || 0))
+  }, [documentsMap, selectedLinkedDocumentIds])
+
   const wordCount = aiOutput.replace(/\s+/g, '').length
 
   const allDocumentsCount = Object.values(documentsMap).reduce(
@@ -173,13 +331,6 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
 
   return (
     <div className="tool-panel-container">
-      {/* <div className="panel-header">
-        <div className={`panel-status ${isGenerating ? 'active' : ''}`}>
-          <span className="status-dot" />
-          <span>{isGenerating ? '生成中' : '就绪'}</span>
-        </div>
-      </div> */}
-
       {/* AI 对话区域 */}
       <div className="ai-chat-area">
         {/* 历史生成入口 */}
@@ -221,39 +372,53 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
           {/* AI生成中动画（仅在未开始内容时显示） */}
           {isGenerating && !hasContentStarted ? (
             <div className="ai-generating-box">
-              <div className="generating-spinner">
-                <div className="spinner-outer"></div>
-                <div className="spinner-middle"></div>
-                <div className="spinner-inner"></div>
+              {/* 背景装饰粒子 */}
+              <div className="generating-particles">
+                <span className="particle p1"></span>
+                <span className="particle p2"></span>
+                <span className="particle p3"></span>
+                <span className="particle p4"></span>
+                <span className="particle p5"></span>
+                <span className="particle p6"></span>
               </div>
+              
+              {/* 主加载器 */}
+              <div className="generating-spinner">
+                <div className="spinner-ring ring-1"></div>
+                <div className="spinner-ring ring-2"></div>
+                <div className="spinner-ring ring-3"></div>
+                <div className="spinner-core">
+                  <div className="core-inner"></div>
+                </div>
+              </div>
+              
+              {/* 文字提示 */}
               <div className="generating-message">
-                <span className="message-text">AI 生成中</span>
+                <span className="message-text">AI 正在创作中</span>
                 <span className="message-dots">
                   <i></i><i></i><i></i>
                 </span>
+              </div>
+              
+              {/* 底部进度条 */}
+              <div className="generating-progress">
+                <div className="progress-track">
+                  <div className="progress-fill"></div>
+                </div>
               </div>
             </div>
           ) : null}
 
           {/* AI 生成内容 */}
           {hasContentStarted ? (
-            <div className="ai-response-box">
+            <div className="ai-response-box premium-response">
               <div className="ai-response-header">
                 <div className="ai-response-info">
-                  <span className="ai-label" style={{
-                    color: isGenerating ? '#595959' : '#262626',
-                    fontWeight: 600,
-                  }}>
-                    {isGenerating ? 'AI 生成中...' : '生成结果'}
+                  <span className={`ai-status-indicator ${isGenerating ? 'pulsing' : 'finished'}`} />
+                  <span className="ai-label">
+                    {isGenerating ? 'AI 正在创作...' : '创作完成'}
                   </span>
-                  <span className="ai-word-count" style={{
-                    background: '#f0f2f5',
-                    padding: '4px 12px',
-                    borderRadius: '12px',
-                    fontSize: '12px',
-                    fontWeight: 500,
-                    color: '#595959',
-                  }}>{wordCount} 字</span>
+                  <span className="ai-word-count">{wordCount} 字</span>
                 </div>
                 <div className="ai-response-actions">
                   <Button
@@ -262,246 +427,122 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
                     icon={<CopyOutlined />}
                     onClick={onCopyAIOutput}
                     disabled={isGenerating}
-                    style={{
-                      borderRadius: '8px',
-                      fontWeight: 500,
-                    }}
-                  >
-                    复制
-                  </Button>
+                    className="action-icon-btn"
+                    title="复制内容"
+                  />
                   <Button
                     type="text"
                     size="small"
                     icon={<SwapOutlined />}
                     onClick={onReplaceWithAIOutput}
                     disabled={isGenerating}
-                    style={{
-                      borderRadius: '8px',
-                      fontWeight: 500,
-                    }}
-                  >
-                    替换正文
-                  </Button>
+                    className="action-icon-btn"
+                    title="替换正文"
+                  />
                 </div>
               </div>
               <div className="ai-response-content">
-                <div className="ai-text-display" style={{
-                  lineHeight: '1.8',
-                  fontSize: '14px',
-                }}>{aiOutput || '正在接收内容...'}</div>
+                <div className="ai-text-display">{aiOutput || '正在接收内容...'}</div>
               </div>
             </div>
           ) : !isGenerating && !aiOutput ? (
-            <div className="ai-chat-empty" style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: '300px',
-              padding: '40px 20px',
-            }}>
-              <div style={{
-                width: '80px',
-                height: '80px',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                borderRadius: '20px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: '24px',
-                boxShadow: '0 8px 24px rgba(102, 126, 234, 0.25)',
-              }}>
-                <svg viewBox="0 0 100 100" style={{ width: '50px', height: '50px' }}>
-                  <defs>
-                    <linearGradient id="iconGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" style={{ stopColor: '#ffffff', stopOpacity: 1 }} />
-                      <stop offset="100%" style={{ stopColor: '#ffffff', stopOpacity: 0.8 }} />
-                    </linearGradient>
-                  </defs>
-                  <circle cx="50" cy="50" r="35" fill="none" stroke="url(#iconGradient)" strokeWidth="3" />
-                  <path d="M35 40 L50 25 L65 40" fill="none" stroke="url(#iconGradient)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M35 60 L50 75 L65 60" fill="none" stroke="url(#iconGradient)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+            <div className="premium-empty-state">
+              <div className="empty-state-visual">
+                <div className="visual-circle main-circle">
+                   <ThunderboltFilled />
+                </div>
+                <div className="visual-circle small-circle c1" />
+                <div className="visual-circle small-circle c2" />
               </div>
-              <div style={{
-                fontSize: '18px',
-                fontWeight: 600,
-                color: '#262626',
-                marginBottom: '8px',
-              }}>AI 写作助手</div>
-              <div style={{
-                fontSize: '14px',
-                color: '#8c8c8c',
-                textAlign: 'center',
-                lineHeight: '1.6',
-              }}>
-                输入你的构思，让 AI 帮你创作精彩内容
+              <div className="empty-state-text">
+                <h3 className="empty-title">AI 写作助手</h3>
+                <p className="empty-desc">
+                  您的私人创作伙伴。输入构思，让灵感流淌成文。
+                </p>
               </div>
             </div>
           ) : null}
         </div>
       </div>
 
-      {/* 底部输入区域 */}
-      <div className="ai-input-section">
-        {/* 顶部操作（在输入框上方） */}
-        <div className="top-actions">
-          <div className="top-actions-left">
-            <button
-              onClick={() => setIsLinkedModalVisible(true)}
-              className="custom-toolbar-btn"
-            >
-              <span className="btn-icon">
-                <LinkOutlined />
-              </span>
-              <span className="btn-text">
-                关联内容
-                {selectedLinkedDocumentIds.length > 0 &&
-                  ` (${selectedLinkedDocumentIds.length})`}
-              </span>
-            </button>
-            {onShowChapterOutline && (
-              <button onClick={onShowChapterOutline} className="custom-toolbar-btn">
-                <span className="btn-icon">
-                  <FileTextOutlined />
-                </span>
-                <span className="btn-text">章纲</span>
-              </button>
+      {/* 底部输入区域 - Premium Redesign */}
+      <div className="ai-input-section premium-ui-redesign">
+        {/* 顶部工具栏：关联内容 & 章纲 */}
+        <div className="premium-top-bar">
+          <button
+            onClick={() => setIsLinkedModalVisible(true)}
+            className={`premium-tool-chip ${selectedLinkedDocumentIds.length > 0 ? 'active' : ''}`}
+          >
+            <div className="chip-icon blue">
+              <LinkOutlined />
+            </div>
+            <span className="chip-label">关联内容</span>
+            {selectedLinkedDocumentIds.length > 0 && (
+              <span className="chip-badge">{selectedLinkedDocumentIds.length}</span>
             )}
-          </div>
+          </button>
+
+          {onShowChapterOutline && (
+            <button onClick={onShowChapterOutline} className="premium-tool-chip">
+              <div className="chip-icon orange">
+                <FileTextOutlined />
+              </div>
+              <span className="chip-label">章纲</span>
+            </button>
+          )}
         </div>
 
-        {/* 输入框 */}
-        <div className="ai-input-wrapper">
-          <TextArea
+        {/* 输入框区域 */}
+        <div className="premium-input-wrapper">
+          <Input.TextArea
             value={aiInputValue}
             onChange={(e: any) => onChangeAIInput(e.target.value)}
-            placeholder="请输入你的构思或提示，例如：根据本章大纲继续生成故事"
-            autoSize={{ minRows: 2, maxRows: 4 }}
-            className="ai-input-textarea"
+            placeholder="在此输入您的构思，让 AI 为您续写精彩篇章..."
+            autoSize={{ minRows: 2, maxRows: 6 }}
+            className="premium-textarea"
           />
         </div>
 
-        {/* 底部工具栏（输入框下方：模板 / 生成） */}
-        <div className="ai-toolbar">
-          <div className="toolbar-left">
+        {/* 底部工具栏：模板/模型 & 发送 */}
+        <div className="premium-bottom-bar">
+          <div className="bottom-left-group">
+            {/* 模板选择 */}
             <button
               onClick={() => setIsWritingStyleModalVisible(true)}
-              className="custom-toolbar-btn writing-style-btn"
+              className="premium-capsule-btn template-selector"
+              title={selectedWritingStyleId ? writingStyles.find((s) => s.id === selectedWritingStyleId)?.name : '默认模板'}
             >
-              <span className="btn-icon">
-                <BgColorsOutlined />
-              </span>
-              <span className="btn-text">
+              <span className="capsule-text">
                 {selectedWritingStyleId
-                  ? writingStyles.find((s) => s.id === selectedWritingStyleId)?.name ||
-                    '选择模板'
-                  : '选择模板'}
+                  ? writingStyles.find((s) => s.id === selectedWritingStyleId)?.name || '默认模板'
+                  : '默认模板'}
               </span>
             </button>
             
-            {/* 模型选择自定义组件 */}
-            <div style={{ position: 'relative' }}>
-              <button
-                onClick={() => setIsModelDropdownVisible(!isModelDropdownVisible)}
-                className="custom-toolbar-btn model-select-btn"
-                style={{ marginLeft: 8 }}
-              >
-                <span className="btn-icon">
-                  <ExperimentOutlined />
-                </span>
-                <span className="btn-text">
-                  {selectedModel === 'gemini-3-pro-preview' ? 'Gemini 3 Pro' : 'Gemini 2.5 Pro'}
-                </span>
-              </button>
-              
-              {isModelDropdownVisible && (
-                <>
-                  <div 
-                    style={{ 
-                      position: 'fixed', 
-                      top: 0, 
-                      left: 0, 
-                      right: 0, 
-                      bottom: 0, 
-                      zIndex: 1000 
-                    }} 
-                    onClick={() => setIsModelDropdownVisible(false)}
-                  />
-                  <div
-                    style={{
-                      position: 'absolute',
-                      bottom: '100%',
-                      left: 8,
-                      marginBottom: 8,
-                      background: '#fff',
-                      borderRadius: '8px',
-                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-                      border: '1px solid #e0e0e0',
-                      zIndex: 1001,
-                      width: '160px',
-                      padding: '4px',
-                      overflow: 'hidden'
-                    }}
-                  >
-                    {[
-                      { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro' },
-                      { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-                    ].map((option) => (
-                      <div
-                        key={option.value}
-                        onClick={() => {
-                          onModelChange?.(option.value)
-                          setIsModelDropdownVisible(false)
-                        }}
-                        style={{
-                          padding: '8px 12px',
-                          fontSize: '13px',
-                          cursor: 'pointer',
-                          borderRadius: '6px',
-                          background: selectedModel === option.value ? '#f0f7ff' : 'transparent',
-                          color: selectedModel === option.value ? '#1890ff' : '#333',
-                          fontWeight: selectedModel === option.value ? 600 : 400,
-                          transition: 'all 0.2s',
-                        }}
-                        onMouseEnter={(e) => {
-                          if (selectedModel !== option.value) {
-                            e.currentTarget.style.background = '#f5f5f5'
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (selectedModel !== option.value) {
-                            e.currentTarget.style.background = 'transparent'
-                          }
-                        }}
-                      >
-                        {option.label}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
+            {/* 模型选择 */}
+            <button
+              onClick={() => setIsModelModalVisible(true)}
+              className="premium-capsule-btn model-selector"
+              disabled={loadingModels}
+              title={availableModels.find(m => m.modelId === selectedModel)?.displayName || selectedModel}
+            >
+              <span className="capsule-text">
+                {loadingModels ? '加载中...' : (
+                  availableModels.find(m => m.modelId === selectedModel)?.displayName || selectedModel || '自动模型'
+                )}
+              </span>
+            </button>
           </div>
-          <div className="toolbar-right">
+
+          <div className="bottom-right-group">
             <Button
               type="primary"
               onClick={onSendAIRequest}
               loading={isGenerating}
-              className="send-button"
-              style={{
-                background: isGenerating ? '#d9d9d9' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                border: 'none',
-                borderRadius: '8px',
-                height: '40px',
-                padding: '0 24px',
-                fontSize: '15px',
-                fontWeight: 600,
-                boxShadow: isGenerating ? 'none' : '0 4px 12px rgba(102, 126, 234, 0.3)',
-                transition: 'all 0.3s ease',
-              }}
+              className="premium-send-btn"
             >
-              {isGenerating ? 'AI 生成中...' : '生成'}
+              {!isGenerating && <SendOutlined />}
+              <span>{isGenerating ? '生成中...' : '开始生成'}</span>
             </Button>
           </div>
         </div>
@@ -509,7 +550,7 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
 
       {/* 关联内容弹窗 */}
       <Modal
-        title="关联内容"
+        title={null}
         open={isLinkedModalVisible}
         onCancel={() => {
           setIsLinkedModalVisible(false)
@@ -519,116 +560,342 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
         footer={null}
         width={900}
         className="linked-content-modal"
+        centered
+        closable={false}
+        styles={{
+          content: { padding: 0, borderRadius: 16, overflow: 'hidden' },
+          body: { padding: 0 }
+        }}
       >
-        <div className="linked-modal-content">
-          {/* 默认上下文说明 */}
-          <div className="default-context-config">
-            <div className="config-title">默认章节上下文设置</div>
-            <div className="config-controls">
-              <div className="config-item">
-                <span>最近章节概要数量</span>
-                <Input
-                  type="number"
-                  value={defaultContextSize.summaries}
-                  onChange={(e) =>
-                    setDefaultContextSize({
-                      ...defaultContextSize,
-                      summaries: Number.parseInt(e.target.value) || 0,
-                    })
-                  }
-                  style={{ width: '80px' }}
-                  min={0}
-                  max={100}
-                />
-                <span> 章</span>
+        <div className="modal-header">
+          <div className="modal-title-group">
+            <div className="modal-title">关联内容</div>
+            <div className="modal-subtitle">选择需要作为上下文参考的文档</div>
+          </div>
+          <div 
+            className="modal-close-btn"
+            onClick={() => {
+              setIsLinkedModalVisible(false)
+              setSearchKeyword('')
+              setSelectedFolderId(null)
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </div>
+        </div>
+
+        <div className="modal-body" style={{ padding: 0, maxHeight: 'none' }}>
+          <div className="linked-modal-layout">
+            {/* 左侧：文件夹导航 */}
+            <div className="linked-sidebar">
+              <div className="sidebar-header">
+                <span className="sidebar-title">文档分类</span>
+                <span className="sidebar-count">{allDocumentsCount} 个文档</span>
               </div>
-              <div className="config-item">
-                <span>最近章节正文数量</span>
-                <Input
-                  type="number"
-                  value={defaultContextSize.fullTexts}
-                  onChange={(e) =>
-                    setDefaultContextSize({
-                      ...defaultContextSize,
-                      fullTexts: Number.parseInt(e.target.value) || 0,
-                    })
-                  }
-                  style={{ width: '80px' }}
-                  min={0}
-                  max={20}
-                />
-                <span> 章</span>
+              <div className="folder-list">
+                <div
+                  className={`folder-item ${selectedFolderId === null ? 'active' : ''}`}
+                  onClick={() => setSelectedFolderId(null)}
+                >
+                  <div className="folder-icon-wrapper">
+                    <FolderOpenOutlined />
+                  </div>
+                  <span className="folder-name">全部文档</span>
+                  <span className="folder-badge">{allDocumentsCount}</span>
+                </div>
+                {folders.map((folder) => (
+                  <div
+                    key={folder.id}
+                    className={`folder-item ${selectedFolderId === folder.id ? 'active' : ''}`}
+                    onClick={() => setSelectedFolderId(folder.id)}
+                  >
+                    <div className="folder-icon-wrapper">
+                      <FolderOpenOutlined />
+                    </div>
+                    <span className="folder-name">{folder.folderName}</span>
+                    <span className="folder-badge">
+                      {documentsMap[folder.id]?.length || 0}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="config-hint">
-              系统会自动携带最近 {defaultContextSize.summaries} 章概要
-              + {defaultContextSize.fullTexts} 章正文作为默认上下文，你可以在下方额外勾选需要重点参考的文档。
+
+            {/* 右侧：内容区域 */}
+            <div className="linked-main">
+              {/* 顶部设置栏 */}
+              <div className="linked-config-bar">
+                <div className="config-header">
+                  <div className="config-label">
+                    <SettingOutlined className="config-icon" />
+                    <span>自动上下文设置</span>
+                  </div>
+                  <div className="config-desc">
+                    系统将自动引用最近 <b>{defaultContextSize.summaries}</b> 章概要和 <b>{defaultContextSize.fullTexts}</b> 章正文
+                  </div>
+                </div>
+                <div className="config-inputs">
+                  <div className="input-group">
+                    <span>概要</span>
+                    <Input
+                      type="number"
+                      value={defaultContextSize.summaries}
+                      onChange={(e) =>
+                        setDefaultContextSize({
+                          ...defaultContextSize,
+                          summaries: Number.parseInt(e.target.value) || 0,
+                        })
+                      }
+                      className="config-input"
+                      min={0}
+                      max={100}
+                    />
+                    <span>章</span>
+                  </div>
+                  <div className="input-divider" />
+                  <div className="input-group">
+                    <span>正文</span>
+                    <Input
+                      type="number"
+                      value={defaultContextSize.fullTexts}
+                      onChange={(e) =>
+                        setDefaultContextSize({
+                          ...defaultContextSize,
+                          fullTexts: Number.parseInt(e.target.value) || 0,
+                        })
+                      }
+                      className="config-input"
+                      min={0}
+                      max={20}
+                    />
+                    <span>章</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 搜索与列表 */}
+              <div className="linked-content-area">
+                <div className="search-wrapper">
+                  <Input
+                    placeholder="搜索文档标题或内容..."
+                    value={searchKeyword}
+                    onChange={(e) => setSearchKeyword(e.target.value)}
+                    allowClear
+                    prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
+                    className="linked-search-input"
+                  />
+                </div>
+
+                {/* 已选文档展示区 */}
+                {selectedDocs.length > 0 && (
+                  <div className="selected-docs-area">
+                    <div className="selected-docs-header">
+                      <span className="selected-label">已选内容 ({selectedDocs.length})</span>
+                      <span 
+                        className="clear-selected-btn"
+                        onClick={() => onSelectLinkedDocuments?.([])}
+                      >
+                        清空
+                      </span>
+                    </div>
+                    <div className="selected-tags-list">
+                      {selectedDocs.map(doc => (
+                        <div key={doc.id} className="selected-doc-tag">
+                          <span className="tag-text">{doc.title}</span>
+                          <span 
+                            className="tag-close"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleLinkedDocumentToggle(false, doc.id || 0)
+                            }}
+                          >
+                            ×
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="documents-grid-container">
+                  {filteredDocuments.length > 0 ? (
+                    <div className="documents-grid">
+                      {filteredDocuments.map((doc) => {
+                        const isSelected = selectedLinkedDocumentIds.includes(doc.id || 0)
+                        return (
+                          <div 
+                            key={doc.id} 
+                            className={`document-card ${isSelected ? 'selected' : ''}`}
+                            onClick={() => handleLinkedDocumentToggle(!isSelected, doc.id || 0)}
+                          >
+                            <div className="doc-card-header">
+                              <div className="doc-icon">
+                                <FileTextOutlined />
+                              </div>
+                              <Checkbox
+                                checked={isSelected}
+                                className="doc-checkbox"
+                              />
+                            </div>
+                            <div className="doc-card-body">
+                              <div className="doc-title" title={doc.title}>{doc.title || '未命名文档'}</div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div className="empty-state">
+                      <div className="empty-icon">
+                        <FolderOpenOutlined />
+                      </div>
+                      <div className="empty-text">
+                        {searchKeyword ? '未找到匹配的文档' : '当前分类下暂无文档'}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-
-          {/* 左侧文件夹 + 右侧文档列表 */}
-          <div className="modal-main-content">
-            {/* 文件夹侧栏 */}
-            <div className="folders-sidebar">
-              <div className="sidebar-title">文档分类</div>
-              <div
-                className={`folder-item ${selectedFolderId === null ? 'active' : ''}`}
-                onClick={() => setSelectedFolderId(null)}
+        </div>
+        
+        <div className="modal-footer" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          {selectedLinkedDocumentIds.length > 0 ? (
+            <div style={{ color: '#64748b', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>已选择 {selectedLinkedDocumentIds.length} 项</span>
+              <Button 
+                type="link" 
+                size="small" 
+                danger 
+                onClick={() => onSelectLinkedDocuments?.([])}
+                style={{ padding: 0 }}
               >
-                <FolderOpenOutlined className="folder-icon" />
-                <span className="folder-name">全部文档</span>
-                <span className="folder-count">({allDocumentsCount})</span>
-              </div>
-              {folders.map((folder) => (
-                <div
-                  key={folder.id}
-                  className={`folder-item ${selectedFolderId === folder.id ? 'active' : ''}`}
-                  onClick={() => setSelectedFolderId(folder.id)}
-                >
-                  <FolderOpenOutlined className="folder-icon" />
-                  <span className="folder-name">{folder.folderName}</span>
-                  <span className="folder-count">
-                    ({documentsMap[folder.id]?.length || 0})
-                  </span>
-                </div>
-              ))}
+                清空
+              </Button>
             </div>
+          ) : (
+            <div />
+          )}
+          <Button
+            className="modal-action-btn primary"
+            onClick={() => {
+              setIsLinkedModalVisible(false)
+              setSearchKeyword('')
+              setSelectedFolderId(null)
+            }}
+          >
+            完成
+          </Button>
+        </div>
+      </Modal>
 
-            {/* 文档列表 */}
-            <div className="documents-section">
-              {/* 搜索框 */}
-              <div className="search-box">
+      {/* 写作模板选择弹窗 */}
+      <Modal
+        title={null}
+        open={isWritingStyleModalVisible}
+        onCancel={() => setIsWritingStyleModalVisible(false)}
+        footer={null}
+        width={900}
+        className="writing-style-modal"
+        centered
+        closable={false}
+        styles={{
+          content: { padding: 0, borderRadius: 16, overflow: 'hidden' },
+          body: { padding: 0 }
+        }}
+      >
+        <div className="modal-header">
+          <div className="modal-title-group">
+            <div className="modal-title">选择提示词模板</div>
+            <div className="modal-subtitle">选择适合当前场景的写作风格模板</div>
+          </div>
+          <div className="modal-close-btn" onClick={() => setIsWritingStyleModalVisible(false)}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </div>
+        </div>
+        
+        <div className="modal-body" style={{ padding: 0 }}>
+          <div className="template-modal-layout">
+            {/* 顶部工具栏：Tabs 和 搜索 */}
+            <div className="template-toolbar">
+              <Tabs
+                activeKey={activeTemplateTab}
+                onChange={(key) => setActiveTemplateTab(key as any)}
+                className="template-tabs"
+                items={[
+                  { key: 'public', label: <span><AppstoreOutlined /> 公开模板</span> },
+                  { key: 'favorites', label: <span><StarFilled /> 收藏模板</span> },
+                  { key: 'custom', label: <span><UserOutlined /> 自定义模板</span> },
+                ]}
+              />
+              <div className="template-filters">
                 <Input
-                  placeholder="按标题或内容搜索..."
-                  value={searchKeyword}
-                  onChange={(e) => setSearchKeyword(e.target.value)}
+                  placeholder="搜索模板名称..."
+                  prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
+                  value={templateSearchKeyword}
+                  onChange={(e) => setTemplateSearchKeyword(e.target.value)}
+                  className="template-search"
                   allowClear
-                  prefix={<SearchOutlined />}
                 />
               </div>
+            </div>
 
-              {/* 文档列表内容 */}
-              <div className="documents-list">
-                {filteredDocuments.length > 0 ? (
-                  <Space direction="vertical" style={{ width: '100%' }}>
-                    {filteredDocuments.map((doc) => (
-                      <div key={doc.id} className="document-item">
-                        <Checkbox
-                          checked={selectedLinkedDocumentIds.includes(doc.id || 0)}
-                          onChange={(e) =>
-                            handleLinkedDocumentToggle(e.target.checked, doc.id || 0)
-                          }
+            <div className="template-content">
+              <div className="template-grid">
+                {writingStyles.length > 0 ? (
+                  writingStyles.map((style) => (
+                    <div 
+                      key={style.id} 
+                      className={`template-card ${selectedWritingStyleId === style.id ? 'selected' : ''}`}
+                      onClick={() => {
+                        setSelectedWritingStyleId(style.id)
+                        onWritingStyleChange?.(style.id)
+                        message.success(`已选择：${style.name}`)
+                        setIsWritingStyleModalVisible(false)
+                      }}
+                    >
+                      <div className="template-card-header">
+                        <div className="template-avatar">
+                          {style.name.slice(0, 1)}
+                        </div>
+                        <div className="template-info">
+                          <div className="template-name-row">
+                            <span className="template-name">{style.name}</span>
+                            {style.isDefault && <span className="mini-tag">默认</span>}
+                          </div>
+                          <div className="template-meta">
+                            <span className="usage-count"><EyeOutlined /> {style.usageCount || 0}</span>
+                            {style.category && <span className="category-tag">{style.category}</span>}
+                          </div>
+                        </div>
+                        <div 
+                          className={`favorite-btn ${style.isFavorited ? 'active' : ''}`}
+                          onClick={(e) => handleToggleFavorite(e, style)}
                         >
-                          <span className="doc-title">
-                            {doc.title || '(未命名文档)'}
-                          </span>
-                        </Checkbox>
+                          {style.isFavorited ? <StarFilled /> : <StarOutlined />}
+                        </div>
                       </div>
-                    ))}
-                  </Space>
+                      
+                      <div className="template-desc">
+                        {style.description || '暂无描述'}
+                      </div>
+                      
+                      {selectedWritingStyleId === style.id && (
+                        <div className="template-selected-badge">
+                          <CheckOutlined /> 已选择
+                        </div>
+                      )}
+                    </div>
+                  ))
                 ) : (
-                  <div className="empty-result">
-                    {searchKeyword ? '未找到匹配的文档' : '当前分类下暂无文档'}
+                  <div className="empty-template-state">
+                    <div className="empty-icon"><AppstoreOutlined /></div>
+                    <div className="empty-text">未找到相关模板</div>
                   </div>
                 )}
               </div>
@@ -637,96 +904,126 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
         </div>
       </Modal>
 
-      {/* 写作模板选择弹窗 */}
+      {/* 模型选择弹窗 */}
       <Modal
-        title="选择模板"
-        open={isWritingStyleModalVisible}
-        onCancel={() => setIsWritingStyleModalVisible(false)}
+        open={isModelModalVisible}
+        onCancel={() => {
+          setIsModelModalVisible(false)
+          setShowAdvancedSettings(false)
+        }}
         footer={null}
-        width={650}
+        width={600}
+        centered
+        closable={false}
+        title={null}
+        className="model-selection-modal"
+        styles={{
+          content: { padding: 0, borderRadius: 16, overflow: 'hidden' },
+          body: { padding: 0 }
+        }}
       >
-        <div style={{ maxHeight: '500px', overflowY: 'auto', padding: '8px' }}>
-          <Radio.Group
-            value={selectedWritingStyleId}
-            onChange={(e) => {
-              const styleId = e.target.value as number | null
-              setSelectedWritingStyleId(styleId)
-              onWritingStyleChange?.(styleId)
-              message.success('已选择模板')
-              setIsWritingStyleModalVisible(false)
+        {/* 标题区 */}
+        <div className="modal-header">
+          <div className="modal-title-group">
+            <div className="modal-title">选择模型</div>
+            <div className="modal-subtitle">选择适合你创作需求的 AI 模型</div>
+          </div>
+          <div 
+            className="modal-close-btn"
+            onClick={() => {
+              setIsModelModalVisible(false)
+              setShowAdvancedSettings(false)
             }}
-            style={{ width: '100%' }}
           >
-            <Space direction="vertical" style={{ width: '100%', gap: '12px' }}>
-              <Radio
-                value={null}
-                style={{
-                  display: 'block',
-                  padding: '16px',
-                  border: '2px solid #e0e0e0',
-                  borderRadius: '12px',
-                  width: '100%',
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      fontWeight: 600,
-                      fontSize: '14px',
-                      color: '#000',
-                      marginBottom: '6px',
-                    }}
-                  >
-                    默认模板
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </div>
+        </div>
+
+        {/* 模型列表 */}
+        <div className="modal-body">
+          <div className="model-list">
+            {availableModels.map((model) => {
+              const isSelected = model.modelId === selectedModel
+              const multiplier = model.costMultiplier || 1
+
+              return (
+                <div
+                  key={model.modelId}
+                  onClick={() => onModelChange?.(model.modelId)}
+                  className={`model-item-card ${isSelected ? 'selected' : ''}`}
+                >
+                  <div className="model-card-content">
+                    <div className="model-info-header">
+                      <span className="model-name">{model.displayName}</span>
+                      <span className={`model-tag ${multiplier >= 3 ? 'high-cost' : multiplier >= 2 ? 'medium-cost' : 'low-cost'}`}>
+                        {multiplier}x 消耗
+                      </span>
+                    </div>
+                    <div className="model-desc">
+                      {model.description || '快速响应，适合日常创作任务'}
+                    </div>
                   </div>
-                  <div
-                    style={{
-                      fontSize: '12px',
-                      color: '#666',
-                      lineHeight: '1.6',
-                    }}
-                  >
-                    使用系统默认模板，适合大多数创作场景。
+                  <div className="model-status-icon">
+                    {isSelected && <CheckOutlined />}
                   </div>
                 </div>
-              </Radio>
-              {writingStyles.map((style) => (
-                <Radio
-                  key={style.id}
-                  value={style.id}
-                  style={{
-                    display: 'block',
-                    padding: '16px',
-                    border: '2px solid #e0e0e0',
-                    borderRadius: '12px',
-                    width: '100%',
-                  }}
-                >
-                  <div>
-                    <div
-                      style={{
-                        fontWeight: 600,
-                        fontSize: '14px',
-                        color: '#000',
-                        marginBottom: '6px',
-                      }}
-                    >
-                      {style.name}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: '12px',
-                        color: '#666',
-                        lineHeight: '1.6',
-                      }}
-                    >
-                      {style.description}
-                    </div>
-                  </div>
-                </Radio>
-              ))}
-            </Space>
-          </Radio.Group>
+              )
+            })}
+          </div>
+
+          {/* 高级设置展开区 */}
+          {showAdvancedSettings && (
+            <div className="advanced-settings-panel">
+              <div className="setting-row">
+                <div className="setting-label">
+                  <span className="setting-name">温度 (Temperature)</span>
+                  <span className="setting-desc">控制生成内容的随机性与创造力</span>
+                </div>
+                <div className="setting-value">
+                  {localTemperature.toFixed(1)}
+                </div>
+              </div>
+              <Slider
+                min={0}
+                max={2}
+                step={0.1}
+                value={localTemperature}
+                onChange={(val) => {
+                  setLocalTemperature(val)
+                  onTemperatureChange?.(val)
+                }}
+                className="custom-slider"
+              />
+              <div className="slider-labels">
+                <span>精确严谨</span>
+                <span>平衡</span>
+                <span>创意发散</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 底部操作栏 */}
+        <div className="modal-footer">
+          <Button
+            type="text"
+            icon={<SettingOutlined />}
+            onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
+            className={`advanced-btn ${showAdvancedSettings ? 'active' : ''}`}
+          >
+            高级设置
+          </Button>
+          <Button
+            className="modal-action-btn primary"
+            onClick={() => {
+              setIsModelModalVisible(false)
+              setShowAdvancedSettings(false)
+            }}
+          >
+            确认
+          </Button>
         </div>
       </Modal>
     </div>

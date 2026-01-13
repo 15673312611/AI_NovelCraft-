@@ -48,6 +48,9 @@ public class NovelController {
     
     @Autowired
     private ProtagonistStatusService protagonistStatusService;
+    
+    @Autowired
+    private com.novel.service.AIWritingService aiWritingService;
     /**
      * 获取小说大纲（直接来自 novels.outline）
      */
@@ -101,7 +104,10 @@ public class NovelController {
             @RequestParam(defaultValue = "10") int size) {
 
         try {
-            IPage<Novel> novelsPage = novelService.getNovels(page, size);
+            // 获取当前登录用户ID
+            Long userId = AuthUtils.getCurrentUserId();
+            
+            IPage<Novel> novelsPage = novelService.getNovelsByAuthor(userId, page, size);
 
             Map<String, Object> response = new HashMap<>();
             response.put("content", novelsPage.getRecords());
@@ -156,12 +162,16 @@ public class NovelController {
     @GetMapping("/{id}")
     public ResponseEntity<Novel> getNovel(@PathVariable Long id) {
         try {
+            Long userId = AuthUtils.getCurrentUserId();
             Novel novel = novelService.getNovel(id);
-            if (novel != null) {
-                return ResponseEntity.ok(novel);
-            } else {
+            if (novel == null) {
                 return ResponseEntity.notFound().build();
             }
+            // 验证权限
+            if (novel.getAuthorId() == null || !novel.getAuthorId().equals(userId)) {
+                return ResponseEntity.status(403).build();
+            }
+            return ResponseEntity.ok(novel);
         } catch (Exception e) {
             logger.error("获取小说失败: novelId={}", id, e);
             return ResponseEntity.status(500).build();
@@ -199,16 +209,20 @@ public class NovelController {
     @PutMapping("/{id}")
     public ResponseEntity<Novel> updateNovel(@PathVariable Long id, @RequestBody Novel novel) {
         try {
-            Novel updatedNovel = novelService.updateNovel(id, novel);
-            if (updatedNovel != null) {
-                return ResponseEntity.ok(updatedNovel);
-            } else {
+            Long userId = AuthUtils.getCurrentUserId();
+            Novel existingNovel = novelService.getNovel(id);
+            if (existingNovel == null) {
                 return ResponseEntity.notFound().build();
             }
+            // 验证权限
+            if (existingNovel.getAuthorId() == null || !existingNovel.getAuthorId().equals(userId)) {
+                return ResponseEntity.status(403).build();
+            }
+            
+            Novel updatedNovel = novelService.updateNovel(id, novel);
+            return ResponseEntity.ok(updatedNovel);
         } catch (Exception e) {
-            // 记录错误日志
-            System.err.println("更新小说失败: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("更新小说失败: novelId={}", id, e);
             return ResponseEntity.status(500).build();
         }
     }
@@ -219,12 +233,19 @@ public class NovelController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteNovel(@PathVariable Long id) {
         try {
-            boolean deleted = novelService.deleteNovel(id);
-            if (deleted) {
-                return ResponseEntity.ok().build();
-            } else {
+            Long userId = AuthUtils.getCurrentUserId();
+            Novel novel = novelService.getNovel(id);
+            if (novel == null) {
                 return ResponseEntity.notFound().build();
             }
+            // 验证权限
+            if (novel.getAuthorId() == null || !novel.getAuthorId().equals(userId)) {
+                logger.warn("用户{}尝试删除不属于自己的小说{}", userId, id);
+                return ResponseEntity.status(403).build();
+            }
+            
+            boolean deleted = novelService.deleteNovel(id);
+            return deleted ? ResponseEntity.ok().build() : ResponseEntity.notFound().build();
         } catch (Exception e) {
             logger.error("删除小说失败: novelId={}", id, e);
             return ResponseEntity.status(500).build();
@@ -527,6 +548,58 @@ public class NovelController {
             
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("error", "获取书籍列表失败");
+            errorResponse.put("message", e.getMessage());
+            
+            return ResponseEntity.status(500).body(errorResponse);
+        }
+    }
+    
+    /**
+     * 生成小说脑洞简介
+     */
+    @PostMapping("/generate-synopsis")
+    public ResponseEntity<Object> generateSynopsis(@RequestBody Map<String, Object> request) {
+        try {
+            String novelTitle = (String) request.get("title");
+            
+            if (novelTitle == null || novelTitle.trim().isEmpty()) {
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("error", "书名不能为空");
+                return ResponseEntity.badRequest().body(errorResponse);
+            }
+            
+            // 获取AI配置
+            @SuppressWarnings("unchecked")
+            Map<String, Object> aiConfigMap = (Map<String, Object>) request.get("aiConfig");
+            if (aiConfigMap == null) {
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("error", "AI配置不能为空");
+                return ResponseEntity.badRequest().body(errorResponse);
+            }
+            
+            // 构建AI配置对象
+            com.novel.dto.AIConfigRequest aiConfig = new com.novel.dto.AIConfigRequest();
+            aiConfig.setProvider((String) aiConfigMap.get("provider"));
+            aiConfig.setBaseUrl((String) aiConfigMap.get("baseUrl"));
+            aiConfig.setApiKey((String) aiConfigMap.get("apiKey"));
+            aiConfig.setModel((String) aiConfigMap.get("model"));
+            
+            // 调用AI生成脑洞
+            String synopsis = aiWritingService.generateSynopsis(novelTitle, aiConfig);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("synopsis", synopsis);
+            response.put("title", novelTitle);
+            
+            logger.info("生成脑洞成功，书名: {}", novelTitle);
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            logger.error("生成脑洞失败", e);
+            
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("error", "生成脑洞失败");
             errorResponse.put("message", e.getMessage());
             
             return ResponseEntity.status(500).body(errorResponse);

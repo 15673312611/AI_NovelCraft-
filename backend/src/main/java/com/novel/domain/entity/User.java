@@ -50,6 +50,15 @@ public class User {
     @TableField("email_verified")
     private Boolean emailVerified = false;
 
+    @TableField("wechat_openid")
+    private String wechatOpenid;
+
+    @TableField("wechat_unionid")
+    private String wechatUnionid;
+
+    @TableField("login_type")
+    private String loginType = "PASSWORD";
+
     @TableField(value = "created_at", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 
@@ -169,7 +178,29 @@ public class User {
         this.emailVerified = emailVerified;
     }
 
+    public String getWechatOpenid() {
+        return wechatOpenid;
+    }
 
+    public void setWechatOpenid(String wechatOpenid) {
+        this.wechatOpenid = wechatOpenid;
+    }
+
+    public String getWechatUnionid() {
+        return wechatUnionid;
+    }
+
+    public void setWechatUnionid(String wechatUnionid) {
+        this.wechatUnionid = wechatUnionid;
+    }
+
+    public String getLoginType() {
+        return loginType;
+    }
+
+    public void setLoginType(String loginType) {
+        this.loginType = loginType;
+    }
 
     public LocalDateTime getCreatedAt() {
         return createdAt;

@@ -67,6 +67,12 @@ export const getChaptersByNovel = async (novelId: number): Promise<Chapter[]> =>
   return list.map(normalizeChapter)
 }
 
+export const getChaptersWithContentByNovel = async (novelId: number): Promise<Chapter[]> => {
+  const response = await api.get(`/chapters/novel/${novelId}?summary=false`)
+  const list = extractData<any[]>(response, [])
+  return list.map(normalizeChapter)
+}
+
 export const getChapterById = async (chapterId: number): Promise<Chapter> => {
   const response = await api.get(`/chapters/${chapterId}`)
   return normalizeChapter(response)
