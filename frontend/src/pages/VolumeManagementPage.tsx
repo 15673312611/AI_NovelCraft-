@@ -516,12 +516,17 @@ const VolumeManagementPage: React.FC = () => {
     }
 
     setIsConfirmingOutline(true);
+    // 立即显示进度条，让用户知道任务已开始
+    setTaskProgress({ percentage: 0, message: '正在确认大纲...' });
 
     try {
       // 1) 直接将当前大纲内容写入 novels.outline
       const outlineText = (currentSuperOutline as any).plotStructure || (currentSuperOutline as any).outline || '';
       if (!outlineText || !String(outlineText).trim()) {
         message.warning('大纲内容为空，请先生成或编辑大纲');
+        // 清理状态后返回
+        setTaskProgress(null);
+        setIsConfirmingOutline(false);
         return;
       }
       console.log('[confirmSuperOutline] 保存大纲到 novels.outline');
@@ -595,9 +600,16 @@ const VolumeManagementPage: React.FC = () => {
     } catch (error: any) {
       console.error('❌ 确认大纲失败:', error);
       message.error(error.message || '确认大纲失败');
-    } finally {
+      // 报错时清理所有进行中状态
+      setTaskProgress(null);
       setIsConfirmingOutline(false);
+      // 清理可能已设置的 localStorage 标记
+      if (novelId) {
+        localStorage.removeItem(`novel_${novelId}_generating_volumes`);
+      }
     }
+    // 注意：不在 finally 中设置 setIsConfirmingOutline(false)，
+    // 因为成功时会启动轮询，轮询完成后才需要清理该状态
   };
 
   // 轮询等待卷规划生成完成（直接跳到步骤2）

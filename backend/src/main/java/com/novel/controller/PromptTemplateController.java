@@ -33,7 +33,8 @@ public class PromptTemplateController {
             @RequestParam(required = false) String type,
             @RequestParam(required = false) String category) {
         try {
-            List<PromptTemplate> templates = promptTemplateService.getTemplateList(category);
+            Long userId = AuthUtils.getCurrentUserId();
+            List<PromptTemplate> templates = promptTemplateService.getAvailableTemplates(userId, type, category);
             return Result.success(templates);
         } catch (Exception e) {
             logger.error("获取模板列表失败", e);
@@ -60,6 +61,11 @@ public class PromptTemplateController {
                 (template.getUserId() == null || !template.getUserId().equals(userId))) {
                 return Result.error("无权查看此模板");
             }
+
+            // 仅自定义模板允许返回内容，官方/公开模板不返回
+            if (!"custom".equals(type)) {
+                template.setContent(null);
+            }
             
             return Result.success(template);
         } catch (Exception e) {
@@ -78,7 +84,6 @@ public class PromptTemplateController {
             
             String name = (String) request.get("name");
             String content = (String) request.get("content");
-            String category = (String) request.get("category");
             String description = (String) request.get("description");
             
             if (name == null || name.trim().isEmpty()) {
@@ -89,8 +94,10 @@ public class PromptTemplateController {
             }
             
             PromptTemplate template = promptTemplateService.createCustomTemplate(
-                userId, name, content, category, description
+                userId, name, content, "chapter", description
             );
+            // 不对前端返回提示词内容
+            template.setContent(null);
             
             return Result.success(template);
         } catch (Exception e) {
@@ -115,7 +122,7 @@ public class PromptTemplateController {
             String description = (String) request.get("description");
             
             boolean success = promptTemplateService.updateCustomTemplate(
-                id, userId, name, content, category, description
+                id, userId, name, content, "chapter", description
             );
             
             if (success) {

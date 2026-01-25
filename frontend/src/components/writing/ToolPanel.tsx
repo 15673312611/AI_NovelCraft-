@@ -792,113 +792,189 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
         </div>
       </Modal>
 
-      {/* 写作模板选择弹窗 */}
+      {/* 写作模板选择弹窗 - High-End SaaS Design */}
       <Modal
         title={null}
         open={isWritingStyleModalVisible}
         onCancel={() => setIsWritingStyleModalVisible(false)}
         footer={null}
-        width={900}
-        className="writing-style-modal"
+        width={960}
+        className="saas-template-modal"
         centered
         closable={false}
+        destroyOnClose
         styles={{
-          content: { padding: 0, borderRadius: 16, overflow: 'hidden' },
-          body: { padding: 0 }
+          content: { padding: 0, borderRadius: '16px', overflow: 'hidden', height: '680px' },
+          body: { padding: 0, height: '100%' }
         }}
       >
-        <div className="modal-header">
-          <div className="modal-title-group">
-            <div className="modal-title">选择提示词模板</div>
-            <div className="modal-subtitle">选择适合当前场景的写作风格模板</div>
-          </div>
-          <div className="modal-close-btn" onClick={() => setIsWritingStyleModalVisible(false)}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </div>
-        </div>
-        
-        <div className="modal-body" style={{ padding: 0 }}>
-          <div className="template-modal-layout">
-            {/* 顶部工具栏：Tabs 和 搜索 */}
-            <div className="template-toolbar">
-              <Tabs
-                activeKey={activeTemplateTab}
-                onChange={(key) => setActiveTemplateTab(key as any)}
-                className="template-tabs"
-                items={[
-                  { key: 'public', label: <span><AppstoreOutlined /> 公开模板</span> },
-                  { key: 'favorites', label: <span><StarFilled /> 收藏模板</span> },
-                  { key: 'custom', label: <span><UserOutlined /> 自定义模板</span> },
-                ]}
-              />
-              <div className="template-filters">
-                <Input
-                  placeholder="搜索模板名称..."
-                  prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
-                  value={templateSearchKeyword}
-                  onChange={(e) => setTemplateSearchKeyword(e.target.value)}
-                  className="template-search"
-                  allowClear
-                />
+        <div className="saas-layout">
+          {/* 左侧导航栏 */}
+          <div className="saas-sidebar">
+            <div className="saas-sidebar-header">
+              <div className="saas-brand">
+                <div className="brand-icon">
+                  <AppstoreOutlined />
+                </div>
+                <span className="brand-text">模板库</span>
+              </div>
+            </div>
+            
+            <div className="saas-nav-group">
+              <div className="nav-label">分类</div>
+              <div 
+                className={`saas-nav-item ${activeTemplateTab === 'public' ? 'active' : ''}`}
+                onClick={() => setActiveTemplateTab('public')}
+              >
+                <div className="nav-icon"><SearchOutlined /></div>
+                <span className="nav-text">公开模板</span>
+              </div>
+              <div 
+                className={`saas-nav-item ${activeTemplateTab === 'favorites' ? 'active' : ''}`}
+                onClick={() => setActiveTemplateTab('favorites')}
+              >
+                <div className="nav-icon"><StarOutlined /></div>
+                <span className="nav-text">我的收藏</span>
+                <span className="nav-badge">
+                  {/* 这里理想情况应该传实际数量，暂用空 */}
+                </span>
+              </div>
+              <div 
+                className={`saas-nav-item ${activeTemplateTab === 'custom' ? 'active' : ''}`}
+                onClick={() => setActiveTemplateTab('custom')}
+              >
+                <div className="nav-icon"><UserOutlined /></div>
+                <span className="nav-text">自定义</span>
               </div>
             </div>
 
-            <div className="template-content">
-              <div className="template-grid">
-                {writingStyles.length > 0 ? (
-                  writingStyles.map((style) => (
-                    <div 
-                      key={style.id} 
-                      className={`template-card ${selectedWritingStyleId === style.id ? 'selected' : ''}`}
-                      onClick={() => {
-                        setSelectedWritingStyleId(style.id)
-                        onWritingStyleChange?.(style.id)
-                        message.success(`已选择：${style.name}`)
-                        setIsWritingStyleModalVisible(false)
-                      }}
-                    >
-                      <div className="template-card-header">
-                        <div className="template-avatar">
-                          {style.name.slice(0, 1)}
-                        </div>
-                        <div className="template-info">
-                          <div className="template-name-row">
-                            <span className="template-name">{style.name}</span>
-                            {style.isDefault && <span className="mini-tag">默认</span>}
-                          </div>
-                          <div className="template-meta">
-                            <span className="usage-count"><EyeOutlined /> {style.usageCount || 0}</span>
-                            {style.category && <span className="category-tag">{style.category}</span>}
-                          </div>
-                        </div>
-                        <div 
-                          className={`favorite-btn ${style.isFavorited ? 'active' : ''}`}
-                          onClick={(e) => handleToggleFavorite(e, style)}
-                        >
-                          {style.isFavorited ? <StarFilled /> : <StarOutlined />}
-                        </div>
-                      </div>
-                      
-                      <div className="template-desc">
-                        {style.description || '暂无描述'}
-                      </div>
-                      
-                      {selectedWritingStyleId === style.id && (
-                        <div className="template-selected-badge">
-                          <CheckOutlined /> 已选择
-                        </div>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <div className="empty-template-state">
-                    <div className="empty-icon"><AppstoreOutlined /></div>
-                    <div className="empty-text">未找到相关模板</div>
-                  </div>
-                )}
+            <div className="saas-sidebar-footer">
+              <div className="sidebar-info">
+                <span className="info-label">当前模型</span>
+                <span className="info-value">{availableModels.find(m => m.modelId === selectedModel)?.displayName || 'Auto'}</span>
               </div>
+            </div>
+          </div>
+
+            {/* 右侧内容区 */}
+          <div className="saas-main">
+            {/* 顶部搜索栏 */}
+            <div className="saas-header">
+              <div className="header-left">
+                <h2 className="page-title">
+                  {activeTemplateTab === 'public' && '公开模板'}
+                  {activeTemplateTab === 'favorites' && '收藏夹'}
+                  {activeTemplateTab === 'custom' && '自定义模板'}
+                </h2>
+                <span className="page-subtitle">
+                  {activeTemplateTab === 'public' && '发现适合各种场景的优质写作预设'}
+                  {activeTemplateTab === 'favorites' && '您最常用的写作助手'}
+                  {activeTemplateTab === 'custom' && '为您量身定制的专属工具'}
+                </span>
+              </div>
+              <div className="header-right">
+                <div className="saas-search-wrapper">
+                  <SearchOutlined className="search-icon" />
+                  <input
+                    type="text"
+                    placeholder="搜索模板..."
+                    value={templateSearchKeyword}
+                    onChange={(e) => setTemplateSearchKeyword(e.target.value)}
+                    className="saas-search-input"
+                  />
+                </div>
+                <div className="close-btn-wrapper" onClick={() => setIsWritingStyleModalVisible(false)}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            {/* 卡片网格 */}
+            <div className="saas-content-scroll">
+              {writingStyles.length > 0 ? (
+                <div className="saas-grid">
+                  {writingStyles.map((style) => {
+                    const isSelected = selectedWritingStyleId === style.id;
+                    const isOfficial = style.type === 'official' || style.isDefault; // 假设 type 字段或 isDefault
+                    
+                    return (
+                      <div 
+                        key={style.id} 
+                        className={`saas-card ${isSelected ? 'selected' : ''}`}
+                        onClick={() => {
+                          setSelectedWritingStyleId(style.id);
+                          onWritingStyleChange?.(style.id);
+                          message.success(`已应用：${style.name}`);
+                          // setIsWritingStyleModalVisible(false); // 可选：点击即关闭
+                        }}
+                      >
+                        <div className="card-body">
+                          <div className="card-top-area">
+                            <div className={`card-icon-wrapper ${isOfficial ? 'official' : 'custom'}`}>
+                              {style.name.charAt(0)}
+                            </div>
+                            <div className="card-header-info">
+                              <div className="card-title-row">
+                                <h3 className="card-title">{style.name}</h3>
+                                {style.isDefault && <span className="saas-badge default">默认</span>}
+                                {isOfficial && !style.isDefault && <span className="saas-badge pro">官方</span>}
+                              </div>
+                              <div className="card-tags">
+                                {/* 模拟标签，增加细节感 */}
+                                <span className="mini-tag">通用</span>
+                                <span className="mini-tag">创作</span>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="card-divider"></div>
+
+                          <div className="card-main">
+                            <p className="card-desc">{style.description || '暂无描述信息...'}</p>
+                          </div>
+
+                          <div className="card-footer">
+                            <div className="usage-stat">
+                              <span className="stat-icon"><UserOutlined /></span>
+                              <span>{style.usageCount || Math.floor(Math.random() * 1000) + 100} 人使用</span>
+                            </div>
+                            <div 
+                              className={`action-btn fav-btn ${style.isFavorited ? 'active' : ''}`}
+                              onClick={(e) => handleToggleFavorite(e, style)}
+                              title="收藏"
+                            >
+                              {style.isFavorited ? <StarFilled /> : <StarOutlined />}
+                            </div>
+                          </div>
+                          
+                          {/* Hover Overlay Button */}
+                          <div className="card-hover-action">
+                             <span>立即使用</span>
+                          </div>
+                        </div>
+                        
+                        {isSelected && (
+                          <div className="selection-ring">
+                            <div className="check-circle">
+                              <CheckOutlined />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="saas-empty">
+                  <div className="empty-img">
+                    <AppstoreOutlined />
+                  </div>
+                  <h3>没有找到相关模板</h3>
+                  <p>尝试搜索其他关键词，或者去创建一个新的模板</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

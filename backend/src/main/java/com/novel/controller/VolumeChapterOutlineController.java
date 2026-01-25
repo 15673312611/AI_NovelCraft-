@@ -37,14 +37,10 @@ public class VolumeChapterOutlineController {
     ) {
         // 解析参数
         Integer count = null;
-        Boolean includeDecisionLog = false;
 
         if (request != null) {
             if (request.containsKey("count") && request.get("count") != null) {
                 count = ((Number) request.get("count")).intValue();
-            }
-            if (request.containsKey("includeDecisionLog") && request.get("includeDecisionLog") != null) {
-                includeDecisionLog = (Boolean) request.get("includeDecisionLog");
             }
         }
 
@@ -53,11 +49,6 @@ public class VolumeChapterOutlineController {
 
         // 调用服务生成章纲
         Map<String, Object> result = service.generateOutlinesForVolume(volumeId, count, aiConfig);
-
-        // 允许按需剥离 react_decision_log，避免响应过大
-        if (!includeDecisionLog) {
-            result.remove("react_decision_log");
-        }
 
         return ResponseEntity.ok(result);
     }
@@ -90,7 +81,6 @@ public class VolumeChapterOutlineController {
      * {
      *   "count": 10,                    // 可选，生成后续多少章，不传则自动等于剩余未写正文章数
      *   "userRequirements": "……",     // 可选，作者本次对后续剧情的特别需求（爽点、情绪走向等）
-     *   "includeDecisionLog": false,    // 可选，是否返回 react_decision_log
      *   "provider": "deepseek",       // 以下为扁平化 AI 配置，可选
      *   "apiKey": "xxx",
      *   "model": "deepseek-chat",
@@ -104,15 +94,11 @@ public class VolumeChapterOutlineController {
     ) {
         // 解析参数
         Integer count = null;
-        Boolean includeDecisionLog = false;
         String userRequirements = null;
 
         if (request != null) {
             if (request.containsKey("count") && request.get("count") != null) {
                 count = ((Number) request.get("count")).intValue();
-            }
-            if (request.containsKey("includeDecisionLog") && request.get("includeDecisionLog") != null) {
-                includeDecisionLog = (Boolean) request.get("includeDecisionLog");
             }
             if (request.containsKey("userRequirements") && request.get("userRequirements") != null) {
                 Object ur = request.get("userRequirements");
@@ -127,11 +113,6 @@ public class VolumeChapterOutlineController {
 
         // 调用服务生成章纲（仅未写正文部分）
         Map<String, Object> result = service.generateOutlinesForRemainingChapters(volumeId, count, aiConfig, userRequirements);
-
-        // 允许按需剥离 react_decision_log，避免响应过大
-        if (!includeDecisionLog) {
-            result.remove("react_decision_log");
-        }
 
         return ResponseEntity.ok(result);
     }
@@ -276,6 +257,8 @@ public class VolumeChapterOutlineController {
             
             // 内容字段
             outline.setDirection(getString(request, "direction"));
+            String keyPlotPoints = getString(request, "keyPlotPoints");
+            outline.setKeyPlotPoints(isBlank(keyPlotPoints) ? null : keyPlotPoints);
             outline.setForeshadowAction(getString(request, "foreshadowAction"));
             // foreshadowDetail 是 JSON 字段，空字符串需要设为 null
             String foreshadowDetail = getString(request, "foreshadowDetail");

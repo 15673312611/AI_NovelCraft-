@@ -237,9 +237,6 @@ public class ChapterService {
         if (chapterData.getGenerationContext() != null) {
             chapter.setGenerationContext(chapterData.getGenerationContext());
         }
-        if (chapterData.getReactDecisionLog() != null) {
-            chapter.setReactDecisionLog(chapterData.getReactDecisionLog());
-        }
 
         chapterRepository.updateById(chapter);
 
@@ -419,11 +416,11 @@ public class ChapterService {
     }
 
     /**
-     * 根据小说获取章节列表（分页）
+     * 根据小说获取章节列表（分页，优化版，排除content等大文本字段）
      */
     public IPage<Chapter> getChaptersByNovel(Long novelId, int page, int size) {
         Page<Chapter> pageParam = new Page<>(page + 1, size);
-        return chapterRepository.findByNovel(novelId, pageParam);
+        return chapterRepository.findMetadataByNovelPaged(novelId, pageParam);
     }
 
     /**

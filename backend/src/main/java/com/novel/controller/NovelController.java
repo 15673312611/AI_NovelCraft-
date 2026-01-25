@@ -253,7 +253,7 @@ public class NovelController {
     }
 
     /**
-     * 获取小说的章节列表
+     * 获取小说的章节列表（优化版，排除content等大文本字段）
      */
     @GetMapping("/{id}/chapters")
     public ResponseEntity<Object> getNovelChapters(
@@ -263,11 +263,11 @@ public class NovelController {
 
         try {
             if (size == 0) {
-                // 如果size为0，返回所有章节
-                java.util.List<Chapter> chapters = chapterService.getChaptersByNovel(id);
+                // 如果size为0，返回所有章节的元数据（排除content等大字段）
+                java.util.List<Chapter> chapters = chapterService.getChapterMetadataByNovel(id);
                 return ResponseEntity.ok(chapters);
             } else {
-                // 分页查询
+                // 分页查询（已优化，排除content等大字段）
                 IPage<Chapter> chaptersPage = chapterService.getChaptersByNovel(id, page, size);
 
                 Map<String, Object> response = new HashMap<>();

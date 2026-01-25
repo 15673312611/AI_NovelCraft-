@@ -162,12 +162,14 @@
             <version>5.2.3</version>
         </dependency>
 
-        <!-- Neo4j Driver for Graph Database (JDK 17 compatible) -->
+        <!-- Neo4j Driver 已移除，改用MySQL存储图谱数据 -->
+        <!-- 如需恢复Neo4j支持，取消以下注释：
         <dependency>
             <groupId>org.neo4j.driver</groupId>
             <artifactId>neo4j-java-driver</artifactId>
             <version>5.13.0</version>
         </dependency>
+        -->
 
         <!-- Jsoup for HTML parsing (web scraping) -->
         <dependency>

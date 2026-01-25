@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.novel.domain.entity.PromptTemplate;
 import com.novel.domain.entity.PromptTemplateFavorite;
+import com.novel.common.security.AuthUtils;
 import com.novel.repository.PromptTemplateRepository;
 import com.novel.repository.PromptTemplateFavoriteRepository;
 import org.slf4j.Logger;
@@ -57,10 +58,31 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
     }
 
     /**
+     * 仅选择列表展示所需字段，避免返回提示词内容等敏感信息
+     */
+    private void applyListFieldSelection(LambdaQueryWrapper<PromptTemplate> wrapper) {
+        wrapper.select(
+            PromptTemplate::getId,
+            PromptTemplate::getName,
+            PromptTemplate::getType,
+            PromptTemplate::getUserId,
+            PromptTemplate::getCategory,
+            PromptTemplate::getDescription,
+            PromptTemplate::getIsActive,
+            PromptTemplate::getIsDefault,
+            PromptTemplate::getSortOrder,
+            PromptTemplate::getUsageCount,
+            PromptTemplate::getCreatedTime,
+            PromptTemplate::getUpdatedTime
+        );
+    }
+
+    /**
      * 获取模板列表（简单查询，和后台管理一致）
      */
     public List<PromptTemplate> getTemplateList(String category) {
         LambdaQueryWrapper<PromptTemplate> wrapper = new LambdaQueryWrapper<>();
+        applyListFieldSelection(wrapper);
         
         // 分类过滤
         if (category != null && !category.isEmpty()) {
@@ -82,6 +104,7 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
      */
     public List<PromptTemplate> getAvailableTemplates(Long userId, String type, String category) {
         LambdaQueryWrapper<PromptTemplate> wrapper = new LambdaQueryWrapper<>();
+        applyListFieldSelection(wrapper);
         wrapper.eq(PromptTemplate::getIsActive, true);
         
         // 类型过滤
@@ -132,6 +155,15 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
             logger.warn("模板不存在或已禁用: {}", templateId);
             return null;
         }
+
+        // 自定义模板仅允许模板所属用户使用
+        if ("custom".equals(template.getType())) {
+            Long currentUserId = AuthUtils.getCurrentUserId();
+            if (currentUserId == null || template.getUserId() == null || !template.getUserId().equals(currentUserId)) {
+                logger.warn("无权使用他人自定义模板: templateId={}, userId={}", templateId, currentUserId);
+                return null;
+            }
+        }
         
         // 增加使用次数
         template.setUsageCount(template.getUsageCount() + 1);
@@ -144,26 +176,21 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
      * 创建用户自定义模板
      */
     public PromptTemplate createCustomTemplate(Long userId, String name, String content, String category, String description) {
-        // 校验模板内容中的占位符
-        Map<String, Object> validation = validatePlaceholders(content);
-        if (!(Boolean) validation.get("valid")) {
-            String errorMsg = (String) validation.get("message");
-            logger.warn("模板占位符校验失败: {}", errorMsg);
-            throw new RuntimeException(errorMsg);
-        }
 
         PromptTemplate template = new PromptTemplate();
         template.setName(name);
         template.setContent(content);
         template.setType("custom");
         template.setUserId(userId);
-        template.setCategory(category);
+        template.setCategory("chapter");
         template.setDescription(description);
         template.setIsActive(true);
         template.setUsageCount(0);
+        template.setCreatedTime(LocalDateTime.now());
+        template.setUpdatedTime(LocalDateTime.now());
 
         save(template);
-        logger.info("用户创建自定义模板: userId={}, templateId={}, 校验结果={}", userId, template.getId(), validation.get("message"));
+        logger.info("用户创建自定义模板: userId={}, templateId={}", userId, template.getId());
 
         return template;
     }
@@ -186,7 +213,7 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
         
         template.setName(name);
         template.setContent(content);
-        template.setCategory(category);
+        template.setCategory("chapter");
         template.setDescription(description);
         
         return updateById(template);
@@ -231,6 +258,7 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
         logger.info("🔍 Service层: 开始查询公开模板, userId={}, category={}", userId, category);
         
         LambdaQueryWrapper<PromptTemplate> wrapper = new LambdaQueryWrapper<>();
+        applyListFieldSelection(wrapper);
         wrapper.eq(PromptTemplate::getType, "official")
                .eq(PromptTemplate::getIsActive, true);
         
@@ -260,6 +288,7 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
      */
     public List<PromptTemplate> getUserCustomTemplates(Long userId, String category) {
         LambdaQueryWrapper<PromptTemplate> wrapper = new LambdaQueryWrapper<>();
+        applyListFieldSelection(wrapper);
         wrapper.eq(PromptTemplate::getType, "custom")
                .eq(PromptTemplate::getUserId, userId)
                .eq(PromptTemplate::getIsActive, true);
@@ -297,8 +326,12 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
         
         // 查询模板详情
         LambdaQueryWrapper<PromptTemplate> templateWrapper = new LambdaQueryWrapper<>();
+        applyListFieldSelection(templateWrapper);
         templateWrapper.in(PromptTemplate::getId, templateIds)
-                      .eq(PromptTemplate::getIsActive, true);
+                      .eq(PromptTemplate::getIsActive, true)
+                      .and(w -> w.eq(PromptTemplate::getType, "official")
+                                .or()
+                                .eq(PromptTemplate::getUserId, userId));
 
         if (category != null && !category.isEmpty()) {
             templateWrapper.eq(PromptTemplate::getCategory, category);
@@ -320,6 +353,12 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
         PromptTemplate template = getById(templateId);
         if (template == null || !template.getIsActive()) {
             logger.warn("模板不存在或已禁用: templateId={}", templateId);
+            return false;
+        }
+
+        // 禁止收藏他人自定义模板
+        if ("custom".equals(template.getType()) && (template.getUserId() == null || !template.getUserId().equals(userId))) {
+            logger.warn("无权收藏他人自定义模板: userId={}, templateId={}", userId, templateId);
             return false;
         }
         
@@ -375,6 +414,7 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
      */
     public List<PromptTemplate> getTemplatesByCategory(String category, Long userId) {
         LambdaQueryWrapper<PromptTemplate> wrapper = new LambdaQueryWrapper<>();
+        applyListFieldSelection(wrapper);
         wrapper.eq(PromptTemplate::getCategory, category)
                .eq(PromptTemplate::getIsActive, true)
                .and(w -> w.eq(PromptTemplate::getType, "official")

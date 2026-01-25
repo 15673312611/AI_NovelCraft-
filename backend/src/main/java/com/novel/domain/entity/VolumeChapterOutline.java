@@ -85,12 +85,6 @@ public class VolumeChapterOutline {
     private String status;
 
     /**
-     * AI决策日志（生成章纲时的推理过程、提示词等，便于审计）
-     */
-    @TableField(value = "react_decision_log")
-    private String reactDecisionLog;
-
-    /**
      * 创建时间
      */
     @TableField(fill = FieldFill.INSERT)

@@ -256,8 +256,7 @@ public class AgenticChapterWriter {
 
         // 保存章节
         sendEvent(emitter, "phase", "💾 保存中...");
-        String decisionLog = serializeDecisionLog(context, plotIntent, null, reasoningPrompt, messages, mode);
-        Chapter chapter = saveChapter(novel, chapterNumber, generatedContent, generationContextSnapshot, decisionLog, aiConfig);
+        Chapter chapter = saveChapter(novel, chapterNumber, generatedContent, generationContextSnapshot, aiConfig);
 
         // 🔐 捕获当前线程的 SecurityContext，以便在异步线程中使用
         SecurityContext securityContext = SecurityContextHolder.getContext();
@@ -596,7 +595,7 @@ public class AgenticChapterWriter {
     /**
      * 保存章节
      */
-    private Chapter saveChapter(Novel novel, Integer chapterNumber, String content, String generationContext, String reactDecisionLog, AIConfigRequest aiConfig) {
+    private Chapter saveChapter(Novel novel, Integer chapterNumber, String content, String generationContext, AIConfigRequest aiConfig) {
         Chapter existing = chapterService.getChapterByNovelAndNumber(novel.getId(), chapterNumber);
         Chapter persisted;
         if (existing == null) {
@@ -606,14 +605,12 @@ public class AgenticChapterWriter {
             chapter.setTitle("第" + chapterNumber + "章");
             chapter.setContent(content);
             chapter.setGenerationContext(generationContext);
-            chapter.setReactDecisionLog(reactDecisionLog);
             persisted = chapterService.createChapter(chapter);
         } else {
             Chapter update = new Chapter();
             update.setTitle(existing.getTitle() != null ? existing.getTitle() : "第" + chapterNumber + "章");
             update.setContent(content);
             update.setGenerationContext(generationContext);
-            update.setReactDecisionLog(reactDecisionLog);
             persisted = chapterService.updateChapterInternal(existing.getId(), update);
         }
 
@@ -711,140 +708,6 @@ public class AgenticChapterWriter {
             } catch (Exception fallback) {
                 logger.error("messages序列化完全失败", fallback);
                 return "[]";
-            }
-        }
-    }
-
-    private String serializeDecisionLog(
-            WritingContext context,
-            Map<String, Object> plotIntent,
-            String brief,
-            String reasoningPrompt,
-            List<Map<String, String>> writingMessages,
-            String mode
-    ) {
-        if (context == null) {
-            return null;
-        }
-
-        Map<String, Object> log = new HashMap<>();
-        log.put("timestamp", LocalDateTime.now());
-        log.put("chapterNumber", context.getChapterPlan() != null ? context.getChapterPlan().get("chapterNumber") : null);
-        log.put("userAdjustment", context.getUserAdjustment());
-        if (mode != null) {
-            log.put("mode", mode);
-        }
-
-        // 🧠 剧情推理结果与提示词
-        if (plotIntent != null) {
-            log.put("plotReasoning", plotIntent);
-        }
-        if (reasoningPrompt != null && !reasoningPrompt.isEmpty()) {
-            log.put("reasoningPrompt", reasoningPrompt);
-        }
-
-        // 📋 章纲（如有）
-        if (brief != null) {
-            log.put("brief", brief);
-            log.put("briefLength", brief.length());
-        }
-
-        // ✍️ 写作提示词（messages）
-        if (writingMessages != null) {
-            log.put("writingMessages", writingMessages);
-            log.put("writingMessagesCount", writingMessages.size());
-        }
-
-        // 完整的思考和行动记录
-        List<AgentThought> thoughts = context.getThoughts();
-        if (thoughts != null && !thoughts.isEmpty()) {
-            List<Map<String, Object>> detailedThoughts = new ArrayList<>();
-            for (AgentThought thought : thoughts) {
-                Map<String, Object> thoughtDetail = new HashMap<>();
-                thoughtDetail.put("stepNumber", thought.getStepNumber());
-                thoughtDetail.put("timestamp", thought.getTimestamp());
-                thoughtDetail.put("reasoning", thought.getReasoning());
-                thoughtDetail.put("action", thought.getAction());
-                thoughtDetail.put("actionArgs", thought.getActionArgs());
-                thoughtDetail.put("observation", thought.getObservation());
-                thoughtDetail.put("reflection", thought.getReflection());
-                thoughtDetail.put("goalAchieved", thought.getGoalAchieved());
-                detailedThoughts.add(thoughtDetail);
-            }
-            log.put("decisionSteps", detailedThoughts);
-        }
-
-        // 查询到的各类数据
-        Map<String, Object> queriedData = new HashMap<>();
-        if (context.getCoreSettings() != null) {
-            queriedData.put("core_settings", context.getCoreSettings());
-        }
-        if (context.getVolumeBlueprint() != null) {
-            queriedData.put("volumeBlueprint", context.getVolumeBlueprint());
-        }
-        if (context.getRecentFullChapters() != null && !context.getRecentFullChapters().isEmpty()) {
-            queriedData.put("recentFullChapters", context.getRecentFullChapters().size() + "章");
-        }
-        if (context.getRecentSummaries() != null && !context.getRecentSummaries().isEmpty()) {
-            queriedData.put("recentSummaries", context.getRecentSummaries().size() + "章概要");
-        }
-        if (context.getCharacterProfiles() != null && !context.getCharacterProfiles().isEmpty()) {
-            queriedData.put("characterProfiles", context.getCharacterProfiles().size() + "个角色");
-        }
-        if (context.getRelevantEvents() != null && !context.getRelevantEvents().isEmpty()) {
-            queriedData.put("relevantEvents", context.getRelevantEvents().size() + "个事件");
-        }
-        if (context.getUnresolvedForeshadows() != null && !context.getUnresolvedForeshadows().isEmpty()) {
-            queriedData.put("unresolvedForeshadows", context.getUnresolvedForeshadows().size() + "个伏笔");
-        }
-        if (context.getConflictArcs() != null && !context.getConflictArcs().isEmpty()) {
-            queriedData.put("conflictArcs", context.getConflictArcs().size() + "个冲突弧线");
-        }
-        if (context.getCharacterArcs() != null && !context.getCharacterArcs().isEmpty()) {
-            queriedData.put("characterArcs", context.getCharacterArcs().size() + "个角色弧线");
-        }
-        if (context.getPlotlineStatus() != null && !context.getPlotlineStatus().isEmpty()) {
-            queriedData.put("plotlineStatus", context.getPlotlineStatus().size() + "条情节线");
-        }
-        if (context.getWorldRules() != null && !context.getWorldRules().isEmpty()) {
-            queriedData.put("worldRules", context.getWorldRules().size() + "条世界规则");
-        }
-        if (context.getNarrativeRhythm() != null) {
-            queriedData.put("narrativeRhythm", context.getNarrativeRhythm());
-        }
-        if (context.getInnovationIdeas() != null && !context.getInnovationIdeas().isEmpty()) {
-            queriedData.put("innovationIdeas", context.getInnovationIdeas().size() + "个创新方案");
-        }
-        log.put("queriedData", queriedData);
-
-        // 章节意图和预期效果
-        if (context.getChapterIntent() != null) {
-            log.put("chapterIntent", context.getChapterIntent());
-        }
-
-        // 统计信息
-        Map<String, Object> statistics = new HashMap<>();
-        statistics.put("totalDecisionSteps", thoughts != null ? thoughts.size() : 0);
-        statistics.put("toolsInvoked", thoughts != null ? thoughts.stream()
-                .map(AgentThought::getAction)
-                .filter(action -> !"WRITE".equals(action))
-                .distinct()
-                .count() : 0);
-        statistics.put("dataSourcesQueried", queriedData.size());
-        log.put("statistics", statistics);
-
-        try {
-            return objectMapper.writeValueAsString(log);
-        } catch (Exception e) {
-            logger.warn("无法序列化ReAct决策日志，将存储简化版本", e);
-            try {
-                Map<String, Object> fallbackLog = new HashMap<>();
-                fallbackLog.put("timestamp", LocalDateTime.now());
-                fallbackLog.put("error", "完整序列化失败: " + e.getMessage());
-                return objectMapper.writeValueAsString(fallbackLog);
-            } catch (Exception fallback) {
-                logger.error("ReAct决策日志序列化完全失败", fallback);
-                return "{\"error\":\"序列化失败\",\"timestamp\":\"" + LocalDateTime.now() + "\"}";
             }
         }
     }
@@ -1002,7 +865,7 @@ public class AgenticChapterWriter {
         Map<String, Object> intent = new HashMap<>();
         
         // direction 作为本章剧情方向（包含关键剧情点，不再使用数组格式）
-        intent.put("direction", outline.getDirection());
+        intent.put("direction", resolveOutlineDirection(outline));
 
         // 伏笔相关字段
         if (outline.getForeshadowDetail() != null) {
@@ -1052,9 +915,9 @@ public class AgenticChapterWriter {
                             hint.append("未来章节：");
                         }
 
-                        // 使用 direction 字段
-                        if (fo.getDirection() != null && !fo.getDirection().isEmpty()) {
-                            hint.append(fo.getDirection()).append("\n");
+                        String futureDirection = resolveOutlineDirection(fo);
+                        if (StringUtils.hasText(futureDirection)) {
+                            hint.append(futureDirection).append("\n");
                         } else {
                             hint.append("（暂无剧情方向）\n");
                         }
@@ -1068,6 +931,54 @@ public class AgenticChapterWriter {
         }
 
         return intent;
+    }
+
+    private String resolveOutlineDirection(VolumeChapterOutline outline) {
+        if (outline == null) {
+            return null;
+        }
+        String fromKeyPlot = extractKeyPlotPointsText(outline.getKeyPlotPoints());
+        if (StringUtils.hasText(fromKeyPlot)) {
+            return fromKeyPlot;
+        }
+        return outline.getDirection();
+    }
+
+    private String extractKeyPlotPointsText(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        try {
+            Object parsed = objectMapper.readValue(trimmed, Object.class);
+            if (parsed instanceof List) {
+                StringBuilder sb = new StringBuilder();
+                for (Object item : (List<?>) parsed) {
+                    if (item == null) {
+                        continue;
+                    }
+                    String line = item.toString().trim();
+                    if (line.isEmpty()) {
+                        continue;
+                    }
+                    if (sb.length() > 0) {
+                        sb.append("\n");
+                    }
+                    sb.append(line);
+                }
+                return sb.length() > 0 ? sb.toString() : null;
+            }
+            if (parsed instanceof String) {
+                String line = ((String) parsed).trim();
+                return line.isEmpty() ? null : line;
+            }
+            if (parsed instanceof Map) {
+                return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(parsed);
+            }
+        } catch (Exception e) {
+            // ignore and fall back to raw text
+        }
+        return trimmed;
     }
 
 

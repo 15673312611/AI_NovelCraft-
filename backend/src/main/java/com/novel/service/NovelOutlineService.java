@@ -183,16 +183,6 @@ public class NovelOutlineService {
             prompt = buildSuperOutlinePromptCompat(novel, outline.getBasicIdea(), outline.getTargetChapterCount(), outline.getTargetWordCount());
         }
 
-        // 生成并保存 react_decision_log（最小侵入，若列不存在则忽略错误）
-        try {
-            String decisionLog = buildReactDecisionLogForOutline("outline_generation_stream", novel, outline, prompt, templateId, wordLimit, aiConfig);
-            outlineRepository.update(null, new UpdateWrapper<NovelOutline>()
-                .set("react_decision_log", decisionLog)
-                .eq("id", outline.getId()));
-        } catch (Exception e) {
-            logger.warn("react_decision_log 写入失败（不影响主流程）: {}", e.getMessage());
-        }
-
         // 使用真正的流式AI调用 - 从空开始累加（不使用旧的大纲）
         StringBuilder accumulated = new StringBuilder();
         
@@ -549,39 +539,6 @@ public class NovelOutlineService {
         logger.info("=".repeat(100));
 
         return prompt;
-    }
-
-    // 生成react决策日志（msg1/msg2...格式，完整保留提示词与上下文）
-    private String buildReactDecisionLogForOutline(String route, Novel novel, NovelOutline outline, String prompt, Long templateId, Integer outlineWordLimit, com.novel.dto.AIConfigRequest aiConfig) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("[react_decision_log]\n");
-        sb.append("route: ").append(route).append('\n');
-        sb.append("time: ").append(java.time.LocalDateTime.now()).append('\n');
-        // msg1 = 最终提示词
-        sb.append("msg1: <<<PROMPT>>>").append('\n');
-        sb.append(prompt == null ? "" : prompt).append('\n');
-        sb.append("<<<END_PROMPT>>>\n");
-        // 其余上下文逐条列出
-        sb.append("msg2: novelId=").append(outline.getNovelId()).append(", title=").append(novel.getTitle()).append('\n');
-        String desc = novel.getDescription();
-        if (desc != null) {
-            String clipped = desc.length() > 800 ? desc.substring(0, 800) + "..." : desc;
-            sb.append("msg3: novel.description=").append(clipped).append('\n');
-        } else {
-            sb.append("msg3: novel.description=null\n");
-        }
-        sb.append("msg4: basicIdea=").append(outline.getBasicIdea()).append('\n');
-        sb.append("msg5: targetChapterCount=").append(outline.getTargetChapterCount()).append(", targetWordCount=").append(outline.getTargetWordCount()).append('\n');
-        sb.append("msg6: outlineWordLimit=").append(outlineWordLimit).append('\n');
-        sb.append("msg7: templateId=").append(templateId).append('\n');
-        if (aiConfig != null) {
-            sb.append("msg8: ai.provider=").append(aiConfig.getProvider())
-              .append(", model=").append(aiConfig.getModel())
-              .append(", baseUrl=").append(aiConfig.getBaseUrl()).append('\n');
-        } else {
-            sb.append("msg8: ai.config=null\n");
-        }
-        return sb.toString();
     }
 
     /**

@@ -84,7 +84,7 @@
 
 - **核心框架**：Spring Boot 2.7.x
 - **开发语言**：Java 17+
-- **数据库**：MySQL 8.0+
+- **数据库**：MySQL 5.7+
 - **持久层**：MyBatis Plus
 - **AI集成**：RestTemplate + SSE (Server-Sent Events)
 - **异步处理**：Spring Async + CompletableFuture
@@ -114,7 +114,7 @@
 
 - **JDK**: 17 或更高版本
 - **Node.js**: 16 或更高版本
-- **MySQL**: 8.0 或更高版本
+- **MySQL**: 5.7 或更高版本
 - **Maven**: 3.6 或更高版本
 
 ### 安装步骤

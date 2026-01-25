@@ -45,9 +45,6 @@ public class Chapter {
     @TableField("generation_context")
     private String generationContext;
 
-    @TableField("react_decision_log")
-    private String reactDecisionLog;
-
     @TableField("is_public")
     private Boolean isPublic = false;
 
@@ -171,14 +168,6 @@ public class Chapter {
 
     public void setGenerationContext(String generationContext) {
         this.generationContext = generationContext;
-    }
-
-    public String getReactDecisionLog() {
-        return reactDecisionLog;
-    }
-
-    public void setReactDecisionLog(String reactDecisionLog) {
-        this.reactDecisionLog = reactDecisionLog;
     }
 
     public Boolean getIsPublic() {

@@ -807,107 +807,6 @@ public class AgentOrchestrator {
         }
     }
 
-    private void seedCreativeSignals(Long novelId,
-                                     Integer chapterNumber,
-                                     String userAdjustment,
-                                     WritingContext.WritingContextBuilder builder,
-                                     Set<String> executedTools,
-                                     AIConfigRequest aiConfig) {
-        if (aiConfig == null || StringUtils.isBlank(aiConfig.getApiKey())) {
-            logger.info("⏭️ AI配置缺失，跳过创新素材预加载");
-            return;
-        }
-        try {
-            WritingContext snapshot = builder.build();
-            String creativeContext = buildCreativeContext(snapshot, userAdjustment);
-
-            Tool reversalTool = toolRegistry.getTool("generateReversalIdea");
-            if (reversalTool != null && StringUtils.isNotBlank(creativeContext) && (snapshot.getInnovationIdeas() == null || snapshot.getInnovationIdeas().isEmpty())) {
-                Map<String, Object> args = new HashMap<>();
-                args.put("context", creativeContext);
-                args.put("__aiConfig", aiConfig);
-                Object result = reversalTool.execute(args);
-                storeToolResult("generateReversalIdea", result, builder);
-                executedTools.add("generateReversalIdea");
-                logger.info("🎯 预加载反套路创意方案");
-            }
-
-            Tool foreshadowTool = toolRegistry.getTool("generateForeshadowPlan");
-            if (foreshadowTool != null && shouldSeedForeshadow(snapshot, chapterNumber)) {
-                Map<String, Object> args = new HashMap<>();
-                args.put("novelId", novelId);
-                args.put("chapterNumber", chapterNumber);
-                args.put("context", creativeContext);
-                args.put("__aiConfig", aiConfig);
-                Object result = foreshadowTool.execute(args);
-                storeToolResult("generateForeshadowPlan", result, builder);
-                executedTools.add("generateForeshadowPlan");
-                logger.info("🎯 预加载伏笔布局方案");
-            }
-
-        } catch (Exception e) {
-            logger.warn("预加载创新素材失败", e);
-        }
-    }
-
-    private String buildCreativeContext(WritingContext context, String userAdjustment) {
-        if (context == null) {
-            return userAdjustment != null ? userAdjustment : "";
-        }
-
-        TokenBudget budget = TokenBudget.builder().build();
-        StringBuilder sb = new StringBuilder();
-        sb.append("章节计划:\n");
-        if (context.getChapterPlan() != null) {
-            sb.append(clip(budget, safeJson(context.getChapterPlan()), 800)).append("\n\n");
-        }
-
-        if (context.getCoreNarrativeSummary() != null) {
-            sb.append("核心剧情纪要:\n").append(clip(budget, safeJson(context.getCoreNarrativeSummary()), 900)).append("\n\n");
-        }
-
-        if (context.getNarrativeRhythm() != null) {
-            sb.append("节奏点评:\n").append(clip(budget, safeJson(context.getNarrativeRhythm()), 420)).append("\n\n");
-        }
-
-        if (context.getRecentSummaries() != null && !context.getRecentSummaries().isEmpty()) {
-            Map<String, Object> latest = context.getRecentSummaries().get(context.getRecentSummaries().size() - 1);
-            sb.append("最近章节摘要:\n").append(clip(budget, safeJson(latest), 420)).append("\n\n");
-        }
-
-        if (StringUtils.isNotBlank(userAdjustment)) {
-            sb.append("用户要求:\n").append(userAdjustment).append("\n\n");
-        }
-
-        if (context.getCharacterProfiles() != null && !context.getCharacterProfiles().isEmpty()) {
-            sb.append("关键角色档案:\n");
-            for (int i = 0; i < Math.min(2, context.getCharacterProfiles().size()); i++) {
-                Map<String, Object> profile = context.getCharacterProfiles().get(i);
-                String name = StringUtils.defaultIfBlank(stringValue(profile.getOrDefault("name", profile.get("characterName"))), "角色");
-                String traits = StringUtils.defaultIfBlank(stringValue(profile.get("coreTraits")), stringValue(profile.get("summary")));
-                sb.append("- ").append(name).append(": ")
-                  .append(StringUtils.defaultIfBlank(clip(budget, traits, 200), "特质待完善"))
-                  .append("\n");
-            }
-            sb.append("\n");
-        }
-
-        return sb.toString().strip();
-    }
-
-    private boolean shouldSeedForeshadow(WritingContext context, Integer chapterNumber) {
-        if (context == null) {
-            return true;
-        }
-        if (context.getForeshadowPlan() != null && !context.getForeshadowPlan().isEmpty()) {
-            return false;
-        }
-        if (context.getUnresolvedForeshadows() != null && context.getUnresolvedForeshadows().size() >= 3) {
-            return false;
-        }
-        return chapterNumber == null || chapterNumber <= 20;
-    }
-
     private void appendCoreFocus(StringBuilder prompt, WritingContext context) {
         Map<String, Object> coreSummary = context != null ? context.getCoreNarrativeSummary() : null;
         Map<String, Object> meta = null;
@@ -1394,19 +1293,6 @@ public class AgentOrchestrator {
         if (args == null) {
             args = new HashMap<>();
         }
-
-        if ("generateReversalIdea".equals(action)
-            || "generateForeshadowPlan".equals(action)) {
-            Object ctxObj = args.get("context");
-            String ctxStr = ctxObj instanceof String ? ((String) ctxObj).trim() : null;
-            if (StringUtils.isBlank(ctxStr)) {
-                String creativeContext = buildCreativeContext(snapshot, userAdjustment);
-                if (StringUtils.isNotBlank(creativeContext)) {
-                    args.put("context", creativeContext);
-                }
-            }
-        }
-
         return args;
     }
     
@@ -1490,18 +1376,6 @@ public class AgentOrchestrator {
             case "getPerspectiveHistory":
                 if (result instanceof List) {
                     builder.perspectiveHistory((List<GraphEntity>) result);
-                }
-                break;
-            case "generateReversalIdea":
-                if (result instanceof List) {
-                    List<Map<String, Object>> ideas = (List<Map<String, Object>>) result;
-                    builder.innovationIdeas(mergeLists(builder.build().getInnovationIdeas(), ideas));
-                }
-                break;
-            case "generateForeshadowPlan":
-                if (result instanceof List) {
-                    List<Map<String, Object>> plan = (List<Map<String, Object>>) result;
-                    builder.foreshadowPlan(mergeLists(builder.build().getForeshadowPlan(), plan));
                 }
                 break;
         }

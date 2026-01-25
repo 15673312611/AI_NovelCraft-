@@ -15,7 +15,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * @since 2024-01-01
  */
 @SpringBootApplication
-@MapperScan({"com.novel.repository", "com.novel.mapper"})
+@MapperScan({"com.novel.repository", "com.novel.mapper", "com.novel.agentic.mapper"})
 @EnableCaching
 @EnableAsync
 @EnableScheduling

@@ -7,7 +7,7 @@ import {
   BookOutlined, RobotOutlined, 
   FileTextOutlined, HistoryOutlined, ArrowLeftOutlined, 
   CheckOutlined, ThunderboltOutlined, PlusOutlined, SaveOutlined,
-  GlobalOutlined, HeartOutlined
+  GlobalOutlined, HeartOutlined, EyeOutlined, CheckCircleFilled
 } from '@ant-design/icons';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import api from '@/services/api';
@@ -17,6 +17,171 @@ import './VolumeWritingStudio.css';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
+
+interface TemplateCardProps {
+  template: any;
+  selectedId: number | null;
+  onSelect: (id: number) => void;
+  icon?: React.ReactNode;
+}
+
+const TemplateCard: React.FC<TemplateCardProps> = ({ template, selectedId, onSelect, icon }) => {
+  const isSelected = selectedId === template.id;
+  
+  return (
+    <div
+      onClick={() => onSelect(template.id)}
+      style={{
+        position: 'relative',
+        borderRadius: '24px',
+        background: isSelected ? 'white' : 'white',
+        cursor: 'pointer',
+        transition: 'all 0.4s cubic-bezier(0.19, 1, 0.22, 1)',
+        border: 'none',
+        // 高级阴影效果
+        boxShadow: isSelected 
+          ? '0 0 0 2px #7c3aed, 0 20px 40px -10px rgba(124, 58, 237, 0.3)' 
+          : '0 0 0 1px #e2e8f0, 0 4px 6px -2px rgba(0,0,0,0.03)',
+        transform: isSelected ? 'scale(1.02)' : 'scale(1)',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden'
+      }}
+      onMouseEnter={(e) => {
+        if (!isSelected) {
+          e.currentTarget.style.boxShadow = '0 0 0 1px #cbd5e1, 0 12px 24px -8px rgba(0,0,0,0.08)';
+          e.currentTarget.style.transform = 'translateY(-4px)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!isSelected) {
+          e.currentTarget.style.boxShadow = '0 0 0 1px #e2e8f0, 0 4px 6px -2px rgba(0,0,0,0.03)';
+          e.currentTarget.style.transform = 'scale(1)';
+        }
+      }}
+    >
+      {/* 顶部装饰条 */}
+      {isSelected && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '6px',
+          background: 'linear-gradient(90deg, #8b5cf6, #ec4899)'
+        }} />
+      )}
+
+      <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+          <div style={{ 
+            width: '64px', 
+            height: '64px', 
+            borderRadius: '20px', 
+            background: isSelected ? 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)' : '#f8fafc',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '32px',
+            boxShadow: isSelected ? 'inset 0 0 0 1px rgba(139, 92, 246, 0.1)' : 'none',
+            border: isSelected ? 'none' : '1px solid #f1f5f9',
+            transition: 'all 0.3s ease'
+          }}>
+            {icon || (template.type === 'official' ? '🏆' : '✨')}
+          </div>
+          
+          <div style={{
+            width: '28px',
+            height: '28px',
+            borderRadius: '50%',
+            background: isSelected ? '#7c3aed' : 'transparent',
+            border: isSelected ? 'none' : '2px solid #e2e8f0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'white',
+            transition: 'all 0.3s ease',
+            boxShadow: isSelected ? '0 4px 10px rgba(124, 58, 237, 0.4)' : 'none'
+          }}>
+            {isSelected && <CheckOutlined style={{ fontSize: '14px', fontWeight: 'bold' }} />}
+          </div>
+        </div>
+        
+        <div style={{ marginBottom: '12px' }}>
+          <div style={{ 
+            fontWeight: 800, 
+            fontSize: '18px', 
+            color: '#0f172a', 
+            marginBottom: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            letterSpacing: '-0.02em'
+          }}>
+            {template.name}
+            {template.type === 'official' && (
+              <span style={{ 
+                fontSize: '10px', 
+                color: '#fff', 
+                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                padding: '2px 8px', 
+                borderRadius: '12px',
+                fontWeight: 700,
+                letterSpacing: '0.05em',
+                textTransform: 'uppercase',
+                boxShadow: '0 2px 4px rgba(245, 158, 11, 0.3)'
+              }}>
+                Official
+              </span>
+            )}
+          </div>
+          <div style={{ 
+            fontSize: '14px', 
+            color: '#64748b', 
+            lineHeight: '1.6',
+            display: '-webkit-box',
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+            minHeight: '66px' // 保证高度一致
+          }}>
+            {template.description || '这个模板暂时没有详细描述，但它一定很棒！'}
+          </div>
+        </div>
+
+        <div style={{ 
+          marginTop: 'auto', 
+          paddingTop: '16px', 
+          borderTop: '1px solid #f1f5f9',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          color: '#94a3b8',
+          fontSize: '13px',
+          fontWeight: 500
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ 
+              padding: '4px 8px', 
+              background: '#f8fafc', 
+              borderRadius: '6px', 
+              color: '#64748b',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}>
+              <EyeOutlined /> {template.usageCount || 0}
+            </div>
+          </div>
+          {isSelected && (
+            <span style={{ color: '#7c3aed', fontWeight: 600 }}>当前选择</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const VolumeWritingStudio: React.FC = () => {
   const { message } = App.useApp();
@@ -2980,37 +3145,68 @@ const VolumeWritingStudio: React.FC = () => {
           <Text style={{ fontSize: '13px', color: '#64748b', display: 'block', marginBottom: '8px' }}>
             提示词模板（可选，留空使用默认）
           </Text>
-                    <Button 
+          <Button 
             size="large"
             block
             onClick={() => setTemplateModalVisible(true)}
             style={{
               textAlign: 'left',
-              height: '40px',
+              height: '52px',
               fontSize: '14px',
-              borderRadius: '8px',
+              borderRadius: '12px',
               display: 'flex',
               justifyContent: 'space-between',
-              alignItems: 'center'
+              alignItems: 'center',
+              border: '1px solid #e2e8f0',
+              background: 'white',
+              padding: '0 16px',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+              transition: 'all 0.3s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = '#8b5cf6';
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.1)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = '#e2e8f0';
+              e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.02)';
             }}
           >
-            <span>
-              {selectedTemplateId ? (
-                <>
-                  {(() => {
-                    const allTemplates = [...publicTemplates, ...favoriteTemplates, ...customTemplates];
-                    const selected = allTemplates.find((t: any) => t.id === selectedTemplateId);
-                    return selected ? (
-                      <>
-                        {selected.type === 'official' ? '🏆 ' : '✨ '}
-                        {selected.name}
-                      </>
-                    ) : '使用默认提示词';
-                  })()}
-                </>
-              ) : '使用默认提示词'}
-            </span>
-            <span style={{ color: '#1890ff' }}>选择模板</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ 
+                width: '32px', 
+                height: '32px', 
+                borderRadius: '8px', 
+                background: '#f3e8ff', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                color: '#7c3aed'
+              }}>
+                <RobotOutlined />
+              </div>
+              <span style={{ color: selectedTemplateId ? '#1e293b' : '#64748b', fontWeight: 500 }}>
+                {selectedTemplateId ? (
+                  <>
+                    {(() => {
+                      const allTemplates = [...publicTemplates, ...favoriteTemplates, ...customTemplates];
+                      const selected = allTemplates.find((t: any) => t.id === selectedTemplateId);
+                      return selected ? selected.name : '已选择模板';
+                    })()}
+                  </>
+                ) : '选择提示词模板...'}
+              </span>
+            </div>
+            <div style={{ 
+              color: '#8b5cf6', 
+              fontSize: '12px', 
+              background: '#f5f3ff', 
+              padding: '4px 10px', 
+              borderRadius: '20px', 
+              fontWeight: 600 
+            }}>
+              更换
+            </div>
           </Button>
           
           {templateIdFromUrl && (
@@ -3280,164 +3476,206 @@ const VolumeWritingStudio: React.FC = () => {
 
       {/* 提示词模板选择弹窗 */}
       <Modal
-        title="选择提示词模板"
+        title={null}
         open={templateModalVisible}
         onCancel={() => setTemplateModalVisible(false)}
-        width={900}
-        footer={[
-          <Button key="clear" onClick={() => {
-            setSelectedTemplateId(null);
-            setTemplateModalVisible(false);
-            message.success('已切换到默认提示词');
+        width={1080}
+        centered
+        closeIcon={
+          <div style={{
+            background: 'white',
+            borderRadius: '50%',
+            width: '32px',
+            height: '32px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+            cursor: 'pointer',
+            marginTop: '12px',
+            marginRight: '12px'
           }}>
-            使用默认
-          </Button>,
-          <Button key="close" type="primary" onClick={() => setTemplateModalVisible(false)}>
-            确定
-          </Button>
-        ]}
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M1 1L11 11M1 11L11 1" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+        }
+        bodyStyle={{ 
+          maxHeight: '85vh', 
+          height: '80vh',
+          overflowY: 'hidden',
+          padding: '0',
+          borderRadius: '24px',
+          background: '#f8fafc',
+          display: 'flex',
+          flexDirection: 'column'
+        }}
+        footer={null}
+        style={{ top: '20px' }}
       >
-        <Tabs 
-          activeKey={templateModalTab} 
-          onChange={setTemplateModalTab}
-          items={[
-            {
-              key: 'public',
-              label: <span><GlobalOutlined /> 公开模板</span>,
-              children: (
-                <div style={{ maxHeight: '500px', overflowY: 'auto', padding: '16px 0' }}>
-                  {publicTemplates.length === 0 ? (
-                    <Empty description="暂无公开模板" />
-                  ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
-                      {publicTemplates.map((template: any) => (
-                        <div
-                          key={template.id}
-                          onClick={() => {
-                            setSelectedTemplateId(template.id);
-                            message.success(`已选择: ${template.name}`);
-                          }}
-                          style={{
-                            padding: '16px',
-                            border: selectedTemplateId === template.id ? '2px solid #1890ff' : '1px solid #e2e8f0',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            background: selectedTemplateId === template.id ? '#e6f7ff' : 'white',
-                            transition: 'all 0.3s ease'
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                            <div style={{ fontWeight: 600, fontSize: '15px' }}>
-                              🏆 {template.name}
-                            </div>
-                            <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                              {template.usageCount} 次使用
-                            </div>
-                          </div>
-                          <div style={{ fontSize: '13px', color: '#64748b', lineHeight: '1.6' }}>
-                            {template.description || '暂无描述'}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            },
-            {
-              key: 'favorites',
-              label: <span><HeartOutlined /> 我的收藏</span>,
-              children: (
-                <div style={{ maxHeight: '500px', overflowY: 'auto', padding: '16px 0' }}>
-                  {favoriteTemplates.length === 0 ? (
-                    <Empty description="还没有收藏任何模板" />
-                  ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
-                      {favoriteTemplates.map((template: any) => (
-                        <div
-                          key={template.id}
-                          onClick={() => {
-                            setSelectedTemplateId(template.id);
-                            message.success(`已选择: ${template.name}`);
-                          }}
-                          style={{
-                            padding: '16px',
-                            border: selectedTemplateId === template.id ? '2px solid #1890ff' : '1px solid #e2e8f0',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            background: selectedTemplateId === template.id ? '#e6f7ff' : 'white',
-                            transition: 'all 0.3s ease'
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                            <div style={{ fontWeight: 600, fontSize: '15px' }}>
-                              {template.type === 'official' ? '🏆' : '✨'} {template.name}
-                            </div>
-                            <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                              {template.usageCount} 次使用
-                            </div>
-                          </div>
-                          <div style={{ fontSize: '13px', color: '#64748b', lineHeight: '1.6' }}>
-                            {template.description || '暂无描述'}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            },
-            {
-              key: 'custom',
-              label: <span><FileTextOutlined /> 自定义模板</span>,
-              children: (
-                <div style={{ maxHeight: '500px', overflowY: 'auto', padding: '16px 0' }}>
-                  {customTemplates.length === 0 ? (
-                    <Empty description="还没有创建自定义模板">
-                      <Button type="primary" onClick={() => {
-                        navigate('/prompt-library');
-                      }}>
-                        去创建模板
-                      </Button>
-                    </Empty>
-                  ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
-                      {customTemplates.map((template: any) => (
-                        <div
-                          key={template.id}
-                          onClick={() => {
-                            setSelectedTemplateId(template.id);
-                            message.success(`已选择: ${template.name}`);
-                          }}
-                          style={{
-                            padding: '16px',
-                            border: selectedTemplateId === template.id ? '2px solid #1890ff' : '1px solid #e2e8f0',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            background: selectedTemplateId === template.id ? '#e6f7ff' : 'white',
-                            transition: 'all 0.3s ease'
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                            <div style={{ fontWeight: 600, fontSize: '15px' }}>
-                              ✨ {template.name}
-                            </div>
-                            <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                              {template.usageCount} 次使用
-                            </div>
-                          </div>
-                          <div style={{ fontSize: '13px', color: '#64748b', lineHeight: '1.6' }}>
-                            {template.description || '暂无描述'}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            }
-          ]}
-        />
+        {/* Modal Header */}
+        <div style={{
+          padding: '32px 40px 24px 40px',
+          background: 'white',
+          borderBottom: '1px solid #f1f5f9',
+          flexShrink: 0
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h2 style={{ 
+                margin: 0, 
+                fontSize: '28px', 
+                fontWeight: 800, 
+                background: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent'
+              }}>
+                选择提示词模板
+              </h2>
+              <p style={{ margin: '8px 0 0', color: '#64748b', fontSize: '15px' }}>
+                选择一个预设模板来优化您的 AI 写作体验，或者创建您自己的专属模板。
+              </p>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <Button 
+                onClick={() => {
+                  setSelectedTemplateId(null);
+                  setTemplateModalVisible(false);
+                  message.success('已切换到默认提示词');
+                }}
+                style={{ height: '44px', borderRadius: '12px', padding: '0 20px', border: '1px solid #e2e8f0' }}
+              >
+                使用默认
+              </Button>
+              <Button 
+                type="primary" 
+                onClick={() => setTemplateModalVisible(false)}
+                style={{ 
+                  height: '44px', 
+                  borderRadius: '12px', 
+                  padding: '0 32px',
+                  background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
+                  border: 'none',
+                  boxShadow: '0 4px 12px rgba(124, 58, 237, 0.3)',
+                  fontWeight: 600
+                }}
+              >
+                确认选择
+              </Button>
+            </div>
+          </div>
+
+          <div style={{ marginTop: '24px' }}>
+            <Tabs 
+              activeKey={templateModalTab} 
+              onChange={setTemplateModalTab}
+              type="card"
+              tabBarStyle={{ margin: 0, border: 'none' }}
+              items={[
+                {
+                  key: 'public',
+                  label: (
+                    <span style={{ fontSize: '15px', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <GlobalOutlined /> 公开模板
+                    </span>
+                  ),
+                },
+                {
+                  key: 'favorites',
+                  label: (
+                    <span style={{ fontSize: '15px', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <HeartOutlined /> 我的收藏
+                    </span>
+                  ),
+                },
+                {
+                  key: 'custom',
+                  label: (
+                    <span style={{ fontSize: '15px', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <FileTextOutlined /> 自定义模板
+                    </span>
+                  ),
+                }
+              ]}
+            />
+          </div>
+        </div>
+
+        {/* Modal Content - Scrollable Area */}
+        <div style={{ 
+          flex: 1, 
+          overflowY: 'auto', 
+          padding: '32px 40px',
+          background: 'linear-gradient(to bottom, #f8fafc, #fff)'
+        }}>
+          {templateModalTab === 'public' && (
+            publicTemplates.length === 0 ? (
+              <Empty description="暂无公开模板" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px' }}>
+                {publicTemplates.map((template: any) => (
+                  <TemplateCard
+                    key={template.id}
+                    template={template}
+                    selectedId={selectedTemplateId}
+                    onSelect={(id) => {
+                      setSelectedTemplateId(id);
+                      message.success(`已选择: ${template.name}`);
+                    }}
+                  />
+                ))}
+              </div>
+            )
+          )}
+          
+          {templateModalTab === 'favorites' && (
+             favoriteTemplates.length === 0 ? (
+              <Empty description="还没有收藏任何模板" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px' }}>
+                {favoriteTemplates.map((template: any) => (
+                  <TemplateCard
+                    key={template.id}
+                    template={template}
+                    selectedId={selectedTemplateId}
+                    onSelect={(id) => {
+                      setSelectedTemplateId(id);
+                      message.success(`已选择: ${template.name}`);
+                    }}
+                  />
+                ))}
+              </div>
+            )
+          )}
+          
+          {templateModalTab === 'custom' && (
+             customTemplates.length === 0 ? (
+              <Empty description="还没有创建自定义模板" image={Empty.PRESENTED_IMAGE_SIMPLE}>
+                <Button type="primary" onClick={() => {
+                  navigate('/prompt-library');
+                }} style={{ borderRadius: '8px', background: '#7c3aed', height: '40px', padding: '0 24px' }}>
+                  立即创建
+                </Button>
+              </Empty>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px' }}>
+                {customTemplates.map((template: any) => (
+                  <TemplateCard
+                    key={template.id}
+                    template={template}
+                    selectedId={selectedTemplateId}
+                    onSelect={(id) => {
+                      setSelectedTemplateId(id);
+                      message.success(`已选择: ${template.name}`);
+                    }}
+                    icon={<FileTextOutlined style={{ color: '#7c3aed' }} />}
+                  />
+                ))}
+              </div>
+            )
+          )}
+        </div>
       </Modal>
 
       {/* 批量写作进度弹窗 */}

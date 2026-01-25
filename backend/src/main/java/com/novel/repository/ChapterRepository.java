@@ -77,5 +77,14 @@ public interface ChapterRepository extends BaseMapper<Chapter> {
 
     @Select("SELECT id, title, chapter_number, status, word_count, is_public, novel_id, created_at, updated_at FROM chapters WHERE novel_id = #{novelId} ORDER BY chapter_number ASC")
     List<Chapter> findMetadataByNovel(@Param("novelId") Long novelId);
+
+    /**
+     * 分页查询章节元数据（排除content等大文本字段，用于列表展示）
+     */
+    @Select("SELECT id, title, subtitle, chapter_number, status, word_count, is_public, " +
+            "novel_id, summary, published_at, reading_time_minutes, " +
+            "previous_chapter_id, next_chapter_id, created_at, updated_at " +
+            "FROM chapters WHERE novel_id = #{novelId} ORDER BY chapter_number ASC")
+    IPage<Chapter> findMetadataByNovelPaged(@Param("novelId") Long novelId, Page<Chapter> page);
 }
 

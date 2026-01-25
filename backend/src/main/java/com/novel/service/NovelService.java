@@ -143,23 +143,32 @@ public class NovelService {
         return novelRepository.deleteById(id) > 0;
     }
 
+    // 小说列表查询所需的字段（排除outline等大文本字段）
+    private static final String[] NOVEL_LIST_FIELDS = {
+        "id", "title", "subtitle", "description", "cover_image_url", "status", "genre", "tags",
+        "target_audience", "word_count", "chapter_count", "estimated_completion", "started_at",
+        "completed_at", "is_public", "rating", "rating_count", "target_total_chapters",
+        "words_per_chapter", "planned_volume_count", "total_word_target", "creation_stage",
+        "created_by", "created_at", "updated_at"
+    };
+
     /**
-     * 获取小说列表
+     * 获取小说列表（优化版，排除outline等大文本字段）
      */
     public IPage<Novel> getNovels(int page, int size) {
         Page<Novel> pageParam = new Page<>(page + 1, size);
         QueryWrapper<Novel> queryWrapper = new QueryWrapper<>();
-        //  updated_at 
+        queryWrapper.select(NOVEL_LIST_FIELDS);
         queryWrapper.orderByDesc("updated_at");
         return novelRepository.selectPage(pageParam, queryWrapper);
     }
 
     /**
-     * 根据作者获取小说列表
+     * 根据作者获取小说列表（优化版，排除outline等大文本字段）
      */
     public IPage<Novel> getNovelsByAuthor(Long authorId, int page, int size) {
         Page<Novel> pageParam = new Page<>(page + 1, size);
-        return novelRepository.findByAuthorId(authorId, pageParam);
+        return novelRepository.findListByAuthorId(authorId, pageParam);
     }
 
     /**
@@ -169,19 +178,19 @@ public class NovelService {
         Page<Novel> pageParam = new Page<>(page + 1, size);
         return novelRepository.searchByKeyword(keyword, pageParam);
     }
-
     /**
-     * 根据ID获取小说
+     * 根据 ID获取小说
      */
     public Novel getNovelById(Long id) {
         return novelRepository.selectById(id);
     }
 
     /**
-     * 搜索用户小说
+     * 搜索用户小说（优化版，排除outline等大文本字段）
      */
     public List<Novel> searchUserNovels(Long userId, String query, String genre, String status) {
         QueryWrapper<Novel> queryWrapper = new QueryWrapper<>();
+        queryWrapper.select(NOVEL_LIST_FIELDS);
         queryWrapper.eq("author_id", userId);
         
         if (StringUtils.hasText(query)) {
@@ -204,10 +213,11 @@ public class NovelService {
     }
 
     /**
-     * 获取用户小说列表（带分页和排序）
+     * 获取用户小说列表（带分页和排序，优化版，排除outline等大文本字段）
      */
     public List<Novel> getNovelsByUser(Long userId, String sortBy, String sortOrder) {
         QueryWrapper<Novel> queryWrapper = new QueryWrapper<>();
+        queryWrapper.select(NOVEL_LIST_FIELDS);
         queryWrapper.eq("author_id", userId);
         
         // 处理排序
@@ -258,23 +268,21 @@ public class NovelService {
 	}
 
 	/**
-	 * 获取可用于写作的书籍列表
+	 * 获取可用于写作的书籍列表（优化版，排除outline大文本字段）
 	 * 条件：已确认大纲的书籍（不包括OUTLINE_PENDING状态）
 	 */
 	public List<Novel> getWritableNovels(Long userId) {
 		com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<Novel> wrapper = 
 			new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
 		
-		wrapper.eq("created_by", userId)
+		// 优化查询：只查询列表展示所需字段，排除outline大字段
+		wrapper.select(NOVEL_LIST_FIELDS)
+			   .eq("created_by", userId)
 			   .isNotNull("outline")  // 必须有大纲
+			   .ne("outline", "")  // 确保大纲不为空字符串
 			   .ne("creation_stage", "OUTLINE_PENDING")  // 排除待确认大纲状态
 			   .orderByDesc("updated_at");
 		
-		List<Novel> novels = novelRepository.selectList(wrapper);
-		
-		// 进一步筛选：确保大纲不为空字符串
-		return novels.stream()
-			.filter(novel -> novel.getOutline() != null && !novel.getOutline().trim().isEmpty())
-			.collect(java.util.stream.Collectors.toList());
+		return novelRepository.selectList(wrapper);
 	}
 }

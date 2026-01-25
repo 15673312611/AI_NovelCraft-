@@ -11,7 +11,7 @@
  Target Server Version : 80029
  File Encoding         : 65001
 
- Date: 01/01/2026 19:21:09
+ Date: 18/01/2026 11:49:19
 */
 
 SET NAMES utf8mb4;
@@ -23,17 +23,17 @@ SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS `ai_adjectives`;
 CREATE TABLE `ai_adjectives`  (
   `id` bigint(0) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `word` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '形容词/可疑词条',
-  `lang` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'zh-CN' COMMENT '语言',
-  `category` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'adjective' COMMENT '类别',
-  `hash` char(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '去重哈希(可选)',
-  `source_model` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '来源模型',
+  `word` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '形容词/可疑词条',
+  `lang` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'zh-CN' COMMENT '语言',
+  `category` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'adjective' COMMENT '类别',
+  `hash` char(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '去重哈希(可选)',
+  `source_model` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '来源模型',
   `created_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0) COMMENT '更新时间',
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `uk_word_lang`(`word`, `lang`) USING BTREE,
   INDEX `idx_category`(`category`) USING BTREE
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'AI可疑形容词库' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 38047 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = 'AI可疑形容词库' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for ai_adjectives_raw
@@ -41,15 +41,15 @@ CREATE TABLE `ai_adjectives`  (
 DROP TABLE IF EXISTS `ai_adjectives_raw`;
 CREATE TABLE `ai_adjectives_raw`  (
   `id` bigint(0) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `word` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '词条',
-  `lang` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'zh-CN' COMMENT '语言',
-  `category` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '类别',
-  `source_model` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '来源模型',
-  `batch_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '本次采集批次ID',
+  `word` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '词条',
+  `lang` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'zh-CN' COMMENT '语言',
+  `category` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '类别',
+  `source_model` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '来源模型',
+  `batch_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '本次采集批次ID',
   `created_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `idx_cat_time`(`category`, `created_time`) USING BTREE
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'AI可疑词条采集明细(不去重)' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 57969 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = 'AI可疑词条采集明细(不去重)' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for ai_conversation
@@ -94,24 +94,53 @@ CREATE TABLE `ai_generator`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 10 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = 'Bảng quản lý các AI Generator' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
+-- Table structure for ai_model
+-- ----------------------------
+DROP TABLE IF EXISTS `ai_model`;
+CREATE TABLE `ai_model`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `model_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '模型标识',
+  `display_name` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '显示名称',
+  `provider` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'OpenAI-Compatible' COMMENT '提供商',
+  `api_base_url` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT 'API基础URL',
+  `api_key_ref` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT 'API Key配置引用',
+  `max_tokens` int(0) NULL DEFAULT 8192 COMMENT '最大token数',
+  `cost_per_1k` double NULL DEFAULT 0 COMMENT '每1000token成本（旧字段，保留兼容）',
+  `input_price_per_1k` decimal(10, 6) NULL DEFAULT 0.000000 COMMENT '输入token价格(每1000token)',
+  `output_price_per_1k` decimal(10, 6) NULL DEFAULT 0.000000 COMMENT '输出token价格(每1000token)',
+  `available` tinyint(1) NULL DEFAULT 1 COMMENT '是否可用',
+  `is_default` tinyint(1) NULL DEFAULT 0 COMMENT '是否为默认模型',
+  `sort_order` int(0) NULL DEFAULT 0 COMMENT '排序顺序',
+  `description` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '模型描述',
+  `created_at` timestamp(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp(0) NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),
+  `cost_multiplier` decimal(10, 4) NULL DEFAULT 1.0000 COMMENT '模型倍率，默认1.0',
+  `temperature` decimal(3, 2) NULL DEFAULT 1.00 COMMENT '模型默认温度，范围0-2',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_model_id`(`model_id`) USING BTREE,
+  INDEX `idx_provider`(`provider`) USING BTREE,
+  INDEX `idx_available`(`available`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 10 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = 'AI模型配置表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
 -- Table structure for ai_tasks
 -- ----------------------------
 DROP TABLE IF EXISTS `ai_tasks`;
 CREATE TABLE `ai_tasks`  (
   `id` bigint(0) NOT NULL AUTO_INCREMENT,
-  `name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
-  `type` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
-  `status` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'PENDING',
-  `input` mediumtext CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL,
-  `output` mediumtext CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL,
-  `error` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL,
+  `name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `type` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `status` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING',
+  `input` mediumtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+  `output` mediumtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+  `error` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
   `progress_percentage` int(0) NULL DEFAULT 0,
   `estimated_completion` datetime(0) NULL DEFAULT NULL,
   `started_at` datetime(0) NULL DEFAULT NULL,
   `completed_at` datetime(0) NULL DEFAULT NULL,
   `retry_count` int(0) NULL DEFAULT 0,
   `max_retries` int(0) NULL DEFAULT 3,
-  `parameters` mediumtext CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL,
+  `parameters` mediumtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
   `cost_estimate` double NULL DEFAULT NULL,
   `actual_cost` double NULL DEFAULT NULL,
   `user_id` bigint(0) NULL DEFAULT NULL,
@@ -123,7 +152,7 @@ CREATE TABLE `ai_tasks`  (
   INDEX `idx_status`(`status`) USING BTREE,
   INDEX `idx_type`(`type`) USING BTREE,
   INDEX `idx_novel`(`novel_id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 314 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 317 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for chapter_analysis
@@ -143,7 +172,7 @@ CREATE TABLE `chapter_analysis`  (
   INDEX `idx_novel_id`(`novel_id`) USING BTREE,
   INDEX `idx_analysis_type`(`analysis_type`) USING BTREE,
   INDEX `idx_created_at`(`created_at`) USING BTREE
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '章节拆解分析表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '章节拆解分析表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for chapter_summaries
@@ -153,12 +182,12 @@ CREATE TABLE `chapter_summaries`  (
   `id` bigint(0) NOT NULL AUTO_INCREMENT,
   `novel_id` bigint(0) NOT NULL,
   `chapter_number` int(0) NOT NULL,
-  `summary` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `summary` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `created_at` datetime(0) NULL,
   `updated_at` datetime(0) NULL,
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `uk_novel_chapter`(`novel_id`, `chapter_number`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 1382 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 1405 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for chapters
@@ -192,7 +221,7 @@ CREATE TABLE `chapters`  (
   INDEX `idx_status`(`status`) USING BTREE,
   INDEX `idx_title`(`title`) USING BTREE,
   CONSTRAINT `chapters_ibfk_1` FOREIGN KEY (`novel_id`) REFERENCES `novels` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 932 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 936 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for characters
@@ -229,7 +258,51 @@ CREATE TABLE `characters`  (
   INDEX `idx_characters_novel_id`(`novel_id`) USING BTREE,
   INDEX `idx_characters_type`(`character_type`) USING BTREE,
   INDEX `idx_characters_updated_at`(`updated_at`) USING BTREE
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '小说角色表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '小说角色表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for credit_packages
+-- ----------------------------
+DROP TABLE IF EXISTS `credit_packages`;
+CREATE TABLE `credit_packages`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '套餐名称',
+  `price` decimal(10, 2) NOT NULL COMMENT '价格',
+  `credits` bigint(0) NOT NULL COMMENT '包含字数/积分',
+  `description` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '描述',
+  `is_active` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+  `sort_order` int(0) NOT NULL DEFAULT 0 COMMENT '排序',
+  `created_at` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 4 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '充值套餐表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for credit_transactions
+-- ----------------------------
+DROP TABLE IF EXISTS `credit_transactions`;
+CREATE TABLE `credit_transactions`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(0) NOT NULL COMMENT '用户ID',
+  `type` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '交易类型: RECHARGE/CONSUME/GIFT/REFUND/ADMIN_ADJUST',
+  `amount` decimal(12, 4) NOT NULL COMMENT '交易金额（正数增加，负数减少）',
+  `balance_before` decimal(12, 4) NOT NULL COMMENT '交易前余额',
+  `balance_after` decimal(12, 4) NOT NULL COMMENT '交易后余额',
+  `ai_task_id` bigint(0) NULL DEFAULT NULL COMMENT '关联的AI任务ID',
+  `model_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '使用的模型ID',
+  `input_tokens` int(0) NULL DEFAULT NULL COMMENT '输入字数',
+  `output_tokens` int(0) NULL DEFAULT NULL COMMENT '输出字数',
+  `description` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '交易描述',
+  `operator_id` bigint(0) NULL DEFAULT NULL COMMENT '操作人ID（管理员操作时）',
+  `created_at` timestamp(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `credit_source` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT 'PACKAGE' COMMENT '字数来源: DAILY_FREE=每日免费, PACKAGE=字数包',
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_user_id`(`user_id`) USING BTREE,
+  INDEX `idx_type`(`type`) USING BTREE,
+  INDEX `idx_created_at`(`created_at`) USING BTREE,
+  INDEX `idx_ai_task_id`(`ai_task_id`) USING BTREE,
+  INDEX `idx_credit_transactions_source`(`credit_source`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 85 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '字数点交易记录表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for foreshadow_lifecycle_log
@@ -243,7 +316,7 @@ CREATE TABLE `foreshadow_lifecycle_log`  (
   `volume_number` int(0) NOT NULL COMMENT '卷序号',
   `chapter_in_volume` int(0) NOT NULL COMMENT '卷内章节序号',
   `global_chapter_number` int(0) NULL DEFAULT NULL COMMENT '全书章节序号（可选）',
-  `action` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '伏笔动作：PLANT（埋）| REFERENCE（提）| DEEPEN（加深）| RESOLVE（揭露）',
+  `action` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '伏笔动作：PLANT（埋）| REFERENCE（提）| DEEPEN（加深）| RESOLVE（揭露）',
   `detail` json NULL COMMENT '详情（JSON对象），包含：\r\n        - content: 伏笔内容（PLANT时必填）\r\n        - targetResolveVolume: 目标揭露卷数（PLANT时可选）\r\n        - resolveWindow: 揭露窗口 {min, max}（PLANT时可选）\r\n        - anchorsUsed: 已使用的证据锚点数组 [{vol, ch, hint}]（RESOLVE时必须≥2个）\r\n        - futureAnchorPlan: 未来证据锚点计划（PLANT/DEEPEN时建议填写）\r\n        - cost: 揭露代价（RESOLVE时可选）\r\n        - autoDowngraded: 是否自动降级（true表示原本想RESOLVE但锚点不足，降级为DEEPEN）',
   `decided_at` timestamp(0) NULL DEFAULT CURRENT_TIMESTAMP COMMENT '决策时间（章纲生成时间）',
   PRIMARY KEY (`id`) USING BTREE,
@@ -251,7 +324,384 @@ CREATE TABLE `foreshadow_lifecycle_log`  (
   INDEX `idx_novel_volume`(`novel_id`, `volume_number`) USING BTREE COMMENT '按小说和卷查询',
   INDEX `idx_volume_chapter`(`volume_id`, `chapter_in_volume`) USING BTREE COMMENT '按卷和章节查询',
   INDEX `idx_action`(`action`) USING BTREE COMMENT '按动作类型查询（例如查询所有PLANT/RESOLVE）'
-) ENGINE = InnoDB AUTO_INCREMENT = 335 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '伏笔生命周期日志表（跨卷追踪）' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 336 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '伏笔生命周期日志表（跨卷追踪）' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for graph_character_arc
+-- ----------------------------
+DROP TABLE IF EXISTS `graph_character_arc`;
+CREATE TABLE `graph_character_arc`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `novel_id` bigint(0) NOT NULL,
+  `arc_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '业务ID',
+  `character_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `arc_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `pending_beat` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+  `next_goal` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+  `priority` double NULL DEFAULT 0.5,
+  `progress` int(0) NULL DEFAULT 0,
+  `total_beats` int(0) NULL DEFAULT 0,
+  `last_updated_chapter` int(0) NULL DEFAULT NULL,
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_novel_arc`(`novel_id`, `arc_id`) USING BTREE,
+  INDEX `idx_novel_character`(`novel_id`, `character_name`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '人物成长弧线表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for graph_character_profile
+-- ----------------------------
+DROP TABLE IF EXISTS `graph_character_profile`;
+CREATE TABLE `graph_character_profile`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `novel_id` bigint(0) NOT NULL,
+  `profile_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `chapter_number` int(0) NULL DEFAULT NULL,
+  `properties` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT 'JSON存储所有属性',
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_novel_profile`(`novel_id`, `profile_id`) USING BTREE,
+  INDEX `idx_novel_chapter`(`novel_id`, `chapter_number`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '角色档案表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for graph_character_state
+-- ----------------------------
+DROP TABLE IF EXISTS `graph_character_state`;
+CREATE TABLE `graph_character_state`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `novel_id` bigint(0) NOT NULL,
+  `character_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `location` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `realm` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `alive` tinyint(1) NULL DEFAULT 1,
+  `affiliation` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `social_status` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `backers` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT 'JSON数组',
+  `tags` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT 'JSON数组',
+  `secrets` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT 'JSON数组',
+  `key_items` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT 'JSON数组',
+  `known_by` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT 'JSON数组',
+  `inventory` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT 'JSON数组',
+  `character_info` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+  `last_updated_chapter` int(0) NULL DEFAULT NULL,
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_novel_character`(`novel_id`, `character_name`) USING BTREE,
+  INDEX `idx_novel_id`(`novel_id`) USING BTREE,
+  INDEX `idx_last_updated`(`novel_id`, `last_updated_chapter`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '角色状态表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for graph_character_state_history
+-- ----------------------------
+DROP TABLE IF EXISTS `graph_character_state_history`;
+CREATE TABLE `graph_character_state_history`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `novel_id` bigint(0) NOT NULL,
+  `character_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `location` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `realm` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `alive` tinyint(1) NULL DEFAULT NULL,
+  `inventory` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+  `character_info` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+  `chapter_number` int(0) NOT NULL COMMENT '快照对应的章节',
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_novel_char_chapter`(`novel_id`, `character_name`, `chapter_number`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '角色状态历史快照表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for graph_conflict_arc
+-- ----------------------------
+DROP TABLE IF EXISTS `graph_conflict_arc`;
+CREATE TABLE `graph_conflict_arc`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `novel_id` bigint(0) NOT NULL,
+  `arc_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '业务ID',
+  `name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `stage` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `urgency` double NULL DEFAULT 0.5,
+  `next_action` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+  `protagonist` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `antagonist` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `trend` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `last_updated_chapter` int(0) NULL DEFAULT NULL,
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_novel_arc`(`novel_id`, `arc_id`) USING BTREE,
+  INDEX `idx_novel_stage`(`novel_id`, `stage`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '冲突弧线表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for graph_event
+-- ----------------------------
+DROP TABLE IF EXISTS `graph_event`;
+CREATE TABLE `graph_event`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `novel_id` bigint(0) NOT NULL,
+  `event_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '业务ID',
+  `chapter_number` int(0) NULL DEFAULT NULL,
+  `summary` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+  `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+  `location` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `realm` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `emotional_tone` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `tags` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT 'JSON数组',
+  `importance` double NULL DEFAULT 0.5,
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_novel_event`(`novel_id`, `event_id`) USING BTREE,
+  INDEX `idx_novel_chapter`(`novel_id`, `chapter_number`) USING BTREE,
+  INDEX `idx_importance`(`novel_id`, `importance`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '事件表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for graph_event_causal
+-- ----------------------------
+DROP TABLE IF EXISTS `graph_event_causal`;
+CREATE TABLE `graph_event_causal`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `novel_id` bigint(0) NOT NULL,
+  `from_event_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `to_event_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `relation_type` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT 'CAUSES/TRIGGERS/TRIGGERED_BY',
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_from_event`(`novel_id`, `from_event_id`) USING BTREE,
+  INDEX `idx_to_event`(`novel_id`, `to_event_id`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '事件因果关系表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for graph_event_participant
+-- ----------------------------
+DROP TABLE IF EXISTS `graph_event_participant`;
+CREATE TABLE `graph_event_participant`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `event_id` bigint(0) NOT NULL,
+  `character_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_event_id`(`event_id`) USING BTREE,
+  INDEX `idx_character`(`character_name`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '事件参与者表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for graph_foreshadowing
+-- ----------------------------
+DROP TABLE IF EXISTS `graph_foreshadowing`;
+CREATE TABLE `graph_foreshadowing`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `novel_id` bigint(0) NOT NULL,
+  `foreshadow_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '业务ID',
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+  `importance` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT 'medium',
+  `status` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT 'PLANTED',
+  `introduced_chapter` int(0) NULL DEFAULT NULL,
+  `planned_reveal_chapter` int(0) NULL DEFAULT NULL,
+  `resolved_chapter` int(0) NULL DEFAULT NULL,
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_novel_foreshadow`(`novel_id`, `foreshadow_id`) USING BTREE,
+  INDEX `idx_novel_status`(`novel_id`, `status`) USING BTREE,
+  INDEX `idx_reveal_chapter`(`novel_id`, `planned_reveal_chapter`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '伏笔表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for graph_narrative_beat
+-- ----------------------------
+DROP TABLE IF EXISTS `graph_narrative_beat`;
+CREATE TABLE `graph_narrative_beat`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `novel_id` bigint(0) NOT NULL,
+  `beat_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `chapter_number` int(0) NOT NULL,
+  `beat_type` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `focus` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `sentiment` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `tension` double NULL DEFAULT 0.5,
+  `pace_score` double NULL DEFAULT 0.5,
+  `viewpoint` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_novel_chapter`(`novel_id`, `chapter_number`) USING BTREE,
+  INDEX `idx_novel_id`(`novel_id`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '叙事节奏表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for graph_open_quest
+-- ----------------------------
+DROP TABLE IF EXISTS `graph_open_quest`;
+CREATE TABLE `graph_open_quest`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `novel_id` bigint(0) NOT NULL,
+  `quest_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '业务ID',
+  `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+  `status` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT 'OPEN',
+  `introduced_chapter` int(0) NULL DEFAULT NULL,
+  `due_by_chapter` int(0) NULL DEFAULT NULL,
+  `resolved_chapter` int(0) NULL DEFAULT NULL,
+  `last_updated_chapter` int(0) NULL DEFAULT NULL,
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_novel_quest`(`novel_id`, `quest_id`) USING BTREE,
+  INDEX `idx_novel_status`(`novel_id`, `status`) USING BTREE,
+  INDEX `idx_due_chapter`(`novel_id`, `due_by_chapter`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '开放任务表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for graph_open_quest_history
+-- ----------------------------
+DROP TABLE IF EXISTS `graph_open_quest_history`;
+CREATE TABLE `graph_open_quest_history`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `novel_id` bigint(0) NOT NULL,
+  `quest_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+  `status` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `chapter_number` int(0) NOT NULL,
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_novel_quest_chapter`(`novel_id`, `quest_id`, `chapter_number`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '开放任务历史表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for graph_perspective_usage
+-- ----------------------------
+DROP TABLE IF EXISTS `graph_perspective_usage`;
+CREATE TABLE `graph_perspective_usage`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `novel_id` bigint(0) NOT NULL,
+  `perspective_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `chapter_number` int(0) NOT NULL,
+  `character_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `mode` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT '第三人称',
+  `tone` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `purpose` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_novel_chapter`(`novel_id`, `chapter_number`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '视角使用表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for graph_plotline
+-- ----------------------------
+DROP TABLE IF EXISTS `graph_plotline`;
+CREATE TABLE `graph_plotline`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `novel_id` bigint(0) NOT NULL,
+  `plotline_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '业务ID',
+  `name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `priority` double NULL DEFAULT 0.5,
+  `last_touched_chapter` int(0) NULL DEFAULT NULL,
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_novel_plotline`(`novel_id`, `plotline_id`) USING BTREE,
+  INDEX `idx_novel_priority`(`novel_id`, `priority`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '情节线表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for graph_plotline_event
+-- ----------------------------
+DROP TABLE IF EXISTS `graph_plotline_event`;
+CREATE TABLE `graph_plotline_event`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `plotline_id` bigint(0) NOT NULL,
+  `event_id` bigint(0) NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_plotline_event`(`plotline_id`, `event_id`) USING BTREE,
+  INDEX `idx_plotline_id`(`plotline_id`) USING BTREE,
+  INDEX `idx_event_id`(`event_id`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '情节线事件关联表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for graph_relationship_state
+-- ----------------------------
+DROP TABLE IF EXISTS `graph_relationship_state`;
+CREATE TABLE `graph_relationship_state`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `novel_id` bigint(0) NOT NULL,
+  `character_a` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '按字典序较小的角色名',
+  `character_b` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '按字典序较大的角色名',
+  `type` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `strength` double NULL DEFAULT 0.5,
+  `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+  `public_status` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `last_updated_chapter` int(0) NULL DEFAULT NULL,
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_novel_relation`(`novel_id`, `character_a`, `character_b`) USING BTREE,
+  INDEX `idx_novel_id`(`novel_id`) USING BTREE,
+  INDEX `idx_strength`(`novel_id`, `strength`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '关系状态表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for graph_relationship_state_history
+-- ----------------------------
+DROP TABLE IF EXISTS `graph_relationship_state_history`;
+CREATE TABLE `graph_relationship_state_history`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `novel_id` bigint(0) NOT NULL,
+  `character_a` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `character_b` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `type` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `strength` double NULL DEFAULT NULL,
+  `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+  `public_status` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `chapter_number` int(0) NOT NULL,
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_novel_rel_chapter`(`novel_id`, `character_a`, `character_b`, `chapter_number`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '关系状态历史表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for graph_summary_signal
+-- ----------------------------
+DROP TABLE IF EXISTS `graph_summary_signal`;
+CREATE TABLE `graph_summary_signal`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `novel_id` bigint(0) NOT NULL,
+  `chapter_number` int(0) NOT NULL,
+  `signal_key` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `signal_value` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_novel_chapter_key`(`novel_id`, `chapter_number`, `signal_key`) USING BTREE,
+  INDEX `idx_novel_chapter`(`novel_id`, `chapter_number`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '章节摘要信号表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for graph_world_rule
+-- ----------------------------
+DROP TABLE IF EXISTS `graph_world_rule`;
+CREATE TABLE `graph_world_rule`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `novel_id` bigint(0) NOT NULL,
+  `rule_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '业务ID',
+  `name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+  `constraint_text` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+  `category` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT 'general',
+  `scope` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT 'global',
+  `importance` double NULL DEFAULT 0.5,
+  `introduced_at` int(0) NULL DEFAULT NULL,
+  `applicable_chapter` int(0) NULL DEFAULT NULL,
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_novel_rule`(`novel_id`, `rule_id`) USING BTREE,
+  INDEX `idx_novel_category`(`novel_id`, `category`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '世界规则表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for narrative_states
@@ -277,7 +727,7 @@ CREATE TABLE `narrative_states`  (
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `idx_novel_chapter`(`novel_id`, `chapter_number`) USING BTREE,
   INDEX `idx_volume`(`volume_id`) USING BTREE
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '叙事状态快照' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '叙事状态快照' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for novel_document
@@ -297,7 +747,7 @@ CREATE TABLE `novel_document`  (
   INDEX `idx_folder_id`(`folder_id`) USING BTREE,
   CONSTRAINT `novel_document_ibfk_1` FOREIGN KEY (`novel_id`) REFERENCES `novels` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
   CONSTRAINT `novel_document_ibfk_2` FOREIGN KEY (`folder_id`) REFERENCES `novel_folder` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 62 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '小说文档表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 65 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '小说文档表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for novel_folder
@@ -316,7 +766,7 @@ CREATE TABLE `novel_folder`  (
   INDEX `idx_novel_id`(`novel_id`) USING BTREE,
   INDEX `idx_parent_id`(`parent_id`) USING BTREE,
   CONSTRAINT `novel_folder_ibfk_1` FOREIGN KEY (`novel_id`) REFERENCES `novels` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 370 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '小说文件夹表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 373 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '小说文件夹表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for novel_foreshadowing
@@ -325,13 +775,13 @@ DROP TABLE IF EXISTS `novel_foreshadowing`;
 CREATE TABLE `novel_foreshadowing`  (
   `id` bigint(0) NOT NULL AUTO_INCREMENT,
   `novel_id` bigint(0) NOT NULL,
-  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '伏笔内容',
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '伏笔内容',
   `planted_chapter` int(0) NOT NULL COMMENT '埋设章节',
   `resolved_chapter` int(0) NULL DEFAULT NULL COMMENT '回收章节',
-  `status` enum('ACTIVE','RESOLVED','ABANDONED') CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT 'ACTIVE' COMMENT '伏笔状态',
-  `type` enum('DEATH','ROMANCE','CONFLICT','MYSTERY','POWER','OTHER') CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT 'OTHER' COMMENT '伏笔类型',
+  `status` enum('ACTIVE','RESOLVED','ABANDONED') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT 'ACTIVE' COMMENT '伏笔状态',
+  `type` enum('DEATH','ROMANCE','CONFLICT','MYSTERY','POWER','OTHER') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT 'OTHER' COMMENT '伏笔类型',
   `priority` tinyint(0) NULL DEFAULT 5 COMMENT '优先级1-10',
-  `context_info` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '上下文信息',
+  `context_info` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT '上下文信息',
   `created_time` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP,
   `resolved_time` datetime(0) NULL DEFAULT NULL,
   PRIMARY KEY (`id`) USING BTREE,
@@ -339,7 +789,7 @@ CREATE TABLE `novel_foreshadowing`  (
   INDEX `idx_status_type`(`status`, `type`) USING BTREE,
   INDEX `idx_priority_status`(`priority`, `status`) USING BTREE,
   CONSTRAINT `novel_foreshadowing_ibfk_1` FOREIGN KEY (`novel_id`) REFERENCES `novels` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '伏笔追踪表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '伏笔追踪表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for novel_outlines
@@ -374,10 +824,9 @@ CREATE TABLE `novel_outlines`  (
   INDEX `idx_status`(`status`) USING BTREE,
   INDEX `idx_created_by`(`created_by`) USING BTREE,
   INDEX `idx_genre`(`genre`) USING BTREE,
-  INDEX `idx_core_settings_exists`() USING BTREE,
   CONSTRAINT `novel_outlines_ibfk_1` FOREIGN KEY (`novel_id`) REFERENCES `novels` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
   CONSTRAINT `novel_outlines_ibfk_2` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 206 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '小说大纲主表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 209 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '小说大纲主表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for novel_template_progress
@@ -405,7 +854,7 @@ CREATE TABLE `novel_template_progress`  (
   INDEX `idx_novel_id`(`novel_id`) USING BTREE,
   INDEX `idx_enabled`(`enabled`) USING BTREE,
   INDEX `idx_current_stage`(`current_stage`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 2 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '小说模板循环进度表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '小说模板循环进度表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for novel_volumes
@@ -442,7 +891,7 @@ CREATE TABLE `novel_volumes`  (
   CONSTRAINT `novel_volumes_ibfk_1` FOREIGN KEY (`novel_id`) REFERENCES `novels` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
   CONSTRAINT `novel_volumes_ibfk_2` FOREIGN KEY (`outline_id`) REFERENCES `novel_outlines` (`id`) ON DELETE SET NULL ON UPDATE RESTRICT,
   CONSTRAINT `novel_volumes_ibfk_3` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 955 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '小说卷表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 960 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '小说卷表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for novels
@@ -484,7 +933,7 @@ CREATE TABLE `novels`  (
   INDEX `idx_created_at`(`created_at`) USING BTREE,
   INDEX `idx_novels_creation_stage`(`creation_stage`) USING BTREE,
   CONSTRAINT `novels_ibfk_1` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 188 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 191 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for ollama_config
@@ -509,7 +958,7 @@ CREATE TABLE `ollama_config`  (
   UNIQUE INDEX `uk_user_config`(`user_id`) USING BTREE,
   INDEX `idx_user_id`(`user_id`) USING BTREE,
   INDEX `idx_enabled`(`enabled`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = 'Ollama配置表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 2 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = 'Ollama配置表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for prompt_template_favorites
@@ -524,7 +973,7 @@ CREATE TABLE `prompt_template_favorites`  (
   UNIQUE INDEX `uk_user_template`(`user_id`, `template_id`) USING BTREE,
   INDEX `idx_user_id`(`user_id`) USING BTREE,
   INDEX `idx_template_id`(`template_id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '提示词模板收藏表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 5 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '提示词模板收藏表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for prompt_templates
@@ -532,22 +981,24 @@ CREATE TABLE `prompt_template_favorites`  (
 DROP TABLE IF EXISTS `prompt_templates`;
 CREATE TABLE `prompt_templates`  (
   `id` bigint(0) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '模板名称',
-  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '提示词内容',
-  `type` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'custom' COMMENT '模板类型：official-官方，custom-用户自定义',
+  `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '模板名称',
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '提示词内容',
+  `type` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'custom' COMMENT '模板类型：official-官方，custom-用户自定义',
   `user_id` bigint(0) NULL DEFAULT NULL COMMENT '用户ID（官方模板为NULL）',
-  `category` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '分类：system_identity-系统身份，writing_style-写作风格，anti_ai-去AI味，outline-大纲生成',
-  `description` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '模板描述',
+  `category` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '分类：system_identity-系统身份，writing_style-写作风格，anti_ai-去AI味，outline-大纲生成',
+  `description` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '模板描述',
   `is_active` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否启用：1-启用，0-禁用',
   `is_default` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否默认：1-默认，0-非默认',
+  `sort_order` int(0) NOT NULL DEFAULT 0 COMMENT '排序顺序，数字越小越靠前',
   `usage_count` int(0) NOT NULL DEFAULT 0 COMMENT '使用次数',
   `created_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0) COMMENT '更新时间',
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `idx_user_id`(`user_id`) USING BTREE,
   INDEX `idx_type`(`type`) USING BTREE,
-  INDEX `idx_category`(`category`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 18 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '提示词模板表' ROW_FORMAT = Dynamic;
+  INDEX `idx_category`(`category`) USING BTREE,
+  INDEX `idx_sort_order`(`sort_order`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 24 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '提示词模板表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for qimao_categories
@@ -677,7 +1128,14 @@ CREATE TABLE `roles`  (
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `name`(`name`) USING BTREE,
   INDEX `idx_name`(`name`) USING BTREE
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 5 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of roles
+-- ----------------------------
+INSERT INTO `roles` VALUES (1, 'USER', '普通用户', '["read", "write", "create_novel"]', NOW());
+INSERT INTO `roles` VALUES (2, 'ADMIN', '管理员', '["read", "write", "create_novel", "manage_users", "manage_system", "view_dashboard"]', NOW());
+INSERT INTO `roles` VALUES (3, 'VIP', 'VIP用户', '["read", "write", "create_novel", "unlimited_ai"]', NOW());
 
 -- ----------------------------
 -- Table structure for rolling_outlines
@@ -704,7 +1162,69 @@ CREATE TABLE `rolling_outlines`  (
   UNIQUE INDEX `uk_novel_chapter`(`novel_id`, `chapter_number`) USING BTREE,
   INDEX `idx_status`(`novel_id`, `status`) USING BTREE,
   INDEX `idx_batch`(`batch_id`) USING BTREE
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '滚动章纲' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '滚动章纲' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for system_ai_config
+-- ----------------------------
+DROP TABLE IF EXISTS `system_ai_config`;
+CREATE TABLE `system_ai_config`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `config_key` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '配置键',
+  `config_value` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT '配置值',
+  `description` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '配置描述',
+  `is_encrypted` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否加密存储',
+  `created_at` timestamp(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp(0) NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_config_key`(`config_key`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 73 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '系统AI配置表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for user_credits
+-- ----------------------------
+DROP TABLE IF EXISTS `user_credits`;
+CREATE TABLE `user_credits`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(0) NOT NULL COMMENT '用户ID',
+  `balance` decimal(12, 4) NOT NULL DEFAULT 0.0000 COMMENT '当前灵感点余额',
+  `total_recharged` decimal(12, 4) NOT NULL DEFAULT 0.0000 COMMENT '累计充值',
+  `total_consumed` decimal(12, 4) NOT NULL DEFAULT 0.0000 COMMENT '累计消费',
+  `total_gifted` decimal(12, 4) NOT NULL DEFAULT 0.0000 COMMENT '累计赠送获得',
+  `frozen_amount` decimal(12, 4) NOT NULL DEFAULT 0.0000 COMMENT '冻结金额（预扣）',
+  `created_at` timestamp(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp(0) NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),
+  `daily_free_balance` decimal(20, 4) NULL DEFAULT 0.0000 COMMENT '今日剩余免费字数',
+  `daily_free_last_reset` date NULL DEFAULT NULL COMMENT '上次重置日期',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_user_id`(`user_id`) USING BTREE,
+  INDEX `idx_balance`(`balance`) USING BTREE,
+  INDEX `idx_user_credits_daily_reset`(`daily_free_last_reset`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户字数点余额表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for user_oauth_bindings
+-- ----------------------------
+DROP TABLE IF EXISTS `user_oauth_bindings`;
+CREATE TABLE `user_oauth_bindings`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(0) NOT NULL COMMENT '用户ID',
+  `provider` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '第三方平台: WECHAT/QQ/WEIBO等',
+  `openid` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '第三方平台用户标识',
+  `unionid` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '第三方平台统一标识',
+  `nickname` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '第三方平台昵称',
+  `avatar_url` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '第三方平台头像',
+  `access_token` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '访问令牌',
+  `refresh_token` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '刷新令牌',
+  `token_expires_at` timestamp(0) NULL DEFAULT NULL COMMENT '令牌过期时间',
+  `raw_data` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT '原始用户数据JSON',
+  `created_at` timestamp(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp(0) NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_provider_openid`(`provider`, `openid`) USING BTREE,
+  INDEX `idx_user_id`(`user_id`) USING BTREE,
+  INDEX `idx_unionid`(`provider`, `unionid`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '第三方登录绑定表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for user_roles
@@ -736,6 +1256,9 @@ CREATE TABLE `users`  (
   `status` enum('ACTIVE','INACTIVE','BANNED') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE',
   `last_login_at` timestamp(0) NULL DEFAULT NULL,
   `email_verified` tinyint(1) NULL DEFAULT 0,
+  `wechat_openid` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '微信OpenID',
+  `wechat_unionid` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '微信UnionID',
+  `login_type` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT 'PASSWORD' COMMENT '登录方式: PASSWORD/WECHAT',
   `created_at` timestamp(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp(0) NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),
   PRIMARY KEY (`id`) USING BTREE,
@@ -743,8 +1266,27 @@ CREATE TABLE `users`  (
   UNIQUE INDEX `email`(`email`) USING BTREE,
   INDEX `idx_username`(`username`) USING BTREE,
   INDEX `idx_email`(`email`) USING BTREE,
-  INDEX `idx_status`(`status`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 11 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
+  INDEX `idx_status`(`status`) USING BTREE,
+  UNIQUE INDEX `uk_wechat_openid`(`wechat_openid`) USING BTREE,
+  INDEX `idx_wechat_unionid`(`wechat_unionid`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 12 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for verification_codes
+-- ----------------------------
+DROP TABLE IF EXISTS `verification_codes`;
+CREATE TABLE `verification_codes`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `email` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '邮箱地址',
+  `code` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '验证码',
+  `type` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'LOGIN' COMMENT '类型: LOGIN/REGISTER/RESET_PASSWORD',
+  `used` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否已使用',
+  `expires_at` timestamp(0) NOT NULL COMMENT '过期时间',
+  `created_at` timestamp(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_email_code`(`email`, `code`) USING BTREE,
+  INDEX `idx_expires_at`(`expires_at`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 5 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '验证码记录表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for volume_anchors
@@ -767,7 +1309,7 @@ CREATE TABLE `volume_anchors`  (
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `idx_volume`(`volume_id`) USING BTREE,
   INDEX `idx_novel_pending`(`novel_id`, `is_completed`) USING BTREE
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '卷级锚点' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '卷级锚点' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for volume_chapter_outlines
@@ -780,15 +1322,15 @@ CREATE TABLE `volume_chapter_outlines`  (
   `volume_number` int(0) NOT NULL COMMENT '卷序号（冗余字段，便于查询）',
   `chapter_in_volume` int(0) NOT NULL COMMENT '卷内章节序号（从1开始）',
   `global_chapter_number` int(0) NULL DEFAULT NULL COMMENT '全书章节序号（从1开始，可选，若卷未设置起始章节则为NULL）',
-  `direction` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '本章剧情方向（1句话，例如：\"主角在拍卖会上竞拍神秘丹药，引发多方势力暗中角力\"）',
+  `direction` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT '本章剧情方向（1句话，例如：\"主角在拍卖会上竞拍神秘丹药，引发多方势力暗中角力\"）',
   `key_plot_points` json NULL COMMENT '关键剧情点（JSON数组，例如：[\"拍卖会开场，主角低调入场\",\"神秘丹药出现，引发哄抢\",\"主角出价，暴露部分实力\"]）',
-  `emotional_tone` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '情感基调（例如：\"紧张、期待、暗流涌动\"）',
-  `foreshadow_action` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT 'NONE' COMMENT '伏笔动作：NONE（无）| PLANT（埋）| REFERENCE（提）| DEEPEN（加深）| RESOLVE（揭露）',
+  `emotional_tone` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '情感基调（例如：\"紧张、期待、暗流涌动\"）',
+  `foreshadow_action` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT 'NONE' COMMENT '伏笔动作：NONE（无）| PLANT（埋）| REFERENCE（提）| DEEPEN（加深）| RESOLVE（揭露）',
   `foreshadow_detail` json NULL COMMENT '伏笔详情（JSON对象），包含：\r\n        - refId: 引用的伏笔ID（REFERENCE/DEEPEN/RESOLVE时必填）\r\n        - content: 伏笔内容（PLANT时必填）\r\n        - targetResolveVolume: 目标揭露卷数（PLANT时可选）\r\n        - resolveWindow: 揭露窗口 {min, max}（PLANT时可选）\r\n        - anchorsUsed: 已使用的证据锚点数组 [{vol, ch, hint}]（RESOLVE时必须≥2个）\r\n        - futureAnchorPlan: 未来证据锚点计划（PLANT/DEEPEN时建议填写）\r\n        - cost: 揭露代价（RESOLVE时可选，例如：\"主角身份暴露，引发追杀\"）',
-  `subplot` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '支线剧情（例如：\"女主角暗中调查主角身份\"）',
+  `subplot` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT '支线剧情（例如：\"女主角暗中调查主角身份\"）',
   `antagonism` json NULL COMMENT '对抗关系（JSON对象），包含：\r\n        - opponent: 对手名称\r\n        - conflictType: 冲突类型（利益/理念/情感/生存等）\r\n        - intensity: 强度（1-10）',
-  `status` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT 'PENDING' COMMENT '章节状态：PENDING（待写作）| WRITTEN（已写作）| REVISED（已修订）',
-  `react_decision_log` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT 'AI决策日志（生成章纲时的推理过程、提示词、上下文等，JSON格式，便于审计和调试）',
+  `status` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT 'PENDING' COMMENT '章节状态：PENDING（待写作）| WRITTEN（已写作）| REVISED（已修订）',
+  `react_decision_log` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT 'AI决策日志（生成章纲时的推理过程、提示词、上下文等，JSON格式，便于审计和调试）',
   `created_at` timestamp(0) NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` timestamp(0) NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0) COMMENT '更新时间',
   PRIMARY KEY (`id`) USING BTREE,
@@ -797,7 +1339,7 @@ CREATE TABLE `volume_chapter_outlines`  (
   INDEX `idx_global_chapter`(`novel_id`, `global_chapter_number`) USING BTREE COMMENT '按全书章节号查询（写作时优先查询预生成章纲）',
   INDEX `idx_status`(`status`) USING BTREE COMMENT '按状态查询（例如查询所有待写作章节）',
   INDEX `idx_foreshadow_action`(`foreshadow_action`) USING BTREE COMMENT '按伏笔动作查询（例如查询所有待揭露伏笔）'
-) ENGINE = InnoDB AUTO_INCREMENT = 6249 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '卷级章节大纲表（按卷批量预生成）' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 6285 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '卷级章节大纲表（按卷批量预生成）' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for writing_version_history
@@ -817,6 +1359,17 @@ CREATE TABLE `writing_version_history`  (
   INDEX `idx_novel_chapter`(`novel_id`, `chapter_id`) USING BTREE,
   INDEX `idx_novel_document`(`novel_id`, `document_id`) USING BTREE,
   INDEX `idx_created_at`(`created_at`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 1362 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '写作内容版本历史' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 1398 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '写作内容版本历史' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- 初始化默认管理员账号（如果不存在）
+-- 默认用户名: admin, 密码: admin123
+-- 密码由 BCrypt 加密: $2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EH
+-- ----------------------------
+INSERT IGNORE INTO `users` (`id`, `username`, `email`, `password`, `role`, `nickname`, `status`, `created_at`, `updated_at`) 
+VALUES (1, 'admin', 'admin@novel.com', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKGh/hCO', 'ADMIN', '系统管理员', 'ACTIVE', NOW(), NOW());
+
+-- 将管理员关联到 ADMIN 角色（user_id=1, role_id=2 对应 ADMIN 角色）
+INSERT IGNORE INTO `user_roles` (`user_id`, `role_id`) VALUES (1, 2);
 
 SET FOREIGN_KEY_CHECKS = 1;

@@ -20,13 +20,6 @@ export interface VolumeChapterOutline {
   updatedAt?: string
 }
 
-export interface VolumeChapterOutlineSummary {
-  id: number
-  globalChapterNumber?: number
-  chapterInVolume?: number
-  emotionalTone?: string
-  status?: string
-}
 
 export interface ChapterOutlineResponse {
   hasOutline: boolean
@@ -67,17 +60,17 @@ export const getChapterOutline = async (
 export const getChapterOutlinesByVolume = async (
   volumeId: number,
   summary: boolean = true
-): Promise<VolumeChapterOutlineSummary[]> => {
+): Promise<VolumeChapterOutline[]> => {
   const res: any = await api.get(`/volumes/${volumeId}/chapter-outlines`, {
     params: { summary }
   })
 
   if (Array.isArray(res)) {
-    return res as VolumeChapterOutlineSummary[]
+    return res as VolumeChapterOutline[]
   }
 
   if (res && Array.isArray(res.data)) {
-    return res.data as VolumeChapterOutlineSummary[]
+    return res.data as VolumeChapterOutline[]
   }
 
   return []
@@ -105,6 +98,7 @@ export const createChapterOutline = async (
     chapterInVolume?: number
     volumeNumber?: number
     direction?: string
+    keyPlotPoints?: string
     foreshadowAction?: string
     foreshadowDetail?: string
   }

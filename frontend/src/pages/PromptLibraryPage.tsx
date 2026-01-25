@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { 
-  Button, Modal, Form, Input, Select, message, 
+  Button, Modal, Form, Input, message, 
   Spin, Empty
 } from 'antd';
 import { 
@@ -25,6 +25,7 @@ interface PromptTemplate {
   isFavorited?: boolean;
 }
 
+
 const PromptLibraryPage: React.FC = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('public');
@@ -36,7 +37,9 @@ const PromptLibraryPage: React.FC = () => {
   const [viewModalVisible, setViewModalVisible] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<PromptTemplate | null>(null);
   const [form] = Form.useForm();
+  const [editForm] = Form.useForm();
   const [novelSelectVisible, setNovelSelectVisible] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [availableNovels, setAvailableNovels] = useState<any[]>([]);
   const [selectedNovelId, setSelectedNovelId] = useState<number | null>(null);
 
@@ -101,7 +104,13 @@ const PromptLibraryPage: React.FC = () => {
   const handleCreate = async () => {
     try {
       const values = await form.validateFields();
-      await api.post('/prompt-templates', values);
+      const response: any = await api.post('/prompt-templates', {
+        ...values,
+        category: 'chapter',
+      });
+      if (response?.code && response.code !== 200) {
+        throw new Error(response.message || '创建失败');
+      }
       message.success('创建成功');
       setCreateModalVisible(false);
       form.resetFields();
@@ -112,7 +121,7 @@ const PromptLibraryPage: React.FC = () => {
       }
     } catch (error) {
       console.error('创建失败:', error);
-      message.error('创建失败');
+      message.error(error?.message || '创建失败');
     }
   };
 
@@ -137,9 +146,47 @@ const PromptLibraryPage: React.FC = () => {
     });
   };
 
-  const handleView = (template: PromptTemplate) => {
-    setSelectedTemplate(template);
+  const handleView = async (template: PromptTemplate) => {
+    // 自定义模板需要获取详情（包含 content）
+    if (template.type === 'custom') {
+      try {
+        const response: any = await api.get(`/prompt-templates/${template.id}`);
+        const fullTemplate = response?.data || template;
+        setSelectedTemplate(fullTemplate);
+        editForm.setFieldsValue({
+          name: fullTemplate.name,
+          description: fullTemplate.description,
+          content: fullTemplate.content,
+        });
+      } catch (error) {
+        console.error('获取模板详情失败:', error);
+        setSelectedTemplate(template);
+      }
+    } else {
+      setSelectedTemplate(template);
+    }
+    setIsEditing(false);
     setViewModalVisible(true);
+  };
+
+  const handleEdit = async () => {
+    if (!selectedTemplate) return;
+    try {
+      const values = await editForm.validateFields();
+      await api.put(`/prompt-templates/${selectedTemplate.id}`, {
+        ...values,
+        category: 'chapter',
+      });
+      message.success('保存成功');
+      setIsEditing(false);
+      // 更新本地状态
+      setSelectedTemplate({ ...selectedTemplate, ...values });
+      // 刷新列表
+      loadTemplates();
+    } catch (error) {
+      console.error('保存失败:', error);
+      message.error('保存失败');
+    }
   };
 
   const handleUseTemplate = async (template: PromptTemplate, e?: React.MouseEvent) => {
@@ -372,18 +419,6 @@ const PromptLibraryPage: React.FC = () => {
           </Form.Item>
 
           <Form.Item
-            name="category"
-            label="分类"
-            rules={[{ required: true, message: '请选择分类' }]}
-          >
-            <Select placeholder="选择分类">
-              <Select.Option value="system_identity">系统身份</Select.Option>
-              <Select.Option value="writing_style">写作风格</Select.Option>
-              <Select.Option value="anti_ai">去AI味</Select.Option>
-            </Select>
-          </Form.Item>
-
-          <Form.Item
             name="description"
             label="模板描述"
             rules={[{ required: true, message: '请输入模板描述' }]}
@@ -408,10 +443,61 @@ const PromptLibraryPage: React.FC = () => {
       <Modal
         title={null}
         open={viewModalVisible}
-        onCancel={() => setViewModalVisible(false)}
+        onCancel={() => {
+          setViewModalVisible(false);
+          setIsEditing(false);
+        }}
         width={640}
         className="prompt-modal"
-        footer={[
+        footer={selectedTemplate?.type === 'custom' ? (
+          isEditing ? [
+            <Button 
+              key="cancel"
+              onClick={() => {
+                setIsEditing(false);
+                editForm.setFieldsValue({
+                  name: selectedTemplate.name,
+                  description: selectedTemplate.description,
+                  content: selectedTemplate.content,
+                });
+              }}
+            >
+              取消
+            </Button>,
+            <Button 
+              key="save" 
+              type="primary"
+              onClick={handleEdit}
+            >
+              保存
+            </Button>,
+          ] : [
+            <Button 
+              key="favorite"
+              icon={selectedTemplate?.isFavorited ? <StarFilled /> : <StarOutlined />}
+              onClick={() => selectedTemplate && handleFavorite(selectedTemplate.id, selectedTemplate.isFavorited || false)}
+            >
+              {selectedTemplate?.isFavorited ? '取消收藏' : '收藏'}
+            </Button>,
+            <Button 
+              key="edit"
+              onClick={() => setIsEditing(true)}
+            >
+              编辑
+            </Button>,
+            <Button 
+              key="use" 
+              type="primary" 
+              className="prompt-use-btn"
+              onClick={() => {
+                setViewModalVisible(false);
+                selectedTemplate && handleUseTemplate(selectedTemplate);
+              }}
+            >
+              使用此模板
+            </Button>,
+          ]
+        ) : [
           <Button 
             key="favorite"
             icon={selectedTemplate?.isFavorited ? <StarFilled /> : <StarOutlined />}
@@ -437,24 +523,86 @@ const PromptLibraryPage: React.FC = () => {
             <div className={`prompt-detail-badge ${selectedTemplate.type}`}>
               {selectedTemplate.type === 'official' ? '🏆 官方模板' : '✨ 自定义模板'}
             </div>
-            <h2 className="prompt-detail-title">{selectedTemplate.name}</h2>
             
-            <div className="prompt-detail-section">
-              <div className="prompt-detail-section-title">📝 简介</div>
-              <div className="prompt-detail-description">
-                {selectedTemplate.description || '暂无简介'}
-              </div>
-            </div>
-
-            <div className="prompt-detail-tip">
-              <span className="prompt-detail-tip-icon">💡</span>
-              <div className="prompt-detail-tip-content">
-                <div className="prompt-detail-tip-title">提示</div>
-                <div className="prompt-detail-tip-text">
-                  提示词核心内容为核心资产，仅在使用时应用于AI写作，不对外展示。
+            {/* 自定义模板：显示内容并支持编辑 */}
+            {selectedTemplate.type === 'custom' ? (
+              isEditing ? (
+                <Form form={editForm} layout="vertical" style={{ marginTop: 16 }}>
+                  <Form.Item
+                    name="name"
+                    label="模板名称"
+                    rules={[{ required: true, message: '请输入模板名称' }]}
+                  >
+                    <Input placeholder="例如：网文大神风格" />
+                  </Form.Item>
+                  <Form.Item
+                    name="description"
+                    label="模板描述"
+                    rules={[{ required: true, message: '请输入模板描述' }]}
+                  >
+                    <Input placeholder="简要描述这个模板的特点和用途" />
+                  </Form.Item>
+                  <Form.Item
+                    name="content"
+                    label="提示词内容"
+                    rules={[{ required: true, message: '请输入提示词内容' }]}
+                  >
+                    <TextArea
+                      rows={12}
+                      placeholder="输入完整的提示词内容..."
+                    />
+                  </Form.Item>
+                </Form>
+              ) : (
+                <>
+                  <h2 className="prompt-detail-title">{selectedTemplate.name}</h2>
+                  <div className="prompt-detail-section">
+                    <div className="prompt-detail-section-title">📝 简介</div>
+                    <div className="prompt-detail-description">
+                      {selectedTemplate.description || '暂无简介'}
+                    </div>
+                  </div>
+                  <div className="prompt-detail-section">
+                    <div className="prompt-detail-section-title">📝 提示词内容</div>
+                    <div className="prompt-detail-content">
+                      <pre style={{ 
+                        whiteSpace: 'pre-wrap', 
+                        wordBreak: 'break-word',
+                        background: '#f8fafc',
+                        padding: '16px',
+                        borderRadius: '8px',
+                        fontSize: '13px',
+                        lineHeight: '1.6',
+                        maxHeight: '300px',
+                        overflow: 'auto'
+                      }}>
+                        {selectedTemplate.content || '暂无内容'}
+                      </pre>
+                    </div>
+                  </div>
+                </>
+              )
+            ) : (
+              /* 官方模板：显示提示信息 */
+              <>
+                <h2 className="prompt-detail-title">{selectedTemplate.name}</h2>
+                <div className="prompt-detail-section">
+                  <div className="prompt-detail-section-title">📝 简介</div>
+                  <div className="prompt-detail-description">
+                    {selectedTemplate.description || '暂无简介'}
+                  </div>
                 </div>
-              </div>
-            </div>
+                <div className="prompt-detail-tip">
+                  <span className="prompt-detail-tip-icon">💡</span>
+                  <div className="prompt-detail-tip-content">
+                    <div className="prompt-detail-tip-title">提示</div>
+                    <div className="prompt-detail-tip-text">
+                      提示词核心内容为核心资产，仅在使用时应用于AI写作，不对外展示。
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
       </Modal>

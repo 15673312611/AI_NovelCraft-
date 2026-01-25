@@ -60,7 +60,6 @@ import {
   updateChapterOutline as updateVolumeChapterOutline,
   createChapterOutline,
   generateVolumeChapterOutlines,
-  type VolumeChapterOutlineSummary,
   type VolumeChapterOutline,
 } from '@/services/volumeChapterOutlineService'
 import { getChapterHistory, getDocumentHistory, type WritingVersionHistory } from '@/services/writingHistoryService'
@@ -501,7 +500,7 @@ const WritingStudioPage: React.FC = () => {
   const [chapterOutlineLoading, setChapterOutlineLoading] = useState(false)
   const [chapterOutlineListLoading, setChapterOutlineListLoading] = useState(false)
   const [chapterOutlineVolumeId, setChapterOutlineVolumeId] = useState<number | null>(null)
-  const [chapterOutlineList, setChapterOutlineList] = useState<VolumeChapterOutlineSummary[]>([])
+  const [chapterOutlineList, setChapterOutlineList] = useState<VolumeChapterOutline[]>([])
   const [chapterOutlineListVisible, setChapterOutlineListVisible] = useState(false)
   const [editingChapterOutline, setEditingChapterOutline] = useState<{
     outlineId?: number
@@ -512,7 +511,7 @@ const WritingStudioPage: React.FC = () => {
     foreshadowAction?: string
     foreshadowDetail?: string
     status?: string
-    // 以下字段已废弃，保留用于向后兼容
+    // 兼容字段：keyPlotPoints 作为剧情方向来源
     keyPlotPoints?: string
     emotionalTone?: string
     subplot?: string
@@ -744,6 +743,134 @@ const WritingStudioPage: React.FC = () => {
     })
     return matched || currentVolume || volumes[0] || null
   }
+  const formatKeyPlotPointsText = (raw: unknown): string => {
+    if (raw == null) return ''
+    if (Array.isArray(raw)) {
+      return raw
+        .map((item) => String(item ?? '').trim())
+        .filter(Boolean)
+        .join('\n')
+    }
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim()
+      if (!trimmed) return ''
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (Array.isArray(parsed)) {
+          return parsed
+            .map((item) => String(item ?? '').trim())
+            .filter(Boolean)
+            .join('\n')
+        }
+        if (typeof parsed === 'string') {
+          const inner = parsed.trim()
+          if (inner.startsWith('[') || inner.startsWith('{')) {
+            try {
+              const innerParsed = JSON.parse(inner)
+              if (Array.isArray(innerParsed)) {
+                return innerParsed
+                  .map((item) => String(item ?? '').trim())
+                  .filter(Boolean)
+                  .join('\n')
+              }
+              if (typeof innerParsed === 'string') {
+                return innerParsed
+              }
+              if (innerParsed && typeof innerParsed === 'object') {
+                return JSON.stringify(innerParsed, null, 2)
+              }
+            } catch (innerError) {
+              return parsed
+            }
+          }
+          return parsed
+        }
+        if (parsed && typeof parsed === 'object') {
+          return JSON.stringify(parsed, null, 2)
+        }
+      } catch (error) {
+        return trimmed
+      }
+      return trimmed
+    }
+    if (typeof raw === 'object') {
+      try {
+        return JSON.stringify(raw, null, 2)
+      } catch (error) {
+        return String(raw)
+      }
+    }
+    return String(raw)
+  }
+
+  const formatForeshadowDetailText = (raw: unknown): string => {
+    if (raw == null) return ''
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim()
+      if (!trimmed) return ''
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (typeof parsed === 'string') {
+          const inner = parsed.trim()
+          if (inner.startsWith('[') || inner.startsWith('{')) {
+            try {
+              const innerParsed = JSON.parse(inner)
+              if (typeof innerParsed === 'string') {
+                return innerParsed
+              }
+              if (innerParsed && typeof innerParsed === 'object') {
+                return JSON.stringify(innerParsed, null, 2)
+              }
+            } catch (innerError) {
+              return parsed
+            }
+          }
+          return parsed
+        }
+        if (parsed && typeof parsed === 'object') {
+          return JSON.stringify(parsed, null, 2)
+        }
+      } catch (error) {
+        return trimmed
+      }
+      return trimmed
+    }
+    if (typeof raw === 'object') {
+      try {
+        return JSON.stringify(raw, null, 2)
+      } catch (error) {
+        return String(raw)
+      }
+    }
+    return String(raw)
+  }
+
+  const buildKeyPlotPointsPayload = (rawText?: string): string | undefined => {
+    if (!rawText) return undefined
+    const trimmed = rawText.trim()
+    if (!trimmed) return undefined
+    if (trimmed.startsWith('[') || trimmed.startsWith('{') || trimmed.startsWith('"')) {
+      try {
+        JSON.parse(trimmed)
+        return trimmed
+      } catch (error) {
+        // fallthrough
+      }
+    }
+    const lines = trimmed
+      .split(/\r?\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+    if (lines.length === 0) return undefined
+    return JSON.stringify(lines)
+  }
+
+  const getOutlinePreview = (outline: VolumeChapterOutline): string => {
+    const text = formatKeyPlotPointsText(outline.keyPlotPoints) || outline.direction || ''
+    const flattened = text.replace(/\s+/g, ' ').trim()
+    if (!flattened) return ''
+    return flattened.length > 50 ? `${flattened.slice(0, 50)}...` : flattened
+  }
 
   const mapOutlineToEditingForm = (
     outline: VolumeChapterOutline,
@@ -754,17 +881,20 @@ const WritingStudioPage: React.FC = () => {
       foreshadowDetail: outline.foreshadowDetail
     })
     
+    const keyPlotPointsText = formatKeyPlotPointsText(outline.keyPlotPoints)
+    const directionText = keyPlotPointsText || outline.direction || ''
+    const foreshadowDetailText = formatForeshadowDetailText(outline.foreshadowDetail)
     const mapped = {
       outlineId: outline.id,
       globalChapterNumber: outline.globalChapterNumber ?? fallbackChapterNumber,
       chapterInVolume: outline.chapterInVolume ?? undefined,
       volumeNumber: outline.volumeNumber ?? undefined,
-      direction: outline.direction || '',
+      direction: directionText,
       foreshadowAction: outline.foreshadowAction || 'NONE',
-      foreshadowDetail: outline.foreshadowDetail || '',
+      foreshadowDetail: foreshadowDetailText,
       status: outline.status || undefined,
-      // 以下字段已废弃，保留用于向后兼容旧数据
-      keyPlotPoints: outline.keyPlotPoints || '',
+      // 兼容字段：keyPlotPoints 作为剧情方向来源
+      keyPlotPoints: keyPlotPointsText,
       emotionalTone: outline.emotionalTone || '',
       subplot: outline.subplot || '',
       antagonism: outline.antagonism || '',
@@ -836,6 +966,7 @@ const WritingStudioPage: React.FC = () => {
           chapterInVolume,
           volumeNumber: inferredVolume?.volumeNumber,
           direction: '',
+          keyPlotPoints: '',
           foreshadowAction: 'NONE',
           foreshadowDetail: '',
           status: undefined,
@@ -884,6 +1015,10 @@ const WritingStudioPage: React.FC = () => {
         return
       }
     }
+    const directionText = (editingChapterOutline.keyPlotPoints ?? editingChapterOutline.direction ?? '').trim()
+    const keyPlotPointsPayload = buildKeyPlotPointsPayload(
+      editingChapterOutline.keyPlotPoints ?? editingChapterOutline.direction
+    )
 
     setChapterOutlineLoading(true)
     try {
@@ -892,7 +1027,8 @@ const WritingStudioPage: React.FC = () => {
       if (editingChapterOutline.outlineId) {
         // 更新模式
         const payload = {
-          direction: editingChapterOutline.direction,
+          direction: directionText,
+          keyPlotPoints: keyPlotPointsPayload,
           foreshadowAction: editingChapterOutline.foreshadowAction,
           foreshadowDetail: editingChapterOutline.foreshadowDetail,
         }
@@ -909,7 +1045,8 @@ const WritingStudioPage: React.FC = () => {
           globalChapterNumber: editingChapterOutline.globalChapterNumber!,
           chapterInVolume: editingChapterOutline.chapterInVolume,
           volumeNumber: editingChapterOutline.volumeNumber,
-          direction: editingChapterOutline.direction,
+          direction: directionText,
+          keyPlotPoints: keyPlotPointsPayload,
           foreshadowAction: editingChapterOutline.foreshadowAction,
           foreshadowDetail: editingChapterOutline.foreshadowDetail,
         }
@@ -2118,7 +2255,7 @@ const WritingStudioPage: React.FC = () => {
       
       // 刷新章纲列表
       if (volumeId) {
-        const list = await getChapterOutlinesByVolume(volumeId, true)
+        const list = await getChapterOutlinesByVolume(volumeId, false)
         setChapterOutlineList(list)
       }
     } catch (error: any) {
@@ -2642,6 +2779,7 @@ const WritingStudioPage: React.FC = () => {
                 chapterOutlineList.map((item) => {
                   const isActive = editingChapterOutline && 
                     item.globalChapterNumber === editingChapterOutline.globalChapterNumber;
+                  const preview = getOutlinePreview(item)
                   
                   return (
                     <div
@@ -2654,9 +2792,9 @@ const WritingStudioPage: React.FC = () => {
                           第 {item.chapterInVolume ?? item.globalChapterNumber ?? '-'} 章
                         </span>
                       </div>
-                      {item.direction && (
+                      {preview && (
                         <div className="co-item-tone" style={{ marginTop: 6 }}>
-                          {item.direction.length > 50 ? item.direction.substring(0, 50) + '...' : item.direction}
+                          {preview}
                         </div>
                       )}
                     </div>
@@ -2682,7 +2820,7 @@ const WritingStudioPage: React.FC = () => {
                       setChapterOutlineListVisible(true)
                       if (chapterOutlineVolumeId && chapterOutlineList.length === 0) {
                         setChapterOutlineListLoading(true)
-                        getChapterOutlinesByVolume(chapterOutlineVolumeId, true)
+                        getChapterOutlinesByVolume(chapterOutlineVolumeId, false)
                           .then(list => setChapterOutlineList(list))
                           .finally(() => setChapterOutlineListLoading(false))
                       }
@@ -2741,11 +2879,12 @@ const WritingStudioPage: React.FC = () => {
                   </div>
                   <textarea
                     className="co-textarea"
-                    value={editingChapterOutline.direction}
+                    value={editingChapterOutline.keyPlotPoints ?? editingChapterOutline.direction}
                     onChange={(e) =>
                       setEditingChapterOutline({
                         ...editingChapterOutline,
                         direction: e.target.value,
+                        keyPlotPoints: e.target.value,
                       })
                     }
                     placeholder="本章主要写什么？例如：主角在拍卖会上遭遇反派挑衅，通过鉴宝技能打脸..."

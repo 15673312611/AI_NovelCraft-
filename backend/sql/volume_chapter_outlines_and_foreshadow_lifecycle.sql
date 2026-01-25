@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS volume_chapter_outlines (
     INDEX idx_global_chapter (novel_id, global_chapter_number) COMMENT '按全书章节号查询（写作时优先查询预生成章纲）',
     INDEX idx_status (status) COMMENT '按状态查询（例如查询所有待写作章节）',
     INDEX idx_foreshadow_action (foreshadow_action) COMMENT '按伏笔动作查询（例如查询所有待揭露伏笔）'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='卷级章节大纲表（按卷批量预生成）';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='卷级章节大纲表（按卷批量预生成）';
 
 
 -- ============================================================================
@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS foreshadow_lifecycle_log (
     INDEX idx_novel_volume (novel_id, volume_number) COMMENT '按小说和卷查询',
     INDEX idx_volume_chapter (volume_id, chapter_in_volume) COMMENT '按卷和章节查询',
     INDEX idx_action (action) COMMENT '按动作类型查询（例如查询所有PLANT/RESOLVE）'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='伏笔生命周期日志表（跨卷追踪）';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='伏笔生命周期日志表（跨卷追踪）';
 
 
 -- ============================================================================

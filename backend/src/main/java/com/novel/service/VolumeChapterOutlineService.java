@@ -21,7 +21,7 @@ import java.util.*;
  * 卷级批量章纲生成服务
  * - 根据：全书大纲 + 本卷蓝图 + 历史伏笔池
  * - 一次性生成本卷的 N 个章纲（默认50）
- * - 返回内存结果（不落库），同时可返回 react_decision_log 供排错
+ * - 返回内存结果（不落库）
  */
 @Service
 public class VolumeChapterOutlineService {
@@ -259,11 +259,8 @@ public class VolumeChapterOutlineService {
         }
         logger.info("✅ AI生成章纲成功: volumeId={}, 实际生成{}章", volumeId, outlines.size());
 
-        // 附带决策日志
-        String reactDecisionLog = buildDecisionLog(novel, volume, superOutline, unresolved, prompt, raw, count);
-
         // 入库：保存章纲 + 伏笔生命周期日志（失败则抛异常，触发事务回滚）
-        persistOutlines(volume, outlines, reactDecisionLog);
+        persistOutlines(volume, outlines);
         logger.info("✅ 卷章纲已入库: volumeId={}, count={}", volumeId, outlines.size());
 
         // 只有完全成功才返回结果
@@ -272,7 +269,6 @@ public class VolumeChapterOutlineService {
         result.put("novelId", volume.getNovelId());
         result.put("count", outlines.size());
         result.put("outlines", outlines);
-        result.put("react_decision_log", reactDecisionLog);
         return result;
     }
 
@@ -710,11 +706,8 @@ public class VolumeChapterOutlineService {
         }
         logger.info("✅ AI增量生成章纲成功: volumeId={}, startChapterInVolume={}, 实际生成{}章", volumeId, firstNewChapterInVolume, outlines.size());
 
-        // 附带决策日志
-        String reactDecisionLog = buildDecisionLog(novel, volume, superOutline, unresolved, prompt, raw, count);
-
         // 入库：保存后半部分章纲 + 伏笔生命周期日志（不清空整卷旧数据）
-        persistRemainingOutlines(volume, firstNewChapterInVolume, outlines, reactDecisionLog);
+        persistRemainingOutlines(volume, firstNewChapterInVolume, outlines);
         logger.info("✅ 卷章纲增量入库完成: volumeId={}, startChapterInVolume={}, count={}", volumeId, firstNewChapterInVolume, outlines.size());
 
         // 只有完全成功才返回结果
@@ -724,7 +717,6 @@ public class VolumeChapterOutlineService {
         result.put("startChapterInVolume", firstNewChapterInVolume);
         result.put("count", outlines.size());
         result.put("outlines", outlines);
-        result.put("react_decision_log", reactDecisionLog);
         return result;
     }
 
@@ -1760,30 +1752,6 @@ public class VolumeChapterOutlineService {
         );
     }
 
-    private String buildDecisionLog(Novel novel, NovelVolume volume, NovelOutline outline,
-                                    List<NovelForeshadowing> unresolved, String prompt, String raw, int count) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("[react_decision_log]\n");
-        sb.append("route: volume_chapter_outlines_generation\n");
-        sb.append("time: ").append(LocalDateTime.now()).append('\n');
-        sb.append("msg1: <<<PROMPT>>>\n");
-        sb.append(prompt).append('\n');
-        sb.append("<<<END_PROMPT>>>\n");
-        sb.append("msg2: novelId=").append(novel.getId())
-          .append(", title=").append(s(novel.getTitle()))
-          .append(", volumeId=").append(volume.getId())
-          .append(", volumeNo=").append(nz(volume.getVolumeNumber(), 0))
-          .append(", targetCount=").append(count).append('\n');
-        sb.append("msg3: volume.contentOutline.len=")
-          .append(length(volume.getContentOutline())).append(", outline.len=")
-          .append(length(outline.getPlotStructure())).append('\n');
-        sb.append("msg4: unresolvedForeshadows.size=")
-          .append(unresolved == null ? 0 : unresolved.size()).append('\n');
-        sb.append("msg5: <<<RAW_RESPONSE>>>\n").append(limit(raw, 2000)).append('\n');
-        sb.append("<<<END_RAW_RESPONSE>>>\n");
-        return sb.toString();
-    }
-
     private String extractPureJson(String raw) {
         if (raw == null) throw new RuntimeException("AI返回为空");
         String trimmed = raw.trim();
@@ -1915,7 +1883,7 @@ public class VolumeChapterOutlineService {
      * 入库：保存章纲 + 伏笔生命周期日志
      * 失败时抛异常，触发事务回滚（旧数据会恢复）
      */
-    private void persistOutlines(NovelVolume volume, List<Map<String, Object>> outlines, String reactDecisionLog) {
+    private void persistOutlines(NovelVolume volume, List<Map<String, Object>> outlines) {
         if (outlines == null || outlines.isEmpty()) {
             throw new RuntimeException("章纲列表为空，无法入库");
         }
@@ -1945,15 +1913,15 @@ public class VolumeChapterOutlineService {
 
                 entity.setChapterInVolume(chapterInVolume);
                 entity.setGlobalChapterNumber(globalChapterNumber);
-                entity.setDirection(getString(outline, "direction"));
-                entity.setKeyPlotPoints(null);  // 已废弃，不再使用
+                String direction = getString(outline, "direction");
+                entity.setDirection(direction);
+                entity.setKeyPlotPoints(resolveKeyPlotPoints(outline.get("keyPlotPoints"), direction));
                 entity.setEmotionalTone(null);  // 已废弃，不再使用
                 entity.setForeshadowAction(getString(outline, "foreshadowAction"));
                 entity.setForeshadowDetail(toJson(outline.get("foreshadowDetail")));
                 entity.setSubplot(null);  // 已废弃，不再使用
                 entity.setAntagonism(null);  // 已废弃，不再使用
                 entity.setStatus("PENDING");
-                entity.setReactDecisionLog(reactDecisionLog);
 
                 outlineRepo.insert(entity);
                 insertedCount++;
@@ -2003,8 +1971,7 @@ public class VolumeChapterOutlineService {
      */
     private void persistRemainingOutlines(NovelVolume volume,
                                           int firstNewChapterInVolume,
-                                          List<Map<String, Object>> outlines,
-                                          String reactDecisionLog) {
+                                          List<Map<String, Object>> outlines) {
         if (outlines == null || outlines.isEmpty()) {
             throw new RuntimeException("章纲列表为空，无法入库");
         }
@@ -2039,15 +2006,15 @@ public class VolumeChapterOutlineService {
                 }
 
                 entity.setGlobalChapterNumber(globalChapterNumber);
-                entity.setDirection(getString(outline, "direction"));
-                entity.setKeyPlotPoints(null);  // 已废弃，不再使用
-                entity.setEmotionalTone(null);  // 已废弃，不再使用
+                String direction = getString(outline, "direction");
+                entity.setDirection(direction);
+                entity.setKeyPlotPoints(resolveKeyPlotPoints(outline.get("keyPlotPoints"), direction));
+                entity.setEmotionalTone(getString(outline, "emotionalTone"));
                 entity.setForeshadowAction(getString(outline, "foreshadowAction"));
                 entity.setForeshadowDetail(toJson(outline.get("foreshadowDetail")));
-                entity.setSubplot(null);  // 已废弃，不再使用
-                entity.setAntagonism(null);  // 已废弃，不再使用
+                entity.setSubplot(getString(outline, "subplot"));
+                entity.setAntagonism(toJson(outline.get("antagonism")));
                 entity.setStatus("PENDING");
-                entity.setReactDecisionLog(reactDecisionLog);
 
                 if (entity.getId() == null) {
                     outlineRepo.insert(entity);
@@ -2114,6 +2081,32 @@ public class VolumeChapterOutlineService {
         return v == null ? null : v.toString();
     }
 
+    private String resolveKeyPlotPoints(Object raw, String direction) {
+        String normalized = normalizeJsonText(raw);
+        if (!isBlank(normalized)) {
+            return normalized;
+        }
+        return normalizeJsonText(direction);
+    }
+
+    private String normalizeJsonText(Object obj) {
+        if (obj == null) return null;
+        if (obj instanceof String) {
+            String s0 = ((String) obj).trim();
+            if (isBlank(s0)) return null;
+            if (looksLikeJson(s0)) {
+                try {
+                    mapper.readTree(s0);
+                    return s0;
+                } catch (Exception ignore) {
+                    // fall through
+                }
+            }
+            return toJson(s0);
+        }
+        return toJson(obj);
+    }
+
     private String toJson(Object obj) {
         if (obj == null) return null;
 
@@ -2134,6 +2127,12 @@ public class VolumeChapterOutlineService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private boolean looksLikeJson(String s) {
+        if (isBlank(s)) return false;
+        char c = s.trim().charAt(0);
+        return c == '{' || c == '[' || c == '\"';
     }
 
     private static boolean isBlank(String s) { return s == null || s.trim().isEmpty(); }

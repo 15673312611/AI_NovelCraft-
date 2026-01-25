@@ -16,6 +16,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import { RootState, AppDispatch } from '@/store'
 import { logout, clearAuth } from '@/store/slices/authSlice'
 import { creditService, UserCreditInfo } from '@/services/creditService'
+import RechargeModal from '@/components/RechargeModal'
 import './AppHeader.css'
 
 const { Header } = Layout
@@ -27,6 +28,7 @@ const AppHeader: React.FC = () => {
   const [creditInfo, setCreditInfo] = useState<UserCreditInfo | null>(null)
   const [redeemCode, setRedeemCode] = useState('')
   const [redeemLoading, setRedeemLoading] = useState(false)
+  const [rechargeModalVisible, setRechargeModalVisible] = useState(false)
 
   // 加载字数信息
   useEffect(() => {
@@ -189,7 +191,7 @@ const AppHeader: React.FC = () => {
           <HistoryOutlined />
           <span>字数消费记录</span>
         </div>
-        <div className="dropdown-menu-item" onClick={() => navigate('/settings')}>
+        <div className="dropdown-menu-item" onClick={() => setRechargeModalVisible(true)}>
           <WalletOutlined />
           <span>充值</span>
         </div>
@@ -259,6 +261,10 @@ const AppHeader: React.FC = () => {
           )}
         </div>
       </div>
+      <RechargeModal 
+        visible={rechargeModalVisible} 
+        onCancel={() => setRechargeModalVisible(false)} 
+      />
     </Header>
   )
 }

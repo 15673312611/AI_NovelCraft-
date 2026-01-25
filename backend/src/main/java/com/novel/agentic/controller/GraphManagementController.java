@@ -2,7 +2,6 @@ package com.novel.agentic.controller;
 
 import com.novel.agentic.service.CoreStateExtractor;
 import com.novel.agentic.service.graph.EntityExtractionService;
-import com.novel.agentic.service.graph.GraphInitializationService;
 import com.novel.agentic.service.graph.IGraphService;
 import com.novel.agentic.util.CollectionUtils;
 import com.novel.domain.entity.Chapter;
@@ -31,9 +30,6 @@ import java.util.Map;
 public class GraphManagementController {
     
     private static final Logger logger = LoggerFactory.getLogger(GraphManagementController.class);
-    
-    @Autowired(required = false)
-    private GraphInitializationService graphInitService;
 
     @Autowired(required = false)
     private IGraphService graphService;
@@ -69,9 +65,6 @@ public class GraphManagementController {
     public Map<String, Object> getGraphStats(@PathVariable Long novelId) {
         if (graphService != null) {
             return graphService.getGraphStatistics(novelId);
-        }
-        if (graphInitService != null) {
-            return graphInitService.getGraphStats(novelId);
         }
         return CollectionUtils.mapOf("error", "图谱服务未启用");
     }
@@ -213,8 +206,6 @@ public class GraphManagementController {
             // 清空图谱
             if (graphService != null) {
                 graphService.clearGraph(novelId);
-            } else if (graphInitService != null) {
-                graphInitService.clearGraph(novelId);
             }
             
             // 删除章节概要
@@ -237,14 +228,15 @@ public class GraphManagementController {
     }
     
     /**
-     * 检查Neo4j状态
+     * 检查图谱服务状态
      */
     @GetMapping("/status")
     public Map<String, Object> getStatus() {
+        String mode = graphService != null ? graphService.getServiceType() : "未启用";
         return CollectionUtils.mapOf(
-            "neo4jEnabled", graphInitService != null,
+            "graphEnabled", graphService != null,
             "extractionEnabled", entityExtractionService != null,
-            "mode", graphInitService != null ? "Neo4j" : "内存模拟"
+            "mode", mode
         );
     }
     
@@ -258,9 +250,6 @@ public class GraphManagementController {
             if (graphService != null) {
                 graphService.clearGraph(novelId);
                 logger.info("✅ 已清空小说 {} 的图谱数据", novelId);
-            } else if (graphInitService != null) {
-                graphInitService.clearGraph(novelId);
-                logger.info("✅ 已清空小说 {} 的图谱数据（内存模式）", novelId);
             }
             
             // 删除章节概要
@@ -595,34 +584,23 @@ public class GraphManagementController {
                         .collect(java.util.stream.Collectors.toList());
                     
                     if (!chapterNumbersToDelete.isEmpty()) {
-                        // 直接调用底层 Neo4j 强制删除方法
-                        if (graphService instanceof com.novel.agentic.service.graph.Neo4jGraphService) {
-                            com.novel.agentic.service.graph.Neo4jGraphService neo4jService = 
-                                (com.novel.agentic.service.graph.Neo4jGraphService) graphService;
-                            neo4jService.forceDeleteChapterRangeEntities(novelId, chapterNumbersToDelete);
-                            logger.info("✅ 已强制清理小说{} 指定章节范围的图谱数据", novelId);
-                        } else {
-                            // 内存模式退化处理：逐章调用删除
-                            for (Chapter chapter : chapters) {
-                                try {
-                                    Integer chapterNumber = chapter.getChapterNumber();
-                                    if (chapterNumber != null) {
-                                        graphService.deleteChapterEntities(novelId, chapterNumber);
-                                        logger.info("🗑️ 已清理小说{} 第{}章的旧图谱数据", novelId, chapterNumber);
-                                    }
-                                } catch (Exception e) {
-                                    logger.warn("清理第{}章图谱数据时出错（忽略，继续重建）", chapter.getChapterNumber(), e);
+                        // 逐章清理图谱数据
+                        for (Chapter chapter : chapters) {
+                            try {
+                                Integer chapterNumber = chapter.getChapterNumber();
+                                if (chapterNumber != null) {
+                                    graphService.deleteChapterEntities(novelId, chapterNumber);
+                                    logger.info("🗑️ 已清理小说{} 第{}章的旧图谱数据", novelId, chapterNumber);
                                 }
+                            } catch (Exception e) {
+                                logger.warn("清理第{}章图谱数据时出错（忽略，继续重建）", chapter.getChapterNumber(), e);
                             }
                         }
+                        logger.info("✅ 已清理小说{} 指定章节范围的图谱数据", novelId);
                     }
                 } catch (Exception e) {
-                    logger.error("强制清理图谱数据失败（忽略，继续重建）", e);
+                    logger.error("清理图谱数据失败（忽略，继续重建）", e);
                 }
-            } else if (graphInitService != null) {
-                // 退化模式：仍然可以全量清空（兼容旧实现），但这是最后兜底
-                graphInitService.clearGraph(novelId);
-                logger.info("✅ 已清空小说 {} 的图谱数据（内存模式，只重建图谱，无法按章节精细清理）", novelId);
             } else {
                 return CollectionUtils.mapOf("error", "图谱服务未启用");
             }
