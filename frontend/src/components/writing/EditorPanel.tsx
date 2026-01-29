@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { message, Modal, Input, Button, Spin } from 'antd'
-import { SearchOutlined, EditOutlined, FormOutlined, HighlightOutlined, BarChartOutlined, BulbOutlined, FileTextOutlined, HistoryOutlined } from '@ant-design/icons'
+import { SearchOutlined, EditOutlined, FormOutlined, HighlightOutlined, BarChartOutlined, BulbOutlined, FileTextOutlined, HistoryOutlined, SafetyCertificateOutlined, DeleteOutlined, FontSizeOutlined } from '@ant-design/icons'
 import type { NovelDocument } from '@/services/documentService'
 import rewriteService from '@/services/rewriteService'
 import aiService from '@/services/aiService'
 import smartSuggestionService, { type SmartSuggestion } from '@/services/smartSuggestionService'
 import api from '@/services/api'
-import { checkAIConfig, AI_CONFIG_ERROR_MESSAGE, withAIConfig, getAIConfigOrThrow } from '@/utils/aiRequest'
+import { checkAIConfig, AI_CONFIG_ERROR_MESSAGE } from '@/utils/aiRequest'
 import './EditorPanel.css'
 
 
@@ -22,7 +22,6 @@ export interface EditorPanelProps {
   onShowHistory?: () => void
   onReviewManuscript?: () => void
   onRemoveAITrace?: () => void
-  onStreamlineContent?: () => void
   lastSaveTime?: string
   isSaving?: boolean
   onSearchReplace?: () => void
@@ -40,7 +39,6 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   onShowSummary,
   onReviewManuscript,
   onRemoveAITrace,
-  onStreamlineContent,
   lastSaveTime,
   isSaving = false,
   onSearchReplace,
@@ -686,11 +684,6 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
 
   // 生成章节名
   const handleGenerateNames = async () => {
-    if (!checkAIConfig()) {
-      message.error(AI_CONFIG_ERROR_MESSAGE)
-      return
-    }
-
     if (!content || content.trim().length < 100) {
       message.warning('章节内容太少，无法生成合适的章节名')
       return
@@ -699,92 +692,19 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
     try {
       setIsGeneratingName(true)
 
-      // 取章节开头和主要内容用于分析
-      const contentPreview = content.slice(0, 1500)
+      // 调用后端接口，仅传递内容和模型ID（使用默认模型）
+      const requestBody = {
+        content: content
+      }
 
-      const prompt = `# 任务
+      const response: any = await api.post('/ai/generate-chapter-titles', requestBody)
 
-请为下面这一章节内容创作 5 个高质量的中文标题。
-
-# 输入章节内容
-
-${contentPreview}${content.length > 1500 ? '\n...(内容较长，已截取前1500字)' : ''}
-
-# 核心要求
-
-1. 标题要大致概括本章的核心情节或情绪，并具有一定吸引力。
-2. 风格不限，可以自由发挥，只需符合通俗小说的阅读习惯。
-3. 字数一般控制在 4-15 个字左右即可，不必死板卡字数。
-
-# 输出格式
-
-只输出 5 行标题，每行一个标题。
-不要编号，不要解释，不要附加其他任何文字或符号。`
-
-      const aiConfig = getAIConfigOrThrow()
-
-      let apiUrl = (aiConfig.baseUrl || '').trim()
-      if (!apiUrl) {
-        const providerUrls: Record<string, string> = {
-          deepseek: 'https://api.deepseek.com/v1/chat/completions',
-          qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
-          kimi: 'https://api.moonshot.cn/v1/chat/completions',
-          openai: 'https://api.openai.com/v1/chat/completions',
-          custom: ''
-        }
-        apiUrl = providerUrls[aiConfig.provider] || 'https://api.openai.com/v1/chat/completions'
+      if (response && response.data && response.data.titles && Array.isArray(response.data.titles)) {
+        setGeneratedNames(response.data.titles)
+        message.success(`成功生成${response.data.titles.length}个章节标题`)
       } else {
-        if (!/chat\/completions/.test(apiUrl)) {
-          apiUrl = apiUrl.replace(/\/v1\/?$/, '')
-          apiUrl = apiUrl.replace(/\/+$/, '')
-          apiUrl = `${apiUrl}/v1/chat/completions`
-        }
+        throw new Error('返回数据格式错误')
       }
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${aiConfig.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: aiConfig.model,
-          messages: [
-            {
-              role: 'system',
-              content:
-                '你是一个擅长为中文网络小说章节取名的助手，请根据用户提供的章节内容，给出5个有吸引力且贴合剧情的章节标题。',
-            },
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`AI生成失败: ${response.status} ${response.statusText}`)
-      }
-
-      const data = await response.json()
-      const aiResponse: string =
-        data?.choices?.[0]?.message?.content ||
-        data?.choices?.[0]?.text ||
-        ''
-
-      const names = aiResponse
-        .split('\n')
-        .map((line: string) => line.trim())
-        .filter((line: string) => line && line.length > 0 && !line.match(/^[\d\.、]+/))
-        .slice(0, 5)
-
-      if (names.length === 0) {
-        throw new Error('未能生成有效的章节标题')
-      }
-
-      setGeneratedNames(names)
-      message.success(`成功生成${names.length}个章节标题`)
     } catch (error: any) {
       console.error('生成章节名失败:', error)
       message.error(error?.message || '生成失败，请稍后重试')
@@ -1385,13 +1305,18 @@ ${contentPreview}${content.length > 1500 ? '\n...(内容较长，已截取前150
               <div className="editor-header-right">
                 <div className="editor-actions">
                   <span className="word-count">字数: {wordCount}</span>
-                  <button className="action-btn ai-action-btn" onClick={openNameModal} title="AI生成章节标题">
-
+                  <button className="ai-action-btn" onClick={openNameModal} title="AI生成章节标题">
+                    <FontSizeOutlined />
                     <span>章节取名</span>
                   </button>
-                  <button className="action-btn ai-action-btn" onClick={onStreamlineContent}>AI精简</button>
-                  <button className="action-btn ai-action-btn" onClick={onReviewManuscript}>AI审稿</button>
-                  <button className="action-btn ai-action-btn" onClick={onRemoveAITrace}>AI消痕</button>
+                  <button className="ai-action-btn" onClick={onReviewManuscript} title="AI智能审稿">
+                    <SafetyCertificateOutlined />
+                    <span>AI审稿</span>
+                  </button>
+                  <button className="ai-action-btn" onClick={onRemoveAITrace} title="清除AI痕迹">
+                    <DeleteOutlined />
+                    <span>AI消痕</span>
+                  </button>
                 </div>
                 <div className="outline-buttons"> 
                   <button className="outline-btn" onClick={onShowOutline}>

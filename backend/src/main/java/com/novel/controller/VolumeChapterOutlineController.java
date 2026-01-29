@@ -139,6 +139,15 @@ public class VolumeChapterOutlineController {
                     item.put("chapterInVolume", outline.getChapterInVolume());
                     item.put("emotionalTone", outline.getEmotionalTone());
                     item.put("status", outline.getStatus());
+                    // 添加 direction 摘要用于列表预览（截取前60字符）
+                    String direction = outline.getDirection();
+                    String keyPlotPoints = outline.getKeyPlotPoints();
+                    String preview = (keyPlotPoints != null && !keyPlotPoints.isBlank()) ? keyPlotPoints : direction;
+                    if (preview != null && preview.length() > 60) {
+                        preview = preview.substring(0, 60) + "...";
+                    }
+                    item.put("direction", preview);
+                    item.put("keyPlotPoints", preview);
                     summaryList.add(item);
                 }
                 return ResponseEntity.ok(summaryList);

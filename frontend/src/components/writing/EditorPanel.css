@@ -58,7 +58,7 @@
 .editor-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   flex-shrink: 0;
 }
 
@@ -78,61 +78,50 @@
 /* AI功能按钮 - 精致设计 */
 .ai-action-btn {
   position: relative;
-  padding: 7px 18px;
-  height: 34px;
+  padding: 0 16px;
+  height: 32px;
+  width: auto;
+  min-width: fit-content;
+  flex-shrink: 0;
   font-size: 13px;
-  color: #262626 !important;
-  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-  border: 1.5px solid #e0e5e9;
-  border-radius: 8px;
+  color: #4f46e5 !important; /* Indigo color for AI */
+  background: #f5f3ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 6px;
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s ease;
   white-space: nowrap;
   outline: none;
-  font-weight: 500;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
-  overflow: hidden;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(79, 70, 229, 0.05);
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   letter-spacing: 0.3px;
 }
 
-.ai-action-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(135deg, rgba(24, 144, 255, 0.05) 0%, rgba(24, 144, 255, 0.08) 100%);
-  opacity: 0;
-  transition: opacity 0.25s ease;
-}
-
 .ai-action-btn:hover {
-  background: linear-gradient(135deg, #f0f7ff 0%, #e6f4ff 100%);
-  border-color: #69b1ff;
-  color: #1890ff !important;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.2), 0 2px 4px rgba(24, 144, 255, 0.1);
-}
-
-.ai-action-btn:hover::before {
-  opacity: 1;
+  background: #e0e7ff;
+  border-color: #818cf8;
+  color: #4338ca !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.1), 0 2px 4px -1px rgba(79, 70, 229, 0.06);
 }
 
 .ai-action-btn:active {
   transform: translateY(0);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-  background: linear-gradient(135deg, #e6f4ff 0%, #d9ebff 100%);
+  background: #c7d2fe;
+  box-shadow: none;
 }
-.ai-action-btn .action-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 6px;
+
+.ai-action-btn .anticon {
   font-size: 14px;
+  transition: transform 0.2s ease;
+}
+
+.ai-action-btn:hover .anticon {
+  transform: scale(1.1);
 }
 
 /* 大纲按钮 */

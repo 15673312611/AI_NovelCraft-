@@ -119,7 +119,7 @@ const PromptLibraryPage: React.FC = () => {
       } else {
         setActiveTab('custom');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('创建失败:', error);
       message.error(error?.message || '创建失败');
     }

@@ -367,7 +367,7 @@ const NovelCraftStudio: React.FC<NovelCraftStudioProps> = () => {
       setSuggestionsLoading(false)
       if (result.suggestions) {
         const suggestions = result.suggestions
-        let processedSuggestions = []
+        let processedSuggestions: any[] = []
         
         // 处理不同格式的建议数据
         if (Array.isArray(suggestions.suggestions)) {
@@ -836,7 +836,7 @@ const NovelCraftStudio: React.FC<NovelCraftStudioProps> = () => {
       )}
 
       {/* 大纲确认和调整区域 */}
-      {(outlineStatus === 'draft' || outlineStatus === 'confirmed') && workflow.outline && (
+      {(outlineStatus === 'draft' || outlineStatus === 'confirmed' || outlineStatus === 'generating') && workflow.outline && (
         <>
           <Card 
             title={
@@ -893,7 +893,7 @@ const NovelCraftStudio: React.FC<NovelCraftStudioProps> = () => {
           </Card>
 
           {/* 大纲调整区域 */}
-          {outlineStatus === 'draft' && (
+          {(outlineStatus === 'draft' || outlineStatus === 'generating') && (
             <Card 
               title="💡 大纲调整" 
               style={{ marginTop: 16 }}
@@ -964,17 +964,18 @@ const NovelCraftStudio: React.FC<NovelCraftStudioProps> = () => {
             title: '状态', 
             dataIndex: 'status',
             width: 90,
-            render: (status, record) => {
-              const chapterStatus = status || 'pending'
+            render: (status) => {
+              const chapterStatus: 'completed' | 'writing' | 'pending' =
+                status === 'completed' || status === 'writing' ? status : 'pending'
               const colors = {
-                'completed': 'green',
-                'writing': 'blue', 
-                'pending': 'default'
+                completed: 'green',
+                writing: 'blue',
+                pending: 'default',
               }
               const labels = {
-                'completed': '已完成',
-                'writing': '写作中',
-                'pending': '待写作'
+                completed: '已完成',
+                writing: '写作中',
+                pending: '待写作',
               }
               return <Tag color={colors[chapterStatus]}>{labels[chapterStatus]}</Tag>
             }

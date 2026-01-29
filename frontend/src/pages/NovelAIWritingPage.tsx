@@ -722,7 +722,7 @@ const NovelAIWritingPage: React.FC = () => {
                                     <Paragraph ellipsis={{ rows: 2 }}>{item.content}</Paragraph>
                                     <div>
                                       {item.tags.map(tag => (
-                                        <Tag key={tag} size="small">{tag}</Tag>
+                                        <Tag key={tag}>{tag}</Tag>
                                       ))}
                                     </div>
                                     <Text type="secondary" style={{ fontSize: '12px' }}>
@@ -757,7 +757,7 @@ const NovelAIWritingPage: React.FC = () => {
                                     <Paragraph ellipsis={{ rows: 2 }}>{item.content}</Paragraph>
                                     <div>
                                       {item.tags.map(tag => (
-                                        <Tag key={tag} size="small">{tag}</Tag>
+                                        <Tag key={tag}>{tag}</Tag>
                                       ))}
                                     </div>
                                     <Text type="secondary" style={{ fontSize: '12px' }}>
@@ -792,7 +792,7 @@ const NovelAIWritingPage: React.FC = () => {
                                     <Paragraph ellipsis={{ rows: 2 }}>{item.content}</Paragraph>
                                     <div>
                                       {item.tags.map(tag => (
-                                        <Tag key={tag} size="small">{tag}</Tag>
+                                        <Tag key={tag}>{tag}</Tag>
                                       ))}
                                     </div>
                                     <Text type="secondary" style={{ fontSize: '12px' }}>

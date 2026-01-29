@@ -9,6 +9,7 @@ export interface User {
   avatarUrl?: string
   bio?: string
   status: string
+  roles?: string[]
   emailVerified?: boolean
   lastLoginAt?: string
   createdAt: string
@@ -91,8 +92,7 @@ const authSlice = createSlice({
       })
       .addCase(login.fulfilled, (state, action) => {
         state.loading = false
-        // 处理后端返回的ApiResponse结构
-        const response = action.payload.data || action.payload
+        const response = action.payload
         state.user = response.user
         state.token = response.token
         state.isAuthenticated = true
@@ -109,8 +109,7 @@ const authSlice = createSlice({
       })
       .addCase(register.fulfilled, (state, action) => {
         state.loading = false
-        // 处理后端返回的ApiResponse结构
-        const response = action.payload.data || action.payload
+        const response = action.payload
         state.user = response.user
         state.token = response.token
         state.isAuthenticated = true
@@ -126,9 +125,7 @@ const authSlice = createSlice({
       })
       .addCase(getProfile.fulfilled, (state, action) => {
         state.loading = false
-        // 处理后端返回的ApiResponse结构
-        const response = action.payload.data || action.payload
-        state.user = response
+        state.user = action.payload
       })
       .addCase(getProfile.rejected, (state) => {
         state.loading = false

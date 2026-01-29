@@ -14,6 +14,7 @@ import {
   Row,
   Col,
   Divider,
+  Statistic,
   message
 } from 'antd';
 import {
@@ -22,8 +23,7 @@ import {
   FireOutlined,
   HeartOutlined,
   BulbOutlined,
-  CheckCircleOutlined,
-  ExclamationTriangleOutlined
+  CheckCircleOutlined
 } from '@ant-design/icons';
 
 const { Title, Text, Paragraph } = Typography;

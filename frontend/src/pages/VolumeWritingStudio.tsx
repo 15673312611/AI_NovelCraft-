@@ -3248,229 +3248,406 @@ const VolumeWritingStudio: React.FC = () => {
       </Drawer>
 
       {/* AI消痕抽屉 */}
+      {/* AI消痕抽屉 - 极简高级版 */}
       <Drawer
-        title={<span style={{ fontSize: '16px', fontWeight: 600 }}>🧹 AI消痕处理</span>}
-        placement="right"
-        width={680}
         open={aiTraceDrawerVisible}
         onClose={() => setAiTraceDrawerVisible(false)}
-        styles={{
-          body: { padding: '24px', background: '#f8fafc' }
+        width={500}
+        placement="right"
+        closable={false}
+        mask={false}
+        headerStyle={{ display: 'none' }}
+        bodyStyle={{ padding: 0, overflow: 'hidden' }}
+        style={{ 
+          boxShadow: '-5px 0 30px rgba(0,0,0,0.08)',
+          borderLeft: '1px solid rgba(0,0,0,0.03)'
         }}
-        extra={
-          !isRemovingAITrace && processedContent && (
-            <Button 
-              type="primary"
-              onClick={() => {
-                setCurrentContent(processedContent);
-                setAiTraceDrawerVisible(false);
-                message.success('已替换到正文');
-              }}
-              style={{
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                border: 'none',
-                fontWeight: 600
-              }}
-            >
-              ✅ 替换到正文
-            </Button>
-          )
-        }
       >
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{ 
-            fontSize: '13px', 
-            color: '#64748b', 
-            marginBottom: '12px',
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+          background: '#ffffff',
+          position: 'relative'
+        }}>
+          {/* 极简 Header - 绿色系 */}
+          <div style={{
+            padding: '24px 28px',
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'center'
+            alignItems: 'center',
+            flexShrink: 0,
+            background: 'rgba(255,255,255,0.8)',
+            backdropFilter: 'blur(10px)',
+            zIndex: 10
           }}>
-            <span>📝 处理后的内容</span>
-            {processedContent && (
-              <span style={{ fontSize: '12px', color: '#10b981' }}>
-                字数: {processedContent.length}
-              </span>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
+                background: '#f0fdf4', // 极淡绿
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '18px'
+              }}>
+                🍃
+              </div>
+              <div>
+                <div style={{ fontSize: '16px', fontWeight: 600, color: '#064e3b', letterSpacing: '-0.3px' }}>
+                  AI 智能消痕
+                </div>
+                <div style={{ fontSize: '12px', color: '#10b981', marginTop: '2px' }}>
+                  让文字更自然流畅
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setAiTraceDrawerVisible(false)}
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                border: 'none',
+                background: 'transparent',
+                color: '#9ca3af',
+                fontSize: '18px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f3f4f6';
+                e.currentTarget.style.color = '#111827';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = '#9ca3af';
+              }}
+            >
+              ×
+            </button>
           </div>
-                          <div style={{ 
-            background: '#fff',
-            borderRadius: '8px',
-            padding: '16px',
-            minHeight: '500px',
-            maxHeight: '600px',
+
+          {/* 内容区域 */}
+          <div style={{
+            flex: 1,
             overflowY: 'auto',
-            border: '1px solid #e2e8f0',
-            fontSize: '14px',
-            lineHeight: '1.8',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif',
+            padding: '0 28px 28px 28px',
             position: 'relative'
           }}>
-            {processedContent ? (
-              <>
-                {processedContent}
-                {isRemovingAITrace && (
-                  <div style={{ 
-                    display: 'inline-block', 
-                    marginLeft: '4px',
-                    animation: 'blink 1s infinite'
-                  }}>▋</div>
-                )}
-              </>
-            ) : isRemovingAITrace ? (
-              <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
-                <Spin size="large" />
-                <div style={{ marginTop: '16px' }}>正在AI消痕处理中...</div>
+            {isRemovingAITrace ? (
+              <div style={{
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '24px',
+                opacity: 0.8
+              }}>
+                <div style={{ position: 'relative', width: '60px', height: '60px' }}>
+                  <div style={{
+                    position: 'absolute',
+                    inset: 0,
+                    borderRadius: '50%',
+                    border: '2px solid #e5e7eb',
+                  }} />
+                  <div style={{
+                    position: 'absolute',
+                    inset: 0,
+                    borderRadius: '50%',
+                    borderTop: '2px solid #10b981',
+                    animation: 'spin 1s linear infinite'
+                  }} />
+                </div>
+                
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '14px', fontWeight: 500, color: '#111827', marginBottom: '6px' }}>
+                    正在润色...
+                  </div>
+                  <div style={{ color: '#9ca3af', fontSize: '12px' }}>
+                    逐句优化，去除生硬感
+                  </div>
+                </div>
+              </div>
+            ) : processedContent ? (
+              <div style={{ animation: 'fadeInUp 0.4s ease-out' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  marginBottom: '16px',
+                  paddingBottom: '16px',
+                  borderBottom: '1px dashed #e5e7eb'
+                }}>
+                  <div style={{ fontSize: '12px', color: '#6b7280', fontWeight: 500 }}>
+                    处理结果预览
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#10b981', background: '#ecfdf5', padding: '2px 8px', borderRadius: '10px' }}>
+                    {processedContent.length} 字
+                  </div>
+                </div>
+
+                <div style={{
+                  fontSize: '15px',
+                  lineHeight: '1.8',
+                  color: '#374151',
+                  whiteSpace: 'pre-wrap',
+                  fontFamily: '"Chinese Quote", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif'
+                }}>
+                  {processedContent}
+                </div>
+                
+                <div style={{ height: '80px' }} />
               </div>
             ) : (
-              <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
-                等待开始处理...
-                          </div>
-                        )}
-                      </div>
-        </div>
+              <div style={{
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <div style={{ 
+                  width: '80px', 
+                  height: '80px', 
+                  background: '#f9fafb',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: '24px'
+                }}>
+                  <span style={{ fontSize: '32px', opacity: 0.3 }}>🧹</span>
+                </div>
+                <div style={{ fontSize: '15px', fontWeight: 500, color: '#374151', marginBottom: '8px' }}>
+                  准备消痕
+                </div>
+                <div style={{ fontSize: '13px', color: '#9ca3af', textAlign: 'center', maxWidth: '260px', lineHeight: '1.5' }}>
+                  点击下方按钮，AI 将为您去除文字的机器味，使其更自然。
+                </div>
+              </div>
+            )}
+          </div>
 
-        <div style={{ marginTop: '20px' }}>
-          <Button 
-            type="primary"
-            size="large"
-            block
-            loading={isRemovingAITrace}
-            disabled={isRemovingAITrace}
-            onClick={async () => {
-              try {
-                // 检查AI配置
-                if (!checkAIConfig()) {
-                  message.error(AI_CONFIG_ERROR_MESSAGE);
-                  return;
-                }
-                
-                setIsRemovingAITrace(true);
-                setProcessedContent('');
-                
-                const token = localStorage.getItem('token');
-                const requestBody = withAIConfig({
-                  content: currentContent
-                });
-                
-                const response = await fetch('/api/ai/remove-trace-stream', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'text/event-stream',
-                    'Cache-Control': 'no-cache',
-                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                  },
-                  body: JSON.stringify(requestBody)
-                });
-
-                if (!response.ok) {
-                  throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const reader = response.body?.getReader();
-                const decoder = new TextDecoder();
-
-                if (!reader) {
-                  throw new Error('无法获取响应流');
-                }
-
-                let buffer = '';
-                let accumulated = '';
-                let currentEvent = '';  // 记录当前事件名称
-                const progressRegex = /(正在AI消痕处理中\.?\.?\.?|处理中\.?\.?\.?|processing|progress|开始处理)/i;
-
-                console.log('开始读取AI消痕流式响应...');
-
-                while (true) {
-                  const { done, value } = await reader.read();
+          {/* 底部悬浮操作栏 */}
+          <div style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            padding: '20px 28px',
+            background: 'rgba(255,255,255,0.9)',
+            backdropFilter: 'blur(10px)',
+            borderTop: '1px solid rgba(0,0,0,0.03)',
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: '12px'
+          }}>
+            {!isRemovingAITrace && !processedContent && (
+               <button
+               onClick={async () => {
+                try {
+                  if (!checkAIConfig()) {
+                    message.error(AI_CONFIG_ERROR_MESSAGE);
+                    return;
+                  }
                   
-                  if (done) {
-                    console.log('AI消痕流读取完成');
-                    setIsRemovingAITrace(false);
-                    message.success('AI消痕完成！');
-                    break;
+                  setIsRemovingAITrace(true);
+                  setProcessedContent('');
+                  
+                  const token = localStorage.getItem('token');
+                  const requestBody = withAIConfig({
+                    content: currentContent
+                  });
+                  
+                  const response = await fetch('/api/ai/remove-trace-stream', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Accept': 'text/event-stream',
+                      'Cache-Control': 'no-cache',
+                      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                    },
+                    body: JSON.stringify(requestBody)
+                  });
+
+                  if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
                   }
 
-                  const chunk = decoder.decode(value, { stream: true });
-                  buffer += chunk;
+                  const reader = response.body?.getReader();
+                  const decoder = new TextDecoder();
 
-                  const lines = buffer.split('\n');
-                  buffer = lines.pop() || '';
+                  if (!reader) {
+                    throw new Error('无法获取响应流');
+                  }
 
-                  for (const line of lines) {
-                    const trimmedLine = line.trim();
+                  let buffer = '';
+                  let accumulated = '';
+                  let currentEvent = '';
+                  const progressRegex = /(正在AI消痕处理中\.?\.?\.?|处理中\.?\.?\.?|processing|progress|开始处理)/i;
+
+                  console.log('开始读取AI消痕流式响应...');
+
+                  while (true) {
+                    const { done, value } = await reader.read();
                     
-                    // 检查是否是事件类型行
-                    if (trimmedLine.startsWith('event:')) {
-                      currentEvent = trimmedLine.slice(6).trim();
-                      console.log('事件类型:', currentEvent);
-                      continue;
+                    if (done) {
+                      console.log('AI消痕流读取完成');
+                      setIsRemovingAITrace(false);
+                      message.success('AI消痕完成！');
+                      break;
                     }
-                    
-                    // 处理数据行
-                    if (trimmedLine.startsWith('data:')) {
-                      const data = trimmedLine.startsWith('data: ') ? trimmedLine.slice(6) : trimmedLine.slice(5);
-                      
-                      // 忽略start、done、error等控制事件的数据
-                      if (currentEvent === 'start' || currentEvent === 'done' || currentEvent === 'error') {
-                        console.log('忽略控制事件数据:', currentEvent, data);
-                        currentEvent = '';  // 重置事件类型
-                        continue;
-                      }
-                      
-                      if (data === '[DONE]' || data.trim() === '[DONE]') {
-                        console.log('检测到结束标记');
-                        continue;
-                      }
 
-                      if (data.trim()) {
-                        try {
-                          const parsed = JSON.parse(data);
-                          if (parsed && typeof parsed === 'object') {
-                            const piece = parsed.content || parsed.delta || parsed.text || '';
-                            if (piece && !progressRegex.test(String(piece))) {
-                              accumulated += String(piece);
+                    const chunk = decoder.decode(value, { stream: true });
+                    buffer += chunk;
+
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                      const trimmedLine = line.trim();
+                      if (trimmedLine.startsWith('event:')) {
+                        currentEvent = trimmedLine.slice(6).trim();
+                        continue;
+                      }
+                      
+                      if (trimmedLine.startsWith('data:')) {
+                        const data = trimmedLine.startsWith('data: ') ? trimmedLine.slice(6) : trimmedLine.slice(5);
+                        
+                        if (currentEvent === 'start' || currentEvent === 'done' || currentEvent === 'error') {
+                          currentEvent = '';
+                          continue;
+                        }
+                        
+                        if (data === '[DONE]' || data.trim() === '[DONE]') {
+                          continue;
+                        }
+
+                        if (data.trim()) {
+                          try {
+                            const parsed = JSON.parse(data);
+                            if (parsed && typeof parsed === 'object') {
+                              const piece = parsed.content || parsed.delta || parsed.text || '';
+                              if (piece && !progressRegex.test(String(piece))) {
+                                accumulated += String(piece);
+                                const sanitized = accumulated.replace(/(正在AI消痕处理中\.?\.?\.?|处理中\.?\.?\.?|processing|progress|开始处理)/gi, '');
+                                setProcessedContent(sanitized);
+                              }
+                            }
+                          } catch (err) {
+                            if (!progressRegex.test(data)) {
+                              accumulated += data;
                               const sanitized = accumulated.replace(/(正在AI消痕处理中\.?\.?\.?|处理中\.?\.?\.?|processing|progress|开始处理)/gi, '');
                               setProcessedContent(sanitized);
-                              console.log('累积内容长度:', sanitized.length);
                             }
                           }
-                        } catch (err) {
-                          // 纯文本内容
-                          if (!progressRegex.test(data)) {
-                            accumulated += data;
-                            const sanitized = accumulated.replace(/(正在AI消痕处理中\.?\.?\.?|处理中\.?\.?\.?|processing|progress|开始处理)/gi, '');
-                            setProcessedContent(sanitized);
-                          }
                         }
+                        currentEvent = '';
                       }
-                      
-                      // 重置事件类型
-                      currentEvent = '';
                     }
                   }
+                } catch (e: any) {
+                  console.error('AI消痕失败:', e);
+                  setIsRemovingAITrace(false);
+                  message.error(e?.message || 'AI消痕失败');
                 }
-              } catch (e: any) {
-                console.error('AI消痕失败:', e);
-                setIsRemovingAITrace(false);
-                message.error(e?.message || 'AI消痕失败');
-              }
-            }}
-            style={{
-              borderRadius: '10px',
-              height: '48px',
-              background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
-              border: 'none',
-              boxShadow: '0 4px 15px rgba(139, 92, 246, 0.4)',
-              fontWeight: 600,
-              fontSize: '15px'
-            }}
-          >
-            {isRemovingAITrace ? '处理中...' : '开始AI消痕'}
-          </Button>
+              }}
+               style={{
+                 height: '40px',
+                 padding: '0 24px',
+                 borderRadius: '20px',
+                 border: 'none',
+                 background: '#10b981', // 绿色主色调
+                 color: '#ffffff',
+                 fontSize: '13px',
+                 fontWeight: 500,
+                 cursor: 'pointer',
+                 transition: 'all 0.2s',
+                 boxShadow: '0 4px 12px rgba(16, 185, 129, 0.2)'
+               }}
+               onMouseEnter={(e) => {
+                 e.currentTarget.style.transform = 'translateY(-1px)';
+                 e.currentTarget.style.boxShadow = '0 6px 16px rgba(16, 185, 129, 0.3)';
+               }}
+               onMouseLeave={(e) => {
+                 e.currentTarget.style.transform = 'translateY(0)';
+                 e.currentTarget.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.2)';
+               }}
+             >
+               开始消痕
+             </button>
+            )}
+
+            {processedContent && (
+              <>
+                <button
+                  onClick={() => setAiTraceDrawerVisible(false)}
+                  style={{
+                    height: '40px',
+                    padding: '0 20px',
+                    borderRadius: '20px',
+                    border: '1px solid #e5e7eb',
+                    background: '#ffffff',
+                    color: '#6b7280',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#f9fafb';
+                    e.currentTarget.style.color = '#374151';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#ffffff';
+                    e.currentTarget.style.color = '#6b7280';
+                  }}
+                >
+                  取消
+                </button>
+                <button
+                  onClick={() => {
+                    setCurrentContent(processedContent);
+                    setAiTraceDrawerVisible(false);
+                    message.success('已替换到正文');
+                  }}
+                  style={{
+                    height: '40px',
+                    padding: '0 24px',
+                    borderRadius: '20px',
+                    border: 'none',
+                    background: '#10b981',
+                    color: '#ffffff',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    boxShadow: '0 4px 12px rgba(16, 185, 129, 0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                    e.currentTarget.style.boxShadow = '0 6px 16px rgba(16, 185, 129, 0.3)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.2)';
+                  }}
+                >
+                  <span>✓</span> 应用
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </Drawer>
 

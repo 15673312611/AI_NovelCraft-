@@ -1116,8 +1116,8 @@ const WritingStudioPage: React.FC = () => {
                   folderId: 0,
                   documentType: 'chapter' as any,
                   sortOrder: 0,
-                  createdAt: selectedChapter.createdAt,
-                  updatedAt: selectedChapter.updatedAt,
+                  createdAt: selectedChapter.createdAt || selectedChapter.updatedAt || new Date().toISOString(),
+                  updatedAt: selectedChapter.updatedAt || selectedChapter.createdAt || new Date().toISOString(),
                 }
               : selectedDocument
           }

@@ -5,8 +5,7 @@ import {
   RobotOutlined, 
   SettingOutlined,
   BulbOutlined,
-  EditOutlined,
-  MagicOutlined
+  EditOutlined
 } from '@ant-design/icons';
 
 const { Title, Text } = Typography;

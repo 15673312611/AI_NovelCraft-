@@ -14,9 +14,9 @@ spring:
     allow-circular-references: true
 
   datasource:
-    url: jdbc:mysql://localhost:3306/ai_novel?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&useUnicode=true&characterEncoding=utf8
-    username: root
-    password: root
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:ai_novel}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&useUnicode=true&characterEncoding=utf8
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       maximum-pool-size: 20
@@ -26,9 +26,10 @@ spring:
       max-lifetime: 1800000
 
   redis:
-    host: localhost
-    port: 6379
-    database: 0
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    database: ${REDIS_DATABASE:0}
+    password: ${REDIS_PASSWORD:}
     timeout: 2000ms
     lettuce:
       pool:
@@ -47,17 +48,10 @@ ai:
   api-key: ${AI_API_KEY:}
   default-model: gpt-4o-mini
 
-# Neo4j 图数据库配置
-graph:
-  neo4j:
-    enabled: true  # 改为false则使用内存版（不推荐，重启数据丢失）
-    uri: bolt://localhost:7687
-    username: neo4j
-    password: novel_graph_2025
-    max-connection-pool-size: 50
-    connection-timeout: 30s
-    max-transaction-retry-time: 30s
-    auto-initialize: true
+# 图谱数据存储配置（已迁移到MySQL）
+# Neo4j配置已移除，图谱数据现在存储在MySQL中
+# 相关表：graph_character_state, graph_relationship_state, graph_event等
+# 如需执行建表脚本，请运行：src/main/resources/db/migration/V20260116__create_graph_tables.sql
 
 # MyBatis Plus配置
 mybatis-plus:
@@ -74,8 +68,8 @@ mybatis-plus:
 
 # JWT配置
 jwt:
-  secret: novel-creation-system-jwt-secret-key-2024
-  expiration: 604800000 # 7天 (7 * 24 * 60 * 60 * 1000)
+  secret: ${JWT_SECRET:novel-creation-system-jwt-secret-key-2024-CHANGE-THIS-IN-PRODUCTION}
+  expiration: ${JWT_EXPIRATION:604800000} # 7天 (7 * 24 * 60 * 60 * 1000)
 
 # AI配置已移至前端，通过请求参数传递
 

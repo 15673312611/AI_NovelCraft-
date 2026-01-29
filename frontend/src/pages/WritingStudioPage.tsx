@@ -18,6 +18,7 @@ import FileTree from '@/components/writing/FileTree'
 import ExportModal from '@/components/writing/ExportModal'
 import EditorPanel from '@/components/writing/EditorPanel'
 import ToolPanel from '@/components/writing/ToolPanel'
+import MarkdownRenderer from '@/components/MarkdownRenderer'
 import type { NovelFolder } from '@/services/folderService'
 import type { NovelDocument } from '@/services/documentService'
 import type { ReferenceFile } from '@/services/referenceFileService'
@@ -460,7 +461,6 @@ const WritingStudioPage: React.FC = () => {
   const [selectedModel, setSelectedModel] = useState<string>('')  // 初始为空，由 ToolPanel 加载后设置默认模型
   const [temperature, setTemperature] = useState<number>(1.0)
   const [writingStyleId, setWritingStyleId] = useState<number | null>(null)
-  const [traceRemovalModel, setTraceRemovalModel] = useState<string>('gemini-2.5-pro')
   const [aiHistory, setAIHistory] = useState<AIConversation[]>([])
   const [aiInput, setAIInput] = useState('')
   const [aiOutput, setAIOutput] = useState('')
@@ -537,12 +537,6 @@ const WritingStudioPage: React.FC = () => {
   const [traceRemovalDrawerVisible, setTraceRemovalDrawerVisible] = useState(false)
   const [processedContent, setProcessedContent] = useState<string>('')
   const [isRemovingTrace, setIsRemovingTrace] = useState(false)
-  
-  // AI精简相关状态
-  const [streamlineDrawerVisible, setStreamlineDrawerVisible] = useState(false)
-  const [streamlinedContent, setStreamlinedContent] = useState<string>('')
-  const [isStreamlining, setIsStreamlining] = useState(false)
-  const [streamlineTargetLength, setStreamlineTargetLength] = useState<string>('')
 
   // 概要相关状态
   const [summaryDrawerVisible, setSummaryDrawerVisible] = useState(false)
@@ -805,43 +799,69 @@ const WritingStudioPage: React.FC = () => {
 
   const formatForeshadowDetailText = (raw: unknown): string => {
     if (raw == null) return ''
-    if (typeof raw === 'string') {
-      const trimmed = raw.trim()
-      if (!trimmed) return ''
-      try {
-        const parsed = JSON.parse(trimmed)
-        if (typeof parsed === 'string') {
-          const inner = parsed.trim()
-          if (inner.startsWith('[') || inner.startsWith('{')) {
-            try {
-              const innerParsed = JSON.parse(inner)
-              if (typeof innerParsed === 'string') {
-                return innerParsed
-              }
-              if (innerParsed && typeof innerParsed === 'object') {
-                return JSON.stringify(innerParsed, null, 2)
-              }
-            } catch (innerError) {
-              return parsed
-            }
-          }
-          return parsed
-        }
-        if (parsed && typeof parsed === 'object') {
-          return JSON.stringify(parsed, null, 2)
-        }
-      } catch (error) {
-        return trimmed
+    
+    // 处理对象类型，提取 content 字段
+    if (typeof raw === 'object' && raw !== null) {
+      const obj = raw as any
+      if (obj.content) {
+        return String(obj.content)
       }
-      return trimmed
-    }
-    if (typeof raw === 'object') {
+      // 如果没有 content 字段，返回完整 JSON
       try {
         return JSON.stringify(raw, null, 2)
       } catch (error) {
         return String(raw)
       }
     }
+    
+    // 处理字符串类型
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim()
+      if (!trimmed) return ''
+      
+      try {
+        const parsed = JSON.parse(trimmed)
+        
+        // 如果解析后是对象，尝试提取 content
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          if (parsed.content) {
+            return String(parsed.content)
+          }
+          // 没有 content，返回完整 JSON
+          return JSON.stringify(parsed, null, 2)
+        }
+        
+        // 处理双重编码的情况
+        if (typeof parsed === 'string') {
+          const inner = parsed.trim()
+          if (inner.startsWith('[') || inner.startsWith('{')) {
+            try {
+              const innerParsed = JSON.parse(inner)
+              if (innerParsed && typeof innerParsed === 'object' && !Array.isArray(innerParsed)) {
+                if (innerParsed.content) {
+                  return String(innerParsed.content)
+                }
+                return JSON.stringify(innerParsed, null, 2)
+              }
+              if (typeof innerParsed === 'string') {
+                return innerParsed
+              }
+              return JSON.stringify(innerParsed, null, 2)
+            } catch (innerError) {
+              return parsed
+            }
+          }
+          return parsed
+        }
+        
+        // 其他类型直接转字符串
+        return String(parsed)
+      } catch (error) {
+        // JSON 解析失败，直接返回原文本
+        return trimmed
+      }
+    }
+    
     return String(raw)
   }
 
@@ -1190,7 +1210,7 @@ const WritingStudioPage: React.FC = () => {
       try {
         let title = documentName
         if (!title) {
-          title = window.prompt('输入文档标题', '新文档')
+          title = window.prompt('输入文档标题', '新文档') || undefined
           if (!title || !title.trim()) return
         }
         const newDocument = await createDocument(folder.id, {
@@ -1787,6 +1807,7 @@ const WritingStudioPage: React.FC = () => {
     
     // 第一次点击：打开抽屉，不请求接口
     setProcessedContent('') // 清空之前的结果
+    setReviewDrawerVisible(false) // 关闭AI审稿抽屉
     setTraceRemovalDrawerVisible(true)
   }
   
@@ -1804,12 +1825,11 @@ const WritingStudioPage: React.FC = () => {
       setTraceRemovalDrawerVisible(true)
       
       const token = localStorage.getItem('token')
-      const requestBody = withAIConfig(
-        {
-          content: currentContent
-        },
-        { model: traceRemovalModel }
-      )
+      // 直接传递内容，后端使用系统配置的AI模型
+      const requestBody = {
+        content: currentContent,
+        model: selectedModel // 可选：传递选中的模型ID
+      }
       
       const response = await fetch('/api/ai/remove-trace-stream', {
         method: 'POST',
@@ -1904,148 +1924,6 @@ const WritingStudioPage: React.FC = () => {
     }
   }
   
-  // AI精简处理 - 第一次点击打开抽屉
-  const handleStreamlineContent = () => {
-    const currentContent = editingType === 'chapter' ? selectedChapter?.content : selectedDocument?.content
-    
-    if (!currentContent) {
-      message.warning('请先编辑内容后再进行AI精简')
-      return
-    }
-    
-    if (!checkAIConfig()) {
-      message.error(AI_CONFIG_ERROR_MESSAGE)
-      return
-    }
-    
-    // 第一次点击：打开抽屉，不请求接口
-    setStreamlinedContent('')
-    setStreamlineTargetLength('')
-    setStreamlineDrawerVisible(true)
-  }
-  
-  // 执行AI精简的实际逻辑
-  const executeStreamlineContent = async () => {
-    const currentContent = editingType === 'chapter' ? selectedChapter?.content : selectedDocument?.content
-    
-    if (!currentContent) {
-      message.warning('请先编辑内容后再进行AI精简')
-      return
-    }
-    
-    try {
-      setIsStreamlining(true)
-      setStreamlinedContent('')
-      
-      const token = localStorage.getItem('token')
-      
-      // 获取目标字数（从小说配置中获取wordsPerChapter）
-      const targetLength = editingType === 'chapter' && novelInfo?.wordsPerChapter 
-        ? novelInfo.wordsPerChapter 
-        : undefined
-      
-      // 调试日志：打印目标字数
-      console.log('[AI精简] 小说信息:', novelInfo)
-      console.log('[AI精简] wordsPerChapter:', novelInfo?.wordsPerChapter)
-      console.log('[AI精简] 最终传递的 targetLength:', targetLength)
-      
-      const requestBody = withAIConfig({
-        content: currentContent,
-        ...(targetLength ? { targetLength } : {})
-      })
-      
-      console.log('[AI精简] 请求体:', requestBody)
-      
-      const response = await fetch('/api/ai/streamline-content-stream', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify(requestBody)
-      })
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-      
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-      
-      if (!reader) {
-        throw new Error('无法获取响应流')
-      }
-      
-      message.info('开始AI精简处理...')
-      
-      let buffer = ''
-      let accumulated = ''
-      
-      while (true) {
-        const { done, value } = await reader.read()
-        
-        if (done) {
-          setIsStreamlining(false)
-          message.success('AI精简完成')
-          break
-        }
-        
-        const chunk = decoder.decode(value, { stream: true })
-        buffer += chunk
-        
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-        
-        for (const line of lines) {
-          if (line.startsWith('data:')) {
-            const data = line.startsWith('data: ') ? line.slice(6) : line.slice(5)
-            
-            if (data === '[DONE]') {
-              continue
-            }
-            
-            try {
-              const parsed = JSON.parse(data)
-              let contentToAdd = ''
-              
-              if (typeof parsed === 'string' || typeof parsed === 'number') {
-                contentToAdd = String(parsed)
-              } else if (Array.isArray(parsed)) {
-                contentToAdd = parsed
-                  .map((v) => (typeof v === 'string' || typeof v === 'number') ? String(v) : '')
-                  .join('')
-              } else if (parsed && typeof parsed === 'object') {
-                if (parsed.content) {
-                  contentToAdd = String(parsed.content)
-                } else if (parsed.delta) {
-                  contentToAdd = String(parsed.delta)
-                } else if (parsed.text) {
-                  contentToAdd = String(parsed.text)
-                }
-              }
-              
-              if (contentToAdd) {
-                accumulated += contentToAdd
-                setStreamlinedContent(accumulated)
-              }
-            } catch (e) {
-              if (data && data !== '[DONE]') {
-                accumulated += data
-                setStreamlinedContent(accumulated)
-              }
-            }
-          }
-        }
-      }
-    } catch (error: any) {
-      console.error('AI精简失败:', error)
-      message.error(formatAIErrorMessage(error))
-      setIsStreamlining(false)
-    }
-  }
-  
   // AI审稿处理 - 第一次点击打开弹窗
   const handleReviewManuscript = () => {
     const currentContent = editingType === 'chapter' ? selectedChapter?.content : selectedDocument?.content
@@ -2055,13 +1933,9 @@ const WritingStudioPage: React.FC = () => {
       return
     }
     
-    if (!checkAIConfig()) {
-      message.error(AI_CONFIG_ERROR_MESSAGE)
-      return
-    }
-    
     // 第一次点击：打开弹窗，不请求接口
     setReviewResult('')
+    setTraceRemovalDrawerVisible(false) // 关闭AI消痕抽屉
     setReviewDrawerVisible(true)
   }
   
@@ -2079,9 +1953,11 @@ const WritingStudioPage: React.FC = () => {
       setReviewResult('')
       
       const token = localStorage.getItem('token')
-      const requestBody = withAIConfig({
-        content: currentContent
-      })
+      // 直接传递内容，后端使用系统配置的AI模型
+      const requestBody = {
+        content: currentContent,
+        model: selectedModel // 可选：传递选中的模型ID
+      }
       
       const response = await fetch('/api/ai/review-manuscript-stream', {
         method: 'POST',
@@ -2253,9 +2129,9 @@ const WritingStudioPage: React.FC = () => {
         setOutlineGeneratePercent(0)
       }, 500)
       
-      // 刷新章纲列表
+      // 刷新章纲列表（使用 summary=true 提升性能）
       if (volumeId) {
-        const list = await getChapterOutlinesByVolume(volumeId, false)
+        const list = await getChapterOutlinesByVolume(volumeId, true)
         setChapterOutlineList(list)
       }
     } catch (error: any) {
@@ -2440,7 +2316,6 @@ const WritingStudioPage: React.FC = () => {
             await loadSummary()
             setSummaryDrawerVisible(true)
           }}
-          onStreamlineContent={handleStreamlineContent}
           onReviewManuscript={handleReviewManuscript}
           onRemoveAITrace={handleRemoveAITrace}
           chapterNumber={
@@ -2499,10 +2374,6 @@ const WritingStudioPage: React.FC = () => {
           }
           currentVolumeId={currentVolume ? Number(currentVolume.id) : null}
           currentVolumeNumber={currentVolume?.volumeNumber ?? null}
-          selectedModel={selectedModel}
-          onModelChange={setSelectedModel}
-          temperature={temperature}
-          onTemperatureChange={setTemperature}
         />
       </Sider>
 
@@ -2818,9 +2689,11 @@ const WritingStudioPage: React.FC = () => {
                     className="co-toggle-sidebar-btn"
                     onClick={() => {
                       setChapterOutlineListVisible(true)
-                      if (chapterOutlineVolumeId && chapterOutlineList.length === 0) {
+                      // 每次展开都重新查询章纲列表，确保数据最新
+                      // 使用 summary=true 只查询摘要字段，提升性能
+                      if (chapterOutlineVolumeId) {
                         setChapterOutlineListLoading(true)
-                        getChapterOutlinesByVolume(chapterOutlineVolumeId, false)
+                        getChapterOutlinesByVolume(chapterOutlineVolumeId, true)
                           .then(list => setChapterOutlineList(list))
                           .finally(() => setChapterOutlineListLoading(false))
                       }
@@ -3003,391 +2876,892 @@ const WritingStudioPage: React.FC = () => {
         </div>
       </Drawer>
 
-      {/* AI审稿弹窗 */}
+      {/* AI审稿抽屉 - 大厂级极简高级设计 */}
       <Drawer
-        title={<span style={{ fontSize: '16px', fontWeight: 600 }}>📝 AI审稿报告</span>}
-        placement="right"
-        width={600}
-        mask={false}
         open={reviewDrawerVisible}
-        onClose={() => {
-          setReviewDrawerVisible(false)
-          setReviewResult('')
-        }}
-        footer={
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-            <button
-              onClick={() => {
-                setReviewDrawerVisible(false)
-                setReviewResult('')
-              }}
-              style={{
-                padding: '8px 20px',
-                border: '1px solid #d9d9d9',
-                borderRadius: '6px',
-                background: '#fff',
-                cursor: 'pointer',
-                fontSize: '14px'
-              }}
-            >
-              关闭
-            </button>
-          </div>
-        }
-      >
-        <div style={{ padding: '0' }}>
-          {!reviewResult && !isReviewing ? (
-            <div style={{ textAlign: 'center', padding: '40px 0' }}>
-              <div style={{ marginBottom: '16px', color: '#666', fontSize: '14px' }}>
-                点击下方按钮开始AI审稿分析
-              </div>
-              <button
-                onClick={executeReviewManuscript}
-                style={{
-                  padding: '10px 24px',
-                  border: 'none',
-                  borderRadius: '6px',
-                  background: '#1890ff',
-                  color: '#fff',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 500
-                }}
-              >
-                开始AI审稿
-              </button>
-            </div>
-          ) : isReviewing && !reviewResult ? (
-            <div style={{ textAlign: 'center', padding: '40px 0' }}>
-              <Spin size="large" />
-              <div style={{ marginTop: '16px', color: '#666' }}>AI正在审稿中，请稍候...</div>
-            </div>
-          ) : reviewResult ? (
-            <div>
-              <div style={{ marginBottom: '12px', color: '#1890ff', fontSize: '13px', fontWeight: 500 }}>
-                ✓ 审稿完成
-              </div>
-              <div style={{
-                whiteSpace: 'pre-wrap',
-                fontSize: '14px',
-                lineHeight: '1.8',
-                color: '#333',
-                background: '#f0f5ff',
-                padding: '16px',
-                borderRadius: '6px',
-                border: '1px solid #adc6ff',
-                maxHeight: 'calc(100vh - 250px)',
-                overflowY: 'auto'
-              }}>
-                {reviewResult}
-              </div>
-            </div>
-          ) : (
-            <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
-              暂无审稿结果
-            </div>
-          )}
-        </div>
-      </Drawer>
-      
-      {/* AI消痕抽屉 */}
-      <Drawer
-        title={<span style={{ fontSize: '16px', fontWeight: 600 }}>🧹 AI消痕处理</span>}
+        onClose={() => setReviewDrawerVisible(false)}
+        width={680}
         placement="right"
-        width={600}
+        closable={false}
         mask={false}
-        open={traceRemovalDrawerVisible}
-        onClose={() => {
-          setTraceRemovalDrawerVisible(false)
-          setProcessedContent('')
+        headerStyle={{ display: 'none' }}
+        bodyStyle={{ padding: 0, overflow: 'hidden' }}
+        style={{ 
+          boxShadow: '-1px 0 0 0 rgba(0,0,0,0.04), -16px 0 48px -12px rgba(0,0,0,0.12)',
         }}
-        footer={
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-            <button
-              onClick={() => {
-                setTraceRemovalDrawerVisible(false)
-                setProcessedContent('')
-              }}
-              style={{
-                padding: '10px 22px',
-                border: '1px solid #e5e7eb',
+      >
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+          background: '#ffffff',
+          position: 'relative'
+        }}>
+          {/* 顶部导航栏 */}
+          <div style={{
+            padding: '20px 24px',
+            borderBottom: '1px solid rgba(0,0,0,0.06)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexShrink: 0,
+            background: '#fff'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{
+                width: '36px',
+                height: '36px',
                 borderRadius: '10px',
-                background: 'linear-gradient(180deg, #ffffff 0%, #f9fafb 100%)',
-                cursor: 'pointer',
-                fontWeight: 500,
-                fontSize: '14px',
-                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              关闭
-            </button>
+                background: '#000',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '16px'
+              }}>
+                <span style={{ filter: 'brightness(10)' }}>📝</span>
+              </div>
+              <div>
+                <div style={{ 
+                  fontSize: '15px', 
+                  fontWeight: 600, 
+                  color: '#0a0a0a',
+                  letterSpacing: '-0.3px'
+                }}>
+                  AI 审稿
+                </div>
+                <div style={{ 
+                  fontSize: '12px', 
+                  color: '#737373', 
+                  marginTop: '1px',
+                  fontWeight: 400
+                }}>
+                  智能分析内容质量
+                </div>
+              </div>
+            </div>
+
             <button
-              onClick={() => {
-                if (processedContent) {
-                  if (editingType === 'chapter' && selectedChapter) {
-                    setSelectedChapter((prev) => prev ? { ...prev, content: processedContent } : prev)
-                  } else if (editingType === 'document' && selectedDocument) {
-                    setSelectedDocument((prev) => prev ? { ...prev, content: processedContent } : prev)
-                  }
-                  onContentChange(processedContent)
-                  message.success('已应用AI消痕后的内容')
-                  setTraceRemovalDrawerVisible(false)
-                  setProcessedContent('')
-                }
-              }}
-              disabled={!processedContent}
+              onClick={() => setReviewDrawerVisible(false)}
               style={{
-                padding: '10px 22px',
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
                 border: 'none',
-                borderRadius: '10px',
-                background: processedContent 
-                  ? 'linear-gradient(145deg, #52c41a 0%, #389e0d 50%, #237804 100%)' 
-                  : 'linear-gradient(145deg, #d9d9d9 0%, #bfbfbf 100%)',
-                color: '#fff',
-                cursor: processedContent ? 'pointer' : 'not-allowed',
-                fontWeight: 600,
-                fontSize: '14px',
-                boxShadow: processedContent 
-                  ? '0 4px 12px rgba(82, 196, 26, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.15)' 
-                  : 'none',
-                transition: 'all 0.25s ease',
+                background: 'transparent',
+                color: '#a3a3a3',
+                fontSize: '18px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f5f5f5';
+                e.currentTarget.style.color = '#525252';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = '#a3a3a3';
               }}
             >
-              应用到正文
+              ×
             </button>
           </div>
-        }
-      >
-        <div style={{ padding: '0' }}>
-          {!processedContent && !isRemovingTrace ? (
-            <div style={{ textAlign: 'center', padding: '40px 0' }}>
-              <div style={{ marginBottom: '16px', color: '#666', fontSize: '14px' }}>
-                点击下方按钮开始AI消痕处理
+
+          {/* 主内容区域 */}
+          <div style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '24px 20px',
+            display: 'flex',
+            flexDirection: 'column',
+            background: '#f0fdf4'
+          }}>
+            {isReviewing ? (
+              /* ===== 流式输出状态：实时显示审稿内容 ===== */
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {/* 状态标签栏 */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0 4px'
+                }}>
+                  <div style={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    {/* 加载动画：内联小圆环 */}
+                    <div style={{ position: 'relative', width: '14px', height: '14px' }}>
+                      <div style={{
+                        position: 'absolute',
+                        inset: 0,
+                        borderRadius: '50%',
+                        border: '2px solid transparent',
+                        borderTopColor: '#16a34a',
+                        animation: 'spin 0.6s linear infinite'
+                      }} />
+                    </div>
+                    <span style={{ 
+                      fontSize: '13px', 
+                      fontWeight: 500, 
+                      color: '#166534'
+                    }}>
+                      正在分析
+                    </span>
+                  </div>
+                  <span style={{ 
+                    fontSize: '12px', 
+                    color: '#6b7280',
+                    fontFamily: 'SF Mono, Monaco, monospace'
+                  }}>
+                    {reviewResult.length.toLocaleString()} 字符
+                  </span>
+                </div>
+                
+                {/* 流式输出内容卡片 */}
+                <div style={{
+                  flex: 1,
+                  background: '#ffffff',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(22, 163, 74, 0.15)',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}>
+                  <div style={{
+                    flex: 1,
+                    padding: '20px 24px',
+                    overflowY: 'auto'
+                  }}>
+                    <MarkdownRenderer content={reviewResult || '等待 AI 响应...'} />
+                  </div>
+                </div>
               </div>
-              <div
-                style={{
-                  marginBottom: '16px',
-                  fontSize: '13px',
-                  color: '#666',
+            ) : reviewResult ? (
+              /* ===== 结果展示：Markdown渲染 ===== */
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {/* 状态标签栏 */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0 4px'
+                }}>
+                  <div style={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <div style={{
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      background: '#22c55e'
+                    }} />
+                    <span style={{ 
+                      fontSize: '13px', 
+                      fontWeight: 500, 
+                      color: '#166534'
+                    }}>
+                      分析完成
+                    </span>
+                  </div>
+                  <span style={{ 
+                    fontSize: '12px', 
+                    color: '#6b7280',
+                    fontFamily: 'SF Mono, Monaco, monospace'
+                  }}>
+                    {reviewResult.length.toLocaleString()} 字符
+                  </span>
+                </div>
+                
+                {/* 结果内容卡片 - 使用MarkdownRenderer */}
+                <div style={{
+                  flex: 1,
+                  background: '#ffffff',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(22, 163, 74, 0.15)',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}>
+                  <div style={{
+                    flex: 1,
+                    padding: '20px 24px',
+                    overflowY: 'auto'
+                  }}>
+                    <MarkdownRenderer content={reviewResult} />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* ===== 初始状态：引导用户操作 ===== */
+              <div style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '40px 20px'
+              }}>
+                <div style={{ 
+                  width: '72px', 
+                  height: '72px', 
+                  borderRadius: '20px',
+                  background: '#fff',
+                  border: '1px solid rgba(0,0,0,0.08)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 8,
-                }}
-              >
-                <span>选择模型：</span>
-                <select
-                  value={traceRemovalModel}
-                  onChange={(e) => setTraceRemovalModel(e.target.value)}
+                  marginBottom: '24px'
+                }}>
+                  <span style={{ fontSize: '28px' }}>📝</span>
+                </div>
+                
+                <div style={{ 
+                  fontSize: '16px', 
+                  fontWeight: 600, 
+                  color: '#171717', 
+                  marginBottom: '8px',
+                  letterSpacing: '-0.3px'
+                }}>
+                  准备审稿
+                </div>
+                <div style={{ 
+                  fontSize: '14px', 
+                  color: '#737373', 
+                  textAlign: 'center', 
+                  maxWidth: '280px', 
+                  lineHeight: '1.6', 
+                  marginBottom: '32px'
+                }}>
+                  AI 将从多个维度分析您的内容，提供专业的改进建议
+                </div>
+                
+                <button
+                  onClick={executeReviewManuscript}
                   style={{
-                    padding: '4px 8px',
-                    borderRadius: 4,
-                    border: '1px solid #d9d9d9',
-                    fontSize: '13px',
+                    padding: '12px 24px',
+                    border: 'none',
+                    borderRadius: '8px',
+                    background: '#171717',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    transition: 'all 0.15s ease',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#404040';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#171717';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.1)';
                   }}
                 >
-                  <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-                  <option value="gemini-3-pro-preview">Gemini 3 Pro</option>
-                  <option value="grok-4.1">Grok 4.1</option>
-                </select>
+                  开始审稿
+                </button>
               </div>
+            )}
+          </div>
+
+          {/* 底部操作栏 */}
+          {reviewResult && (
+            <div style={{
+              padding: '16px 28px',
+              background: '#fff',
+              borderTop: '1px solid rgba(0,0,0,0.06)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexShrink: 0
+            }}>
+              {/* 左侧：辅助操作 */}
               <button
-                onClick={executeRemoveAITrace}
+                onClick={() => {
+                  navigator.clipboard.writeText(reviewResult);
+                  message.success('已复制到剪贴板');
+                }}
                 style={{
-                  padding: '12px 28px',
+                  padding: '8px 14px',
+                  borderRadius: '6px',
                   border: 'none',
-                  borderRadius: '10px',
-                  background: 'linear-gradient(145deg, #1890ff 0%, #096dd9 50%, #0050b3 100%)',
-                  color: '#fff',
+                  background: 'transparent',
+                  color: '#525252',
+                  fontWeight: 500,
+                  fontSize: '13px',
                   cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  letterSpacing: '0.3px',
-                  boxShadow: '0 4px 14px rgba(24, 144, 255, 0.35), 0 2px 6px rgba(24, 144, 255, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.15)',
-                  transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                  transition: 'all 0.15s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#f5f5f5';
+                  e.currentTarget.style.color = '#171717';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = '#525252';
                 }}
               >
-                开始AI消痕
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+                复制
+              </button>
+              
+              {/* 右侧：主操作 */}
+              <button
+                onClick={() => setReviewDrawerVisible(false)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: '#171717',
+                  color: '#fff',
+                  fontWeight: 500,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#404040';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#171717';
+                }}
+              >
+                完成
               </button>
             </div>
-          ) : isRemovingTrace && !processedContent ? (
-            <div style={{ textAlign: 'center', padding: '40px 0' }}>
-              <Spin size="large" />
-              <div style={{ marginTop: '16px', color: '#666' }}>正在AI消痕处理中...</div>
-            </div>
-          ) : processedContent ? (
-            <div>
-              <div style={{ marginBottom: '12px', color: '#52c41a', fontSize: '13px', fontWeight: 500 }}>
-                ✓ 处理后内容（共 {processedContent.replace(/\s+/g, '').length} 字）
-              </div>
-              <div style={{
-                whiteSpace: 'pre-wrap',
-                fontSize: '14px',
-                lineHeight: '1.8',
-                color: '#333',
-                background: '#f6ffed',
-                padding: '16px',
-                borderRadius: '6px',
-                border: '1px solid #b7eb8f',
-                maxHeight: 'calc(100vh - 250px)',
-                overflowY: 'auto'
-              }}>
-                {processedContent}
-              </div>
-            </div>
-          ) : (
-            <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
-              暂无处理结果
+          )}
+          
+          {/* 未处理时的底部栏 */}
+          {!reviewResult && !isReviewing && (
+            <div style={{
+              padding: '16px 28px',
+              background: '#fff',
+              borderTop: '1px solid rgba(0,0,0,0.06)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              flexShrink: 0
+            }}>
+              <button
+                onClick={() => setReviewDrawerVisible(false)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(0,0,0,0.15)',
+                  background: '#fff',
+                  color: '#525252',
+                  fontWeight: 500,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(0,0,0,0.3)';
+                  e.currentTarget.style.color = '#171717';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(0,0,0,0.15)';
+                  e.currentTarget.style.color = '#525252';
+                }}
+              >
+                关闭
+              </button>
             </div>
           )}
         </div>
       </Drawer>
       
-      {/* AI精简抽屉 */}
+      {/* AI消痕抽屉 - 大厂级极简高级设计 */}
       <Drawer
-        title={<span style={{ fontSize: '16px', fontWeight: 600 }}>✂️ AI精简优化</span>}
+        open={traceRemovalDrawerVisible}
+        onClose={() => setTraceRemovalDrawerVisible(false)}
+        width={680}
         placement="right"
-        width={600}
+        closable={false}
         mask={false}
-        open={streamlineDrawerVisible}
-        onClose={() => {
-          setStreamlineDrawerVisible(false)
-          setStreamlinedContent('')
-          setStreamlineTargetLength('')
+        headerStyle={{ display: 'none' }}
+        bodyStyle={{ padding: 0, overflow: 'hidden' }}
+        style={{ 
+          boxShadow: '-1px 0 0 0 rgba(0,0,0,0.04), -16px 0 48px -12px rgba(0,0,0,0.12)',
         }}
-        footer={
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-            <button
-              onClick={() => {
-                setStreamlineDrawerVisible(false)
-                setStreamlinedContent('')
-              }}
-              style={{
-                padding: '10px 22px',
-                border: '1px solid #e5e7eb',
+      >
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+          background: '#ffffff',
+          position: 'relative'
+        }}>
+          {/* 
+            ========== 顶部导航栏 ==========
+            设计理念：参考 Linear/Notion 的极简导航
+            - 纯白背景 + 极细分割线，干净利落
+            - 去掉花哨的渐变，用留白和字重建立层次
+            - 关闭按钮使用 ghost 风格，不抢视觉焦点
+          */}
+          <div style={{
+            padding: '20px 24px',
+            borderBottom: '1px solid rgba(0,0,0,0.06)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexShrink: 0,
+            background: '#fff'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {/* 图标：使用微妙的背景而非强烈渐变 */}
+              <div style={{
+                width: '36px',
+                height: '36px',
                 borderRadius: '10px',
-                background: 'linear-gradient(180deg, #ffffff 0%, #f9fafb 100%)',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: 500,
-                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              关闭
-            </button>
+                background: '#000',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '16px'
+              }}>
+                <span style={{ filter: 'brightness(10)' }}>✦</span>
+              </div>
+              <div>
+                <div style={{ 
+                  fontSize: '15px', 
+                  fontWeight: 600, 
+                  color: '#0a0a0a',
+                  letterSpacing: '-0.3px'
+                }}>
+                  AI 消痕
+                </div>
+                <div style={{ 
+                  fontSize: '12px', 
+                  color: '#737373', 
+                  marginTop: '1px',
+                  fontWeight: 400
+                }}>
+                  智能优化文本自然度
+                </div>
+              </div>
+            </div>
+
+            {/* 关闭按钮：极简圆形 */}
             <button
-              onClick={() => {
-                if (streamlinedContent) {
-                  if (editingType === 'chapter' && selectedChapter) {
-                    setSelectedChapter((prev) => prev ? { ...prev, content: streamlinedContent } : prev)
-                  } else if (editingType === 'document' && selectedDocument) {
-                    setSelectedDocument((prev) => prev ? { ...prev, content: streamlinedContent } : prev)
-                  }
-                  onContentChange(streamlinedContent)
-                  message.success('已应用AI精简后的内容')
-                  setStreamlineDrawerVisible(false)
-                  setStreamlinedContent('')
-                }
-              }}
-              disabled={!streamlinedContent}
+              onClick={() => setTraceRemovalDrawerVisible(false)}
               style={{
-                padding: '10px 22px',
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
                 border: 'none',
-                borderRadius: '10px',
-                background: streamlinedContent 
-                  ? 'linear-gradient(145deg, #ff9800 0%, #f57c00 50%, #e65100 100%)' 
-                  : 'linear-gradient(145deg, #d9d9d9 0%, #bfbfbf 100%)',
-                color: '#fff',
-                cursor: streamlinedContent ? 'pointer' : 'not-allowed',
-                fontSize: '14px',
-                fontWeight: 600,
-                boxShadow: streamlinedContent 
-                  ? '0 4px 12px rgba(255, 152, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.15)' 
-                  : 'none',
-                transition: 'all 0.25s ease',
+                background: 'transparent',
+                color: '#a3a3a3',
+                fontSize: '18px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f5f5f5';
+                e.currentTarget.style.color = '#525252';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = '#a3a3a3';
               }}
             >
-              应用到正文
+              ×
             </button>
           </div>
-        }
-      >
-        <div style={{ padding: '0' }}>
-          {!streamlinedContent && !isStreamlining ? (
-            <div style={{ padding: '24px 16px' }}>
-              <div style={{ marginBottom: '12px', color: '#666', fontSize: '14px', lineHeight: '1.6' }}>
-                AI将分析文章内容，在不改变主要情节和爽感的前提下，
-                精简无意义或拖沓的描写，适当加快节奏。
+
+          {/* 
+            ========== 主内容区域 ==========
+            设计理念：
+            - 大量留白，让内容有呼吸感
+            - 使用卡片承载内容，但卡片本身极简
+            - 状态切换使用优雅的过渡
+          */}
+          <div style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '24px 20px',
+            display: 'flex',
+            flexDirection: 'column',
+            background: '#f0fdf4'
+          }}>
+            {isRemovingTrace ? (
+              /* ===== 流式输出状态：实时显示处理内容 ===== */
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {/* 状态标签栏 */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0 4px'
+                }}>
+                  <div style={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    {/* 加载动画：内联小圆环 */}
+                    <div style={{ position: 'relative', width: '14px', height: '14px' }}>
+                      <div style={{
+                        position: 'absolute',
+                        inset: 0,
+                        borderRadius: '50%',
+                        border: '2px solid transparent',
+                        borderTopColor: '#16a34a',
+                        animation: 'spin 0.6s linear infinite'
+                      }} />
+                    </div>
+                    <span style={{ 
+                      fontSize: '13px', 
+                      fontWeight: 500, 
+                      color: '#166534'
+                    }}>
+                      正在处理
+                    </span>
+                  </div>
+                  <span style={{ 
+                    fontSize: '12px', 
+                    color: '#6b7280',
+                    fontFamily: 'SF Mono, Monaco, monospace'
+                  }}>
+                    {processedContent.length.toLocaleString()} 字符
+                  </span>
+                </div>
+                
+                {/* 流式输出内容卡片 */}
+                <div style={{
+                  flex: 1,
+                  background: '#ffffff',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(22, 163, 74, 0.15)',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}>
+                  <div style={{
+                    flex: 1,
+                    padding: '20px 24px',
+                    fontSize: '14px',
+                    lineHeight: '1.75',
+                    color: '#262626',
+                    whiteSpace: 'pre-wrap',
+                    overflowY: 'auto',
+                    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+                  }}>
+                    {processedContent || '等待 AI 响应...'}
+                  </div>
+                </div>
               </div>
-              <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: '13px', color: '#666' }}>目标字数：</span>
-                <input
-                  type="number"
-                  min={1}
-                  placeholder="请输入精简后的字数，如 1500"
-                  value={streamlineTargetLength}
-                  onChange={(e) => setStreamlineTargetLength(e.target.value)}
-                  style={{
-                    width: 180,
-                    padding: '6px 8px',
-                    fontSize: '13px',
-                    borderRadius: 4,
-                    border: '1px solid #d9d9d9'
-                  }}
-                />
-                <span style={{ fontSize: '12px', color: '#999' }}>不填则按系统默认比例精简</span>
+            ) : processedContent ? (
+              /* ===== 结果展示：清晰的信息层级 ===== */
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {/* 状态标签栏 */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0 4px'
+                }}>
+                  <div style={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <div style={{
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      background: '#22c55e'
+                    }} />
+                    <span style={{ 
+                      fontSize: '13px', 
+                      fontWeight: 500, 
+                      color: '#166534'
+                    }}>
+                      处理完成
+                    </span>
+                  </div>
+                  <span style={{ 
+                    fontSize: '12px', 
+                    color: '#6b7280',
+                    fontFamily: 'SF Mono, Monaco, monospace'
+                  }}>
+                    {processedContent.length.toLocaleString()} 字符
+                  </span>
+                </div>
+                
+                {/* 结果内容卡片 */}
+                <div style={{
+                  flex: 1,
+                  background: '#ffffff',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(22, 163, 74, 0.15)',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}>
+                  <div style={{
+                    flex: 1,
+                    padding: '20px 24px',
+                    fontSize: '14px',
+                    lineHeight: '1.75',
+                    color: '#262626',
+                    whiteSpace: 'pre-wrap',
+                    overflowY: 'auto',
+                    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+                  }}>
+                    {processedContent}
+                  </div>
+                </div>
               </div>
-              <div style={{ textAlign: 'center' }}>
+            ) : (
+              /* ===== 初始状态：引导用户操作 ===== */
+              <div style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '40px 20px'
+              }}>
+                {/* 图标：使用简洁的线性图标风格 */}
+                <div style={{ 
+                  width: '72px', 
+                  height: '72px', 
+                  borderRadius: '20px',
+                  background: '#fff',
+                  border: '1px solid rgba(0,0,0,0.08)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: '24px'
+                }}>
+                  <span style={{ fontSize: '28px' }}>✦</span>
+                </div>
+                
+                <div style={{ 
+                  fontSize: '16px', 
+                  fontWeight: 600, 
+                  color: '#171717', 
+                  marginBottom: '8px',
+                  letterSpacing: '-0.3px'
+                }}>
+                  准备优化
+                </div>
+                <div style={{ 
+                  fontSize: '14px', 
+                  color: '#737373', 
+                  textAlign: 'center', 
+                  maxWidth: '280px', 
+                  lineHeight: '1.6', 
+                  marginBottom: '32px'
+                }}>
+                  AI 将分析并优化您的文本，去除机械感，使表达更加自然流畅
+                </div>
+                
+                {/* 主操作按钮：参考 Vercel 的黑色按钮风格 */}
                 <button
-                  onClick={executeStreamlineContent}
+                  onClick={executeRemoveAITrace}
                   style={{
-                    padding: '12px 28px',
+                    padding: '12px 24px',
                     border: 'none',
-                    borderRadius: '10px',
-                    background: 'linear-gradient(145deg, #ff9800 0%, #f57c00 50%, #e65100 100%)',
+                    borderRadius: '8px',
+                    background: '#171717',
                     color: '#fff',
                     cursor: 'pointer',
                     fontSize: '14px',
-                    fontWeight: 600,
-                    letterSpacing: '0.3px',
-                    boxShadow: '0 4px 14px rgba(255, 152, 0, 0.35), 0 2px 6px rgba(255, 152, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.15)',
-                    transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                    fontWeight: 500,
+                    transition: 'all 0.15s ease',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#404040';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#171717';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.1)';
                   }}
                 >
-                  开始AI精简
+                  开始消痕
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* 
+            ========== 底部操作栏 ==========
+            设计理念：
+            - 固定在底部，不随内容滚动
+            - 按钮使用明确的主次关系
+            - 主按钮黑色，次要按钮 ghost 风格
+          */}
+          {processedContent && (
+            <div style={{
+              padding: '16px 28px',
+              background: '#fff',
+              borderTop: '1px solid rgba(0,0,0,0.06)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexShrink: 0
+            }}>
+              {/* 左侧：辅助操作 */}
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(processedContent);
+                  message.success('已复制到剪贴板');
+                }}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#525252',
+                  fontWeight: 500,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#f5f5f5';
+                  e.currentTarget.style.color = '#171717';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = '#525252';
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+                复制
+              </button>
+              
+              {/* 右侧：主操作 */}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => setTraceRemovalDrawerVisible(false)}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(0,0,0,0.15)',
+                    background: '#fff',
+                    color: '#525252',
+                    fontWeight: 500,
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(0,0,0,0.3)';
+                    e.currentTarget.style.color = '#171717';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(0,0,0,0.15)';
+                    e.currentTarget.style.color = '#525252';
+                  }}
+                >
+                  取消
+                </button>
+                <button
+                  onClick={() => {
+                    if (processedContent) {
+                      if (editingType === 'chapter' && selectedChapter) {
+                        setSelectedChapter((prev) => prev ? { ...prev, content: processedContent } : prev)
+                      } else if (editingType === 'document' && selectedDocument) {
+                        setSelectedDocument((prev) => prev ? { ...prev, content: processedContent } : prev)
+                      }
+                      onContentChange(processedContent)
+                      message.success('已应用到正文')
+                      setTraceRemovalDrawerVisible(false)
+                    }
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: '#171717',
+                    color: '#fff',
+                    fontWeight: 500,
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#404040';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#171717';
+                  }}
+                >
+                  应用
                 </button>
               </div>
             </div>
-          ) : isStreamlining && !streamlinedContent ? (
-            <div style={{ textAlign: 'center', padding: '40px 0' }}>
-              <Spin size="large" />
-              <div style={{ marginTop: '16px', color: '#666' }}>AI正在精简优化中，请稍候...</div>
-            </div>
-          ) : streamlinedContent ? (
-            <div>
-              <div style={{ marginBottom: '12px', color: '#ff9800', fontSize: '13px', fontWeight: 500 }}>
-                ✓ 精简后内容（共 {streamlinedContent.replace(/\s+/g, '').length} 字）
-              </div>
-              <div style={{
-                whiteSpace: 'pre-wrap',
-                fontSize: '14px',
-                lineHeight: '1.8',
-                color: '#333',
-                background: '#fff8e1',
-                padding: '16px',
-                borderRadius: '6px',
-                border: '1px solid #ffcc80',
-                maxHeight: 'calc(100vh - 250px)',
-                overflowY: 'auto'
-              }}>
-                {streamlinedContent}
-              </div>
-            </div>
-          ) : (
-            <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
-              暂无处理结果
+          )}
+          
+          {/* 未处理时的底部栏 */}
+          {!processedContent && !isRemovingTrace && (
+            <div style={{
+              padding: '16px 28px',
+              background: '#fff',
+              borderTop: '1px solid rgba(0,0,0,0.06)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              flexShrink: 0
+            }}>
+              <button
+                onClick={() => setTraceRemovalDrawerVisible(false)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(0,0,0,0.15)',
+                  background: '#fff',
+                  color: '#525252',
+                  fontWeight: 500,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(0,0,0,0.3)';
+                  e.currentTarget.style.color = '#171717';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(0,0,0,0.15)';
+                  e.currentTarget.style.color = '#525252';
+                }}
+              >
+                关闭
+              </button>
             </div>
           )}
         </div>

@@ -25,9 +25,9 @@ import WelcomeGuide from '@/pages/WelcomeGuide'
 import AIChatPage from '@/pages/AIChatPage'
 import GeneratorListPage from '@/pages/GeneratorListPage'
 import WritingStudioPage from '@/pages/WritingStudioPage'
-import IdeaInputPage from '@/pages/IdeaInputPage'
-import OutlineGenerationPage from '@/pages/OutlineGenerationPage'
-import VolumeGenerationPage from '@/pages/VolumeGenerationPage'
+import ShortStoryListPage from '@/pages/shortstory/ShortStoryListPage'
+import ShortStoryCreatePage from '@/pages/shortstory/ShortStoryCreatePage'
+import ShortStoryWorkflowPage from '@/pages/shortstory/ShortStoryWorkflowPage'
 import './App.new.css'
 
 
@@ -35,7 +35,9 @@ const App: React.FC = () => {
   const location = useLocation()
   
   // 检查是否是写作页面(不显示导航栏和侧边栏)
-  const isWritingPage = location.pathname.includes('/writing')
+  // 注意：/short-stories/create 不是写作页面，需要排除
+  const isWritingPage = location.pathname.includes('/writing') || 
+    (location.pathname.includes('/short-stories/') && !location.pathname.includes('/short-stories/create'))
   
   // 检查是否是认证页面(登录/注册,不显示导航栏和侧边栏)
   const isAuthPage = location.pathname === '/login' || location.pathname === '/register'
@@ -49,6 +51,7 @@ const App: React.FC = () => {
             <Route path="/novels/:novelId/writing" element={<ProtectedRoute><NovelCraftStudio /></ProtectedRoute>} />
             <Route path="/novels/:novelId/volumes/:volumeId/writing" element={<ProtectedRoute><VolumeWritingStudio /></ProtectedRoute>} />
             <Route path="/novels/:novelId/writing-studio" element={<ProtectedRoute><WritingStudioPage /></ProtectedRoute>} />
+            <Route path="/short-stories/:id" element={<ProtectedRoute><ShortStoryWorkflowPage /></ProtectedRoute>} />
           </Routes>
         </Layout>
       ) : isAuthPage ? (
@@ -76,6 +79,9 @@ const App: React.FC = () => {
             <Route path="/prompt-library" element={<ProtectedRoute><PromptLibraryPage /></ProtectedRoute>} />
             <Route path="/ai-generators" element={<ProtectedRoute><GeneratorListPage /></ProtectedRoute>} />
             <Route path="/ai-chat" element={<ProtectedRoute><AIChatPage /></ProtectedRoute>} />
+            {/* 短篇小说路由 */}
+            <Route path="/short-stories" element={<ProtectedRoute><ShortStoryListPage /></ProtectedRoute>} />
+            <Route path="/short-stories/create" element={<ProtectedRoute><ShortStoryCreatePage /></ProtectedRoute>} />
           </Routes>
         </ModernLayout>
       )}

@@ -1,13 +1,24 @@
-import axios, { AxiosInstance, AxiosResponse } from 'axios'
+import axios, { AxiosRequestConfig, AxiosResponse } from 'axios'
+
+type ApiClient = {
+  get: <T = any>(url: string, config?: AxiosRequestConfig) => Promise<T>
+  delete: <T = any>(url: string, config?: AxiosRequestConfig) => Promise<T>
+  post: <T = any>(url: string, data?: any, config?: AxiosRequestConfig) => Promise<T>
+  put: <T = any>(url: string, data?: any, config?: AxiosRequestConfig) => Promise<T>
+  patch: <T = any>(url: string, data?: any, config?: AxiosRequestConfig) => Promise<T>
+  interceptors: any
+  defaults: any
+}
 
 // 创建axios实例
-const api: AxiosInstance = axios.create({
+// NOTE: 响应拦截器会把 AxiosResponse 转成 response.data，因此这里使用 ApiClient 抹平 AxiosResponse 包装。
+const api: ApiClient = (axios.create({
   baseURL: '/api',
   timeout: 600000, // 10分钟超时(AI生成需要较长时间)
   headers: {
     'Content-Type': 'application/json',
   },
-})
+}) as unknown) as ApiClient
 
 // 请求拦截器
 api.interceptors.request.use(
@@ -18,7 +29,7 @@ api.interceptors.request.use(
     }
     return config
   },
-  (error) => {
+  (error: any) => {
     return Promise.reject(error)
   }
 )
@@ -28,7 +39,7 @@ api.interceptors.response.use(
   (response: AxiosResponse) => {
     return response.data
   },
-  (error) => {
+  (error: any) => {
     if (error.response) {
       const { status, data } = error.response
       

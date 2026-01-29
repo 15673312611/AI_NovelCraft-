@@ -142,7 +142,7 @@ const FileTree: React.FC<FileTreeProps> = ({
   const [creatingNewDocument, setCreatingNewDocument] = useState<{ folderId: number, tempKey: string } | null>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const editInputRef = useRef<HTMLInputElement>(null)
-  const blurTimeoutRef = useRef<number | null>(null)
+  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // 点击其他地方关闭右键菜单
   useEffect(() => {

@@ -27,6 +27,17 @@ import java.util.*;
 public class VolumeChapterOutlineService {
 
     private static final Logger logger = LoggerFactory.getLogger(VolumeChapterOutlineService.class);
+    
+    /**
+     * 单批次最大生成章数，超过该数量将自动分批生成
+     * 设置为30，避免AI输出被截断
+     */
+    private static final int BATCH_SIZE = 30;
+    
+    /**
+     * 分批生成时，携带前一批最后几章作为上下文
+     */
+    private static final int CONTEXT_CHAPTERS = 5;
 
     @Autowired
     private NovelVolumeMapper volumeMapper;
@@ -66,12 +77,15 @@ public class VolumeChapterOutlineService {
         if (count == null || count <= 0) {
             int computed = 0;
             try { computed = volume.getChapterCount(); } catch (Exception ignore) {}
-            count = computed > 0 ? computed : 35;  // 默认42章
+            count = computed > 0 ? computed : 35;  // 默认35章
         }
-        // 强制设为42章，避免一次性生成过多章纲导致输出被截断
-        if (count > 35) {
-            count = 35;
+        
+        // 如果目标章数超过单批次限制，使用分批生成
+        if (count > BATCH_SIZE) {
+            logger.info("📦 目标章数{}>单批次限制{}，将使用分批生成模式", count, BATCH_SIZE);
+            return generateOutlinesInBatches(volumeId, count, aiConfig);
         }
+        
         Novel novel = novelRepository.selectById(volume.getNovelId());
         if (novel == null) {
             throw new RuntimeException("小说不存在: " + volume.getNovelId());
@@ -270,6 +284,245 @@ public class VolumeChapterOutlineService {
         result.put("count", outlines.size());
         result.put("outlines", outlines);
         return result;
+    }
+
+    /**
+     * 分批生成章纲（用于超过单批次限制的情况）
+     * 核心逻辑：
+     * 1. 将目标章数拆分为多个批次
+     * 2. 第一批正常生成
+     * 3. 后续批次携带前一批最后几章的章纲摘要作为上下文
+     * 4. 所有批次完成后合并入库
+     */
+    @Transactional
+    public Map<String, Object> generateOutlinesInBatches(Long volumeId, Integer totalCount, AIConfigRequest aiConfig) {
+        NovelVolume volume = volumeMapper.selectById(volumeId);
+        if (volume == null) {
+            throw new RuntimeException("卷不存在: " + volumeId);
+        }
+        
+        Novel novel = novelRepository.selectById(volume.getNovelId());
+        if (novel == null) {
+            throw new RuntimeException("小说不存在: " + volume.getNovelId());
+        }
+        
+        NovelOutline superOutline = outlineRepository.findByNovelIdAndStatus(
+                volume.getNovelId(), NovelOutline.OutlineStatus.CONFIRMED).orElse(null);
+        if (superOutline == null || isBlank(superOutline.getPlotStructure())) {
+            throw new RuntimeException("缺少已确认的全书大纲(plotStructure)");
+        }
+        
+        NovelVolume nextVolume = null;
+        Integer currentVolumeNumber = volume.getVolumeNumber();
+        if (currentVolumeNumber != null) {
+            nextVolume = volumeMapper.selectByVolumeNumber(volume.getNovelId(), currentVolumeNumber + 1);
+        }
+        
+        // 历史未回收伏笔池
+        List<NovelForeshadowing> unresolved = foreshadowingRepository.findByNovelIdAndStatus(
+                volume.getNovelId(), "ACTIVE");
+        
+        // 收集已写章节内容
+        List<Chapter> chaptersWithContent = new ArrayList<>();
+        if (volume.getChapterStart() != null && volume.getChapterEnd() != null) {
+            try {
+                List<Chapter> chapters = chapterRepository.findByNovelIdAndChapterNumberBetween(
+                        volume.getNovelId(),
+                        volume.getChapterStart(),
+                        volume.getChapterEnd()
+                );
+                if (chapters != null) {
+                    for (Chapter chapter : chapters) {
+                        if (chapter.getContent() != null && !chapter.getContent().trim().isEmpty()) {
+                            chaptersWithContent.add(chapter);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                logger.warn("收集已写章节内容失败: volumeId={}, err={}", volumeId, e.getMessage());
+            }
+        }
+        
+        // 生成创意池（第一步，只做一次）
+        logger.info("🧠 开始分批生成章纲，volumeId={}, totalCount={}, batchSize={}", volumeId, totalCount, BATCH_SIZE);
+        String creativeIdeasPool = null;
+        try {
+            creativeIdeasPool = generateCreativeIdeasPool(novel, volume, superOutline, unresolved, totalCount, aiConfig, chaptersWithContent);
+            logger.info("✅ 创意池生成成功，长度={}", creativeIdeasPool != null ? creativeIdeasPool.length() : 0);
+        } catch (Exception e) {
+            logger.warn("⚠️ 创意池生成失败，将使用传统模式: {}", e.getMessage());
+        }
+        
+        // 计算批次数
+        int batchCount = (int) Math.ceil((double) totalCount / BATCH_SIZE);
+        logger.info("📦 分批生成计划：共{}章，拆分为{}批次", totalCount, batchCount);
+        
+        // 累积所有批次的章纲
+        List<Map<String, Object>> allOutlines = new ArrayList<>();
+        
+        for (int batchIndex = 0; batchIndex < batchCount; batchIndex++) {
+            int startChapter = batchIndex * BATCH_SIZE + 1;  // 卷内章节号，从1开始
+            int endChapter = Math.min((batchIndex + 1) * BATCH_SIZE, totalCount);
+            int batchSize = endChapter - startChapter + 1;
+            
+            logger.info("🚀 开始生成第{}/{}批: 卷内第{}-{}章，共{}章", 
+                    batchIndex + 1, batchCount, startChapter, endChapter, batchSize);
+            
+            // 构建本批次的提示词
+            String prompt = buildBatchPrompt(
+                    novel, volume, nextVolume, superOutline, unresolved, 
+                    creativeIdeasPool, chaptersWithContent,
+                    startChapter, endChapter, batchSize, totalCount,
+                    allOutlines  // 前面批次的章纲作为上下文
+            );
+            
+            List<Map<String, String>> messages = buildMessages(prompt);
+            
+            logger.info("🤖 调用AI生成第{}批章纲，promptLen={}", batchIndex + 1, prompt.length());
+            
+            // 流式请求
+            StringBuilder rawBuilder = new StringBuilder();
+            try {
+                aiWritingService.streamGenerateContentWithMessages(
+                    messages,
+                    "volume_chapter_outlines_batch_" + (batchIndex + 1),
+                    aiConfig,
+                    chunk -> rawBuilder.append(chunk)
+                );
+            } catch (Exception e) {
+                logger.error("第{}批AI生成失败: {}", batchIndex + 1, e.getMessage(), e);
+                throw new RuntimeException("第" + (batchIndex + 1) + "批章纲生成失败: " + e.getMessage());
+            }
+            
+            String raw = rawBuilder.toString();
+            logger.info("✅ 第{}批流式接收完成，总长度: {} 字符", batchIndex + 1, raw.length());
+            
+            // 解析JSON
+            String json = extractPureJson(raw);
+            json = cleanJsonQuotes(json);
+            
+            List<Map<String, Object>> batchOutlines;
+            try {
+                batchOutlines = mapper.readValue(json, new TypeReference<List<Map<String, Object>>>(){});
+            } catch (Exception e) {
+                logger.error("❗ 第{}批解析失败: {}\nJSON(前500): {}", 
+                        batchIndex + 1, e.getMessage(), json.substring(0, Math.min(500, json.length())));
+                throw new RuntimeException("第" + (batchIndex + 1) + "批章纲解析失败: " + e.getMessage());
+            }
+            
+            if (batchOutlines == null || batchOutlines.isEmpty()) {
+                throw new RuntimeException("第" + (batchIndex + 1) + "批AI返回空章纲列表");
+            }
+            
+            // 修正卷内章节号（确保连续）
+            for (int i = 0; i < batchOutlines.size(); i++) {
+                Map<String, Object> outline = batchOutlines.get(i);
+                int correctChapterInVolume = startChapter + i;
+                outline.put("chapterInVolume", correctChapterInVolume);
+            }
+            
+            logger.info("✅ 第{}批生成成功，实际生成{}章（卷内第{}-{}章）", 
+                    batchIndex + 1, batchOutlines.size(), startChapter, startChapter + batchOutlines.size() - 1);
+            
+            allOutlines.addAll(batchOutlines);
+        }
+        
+        logger.info("🎉 分批生成完成，共生成{}章章纲", allOutlines.size());
+        
+        // 入库
+        persistOutlines(volume, allOutlines);
+        logger.info("✅ 卷章纲已入库: volumeId={}, count={}", volumeId, allOutlines.size());
+        
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("volumeId", volumeId);
+        result.put("novelId", volume.getNovelId());
+        result.put("count", allOutlines.size());
+        result.put("batchCount", batchCount);
+        result.put("outlines", allOutlines);
+        return result;
+    }
+    
+    /**
+     * 构建分批生成的提示词
+     * 后续批次会携带前一批最后几章的摘要作为上下文
+     */
+    private String buildBatchPrompt(
+            Novel novel, NovelVolume volume, NovelVolume nextVolume, 
+            NovelOutline superOutline, List<NovelForeshadowing> unresolved,
+            String creativeIdeasPool, List<Chapter> chaptersWithContent,
+            int startChapter, int endChapter, int batchSize, int totalCount,
+            List<Map<String, Object>> previousOutlines
+    ) {
+        // 基础提示词
+        String basePrompt;
+        if (creativeIdeasPool != null && creativeIdeasPool.length() > 200) {
+            basePrompt = buildPromptWithCreativePool(novel, volume, nextVolume, superOutline, unresolved, batchSize, creativeIdeasPool);
+        } else {
+            basePrompt = buildPrompt(novel, volume, nextVolume, superOutline, unresolved, batchSize);
+        }
+        
+        StringBuilder promptBuilder = new StringBuilder(basePrompt);
+        
+        // 添加分批上下文信息
+        promptBuilder.append("\n\n# 分批生成上下文（极其重要）\n");
+        promptBuilder.append("本卷共需生成").append(totalCount).append("章章纲，当前是分批生成模式。\n");
+        promptBuilder.append("**本次生成范围**：卷内第").append(startChapter).append("章 ~ 第").append(endChapter).append("章，共").append(batchSize).append("章\n");
+        promptBuilder.append("**输出JSON数组长度必须为**：").append(batchSize).append("\n");
+        promptBuilder.append("**chapterInVolume字段必须从**：").append(startChapter).append("开始，依次递增到").append(endChapter).append("\n\n");
+        
+        // 如果有前一批生成的章纲，添加为上下文
+        if (previousOutlines != null && !previousOutlines.isEmpty()) {
+            promptBuilder.append("## 前面批次已生成的章纲摘要（请保持剧情连贯）\n");
+            promptBuilder.append("下面是本卷前面已生成的章纲，你必须确保本次生成的章纲能够自然衔接：\n\n");
+            
+            // 只取最后几章作为上下文，避免提示词过长
+            int contextStart = Math.max(0, previousOutlines.size() - CONTEXT_CHAPTERS);
+            for (int i = contextStart; i < previousOutlines.size(); i++) {
+                Map<String, Object> outline = previousOutlines.get(i);
+                Object civObj = outline.get("chapterInVolume");
+                int civ = civObj instanceof Number ? ((Number) civObj).intValue() : (i + 1);
+                String direction = getString(outline, "direction");
+                
+                promptBuilder.append("### 卷内第").append(civ).append("章\n");
+                promptBuilder.append("【剧情方向】").append(s(limit(direction, 500))).append("\n\n");
+            }
+            
+            promptBuilder.append("**重要要求**：\n");
+            promptBuilder.append("1. 本次生成的第").append(startChapter).append("章必须自然衔接上面第").append(startChapter - 1).append("章的结尾\n");
+            promptBuilder.append("2. 不要重复已生成章节的剧情\n");
+            promptBuilder.append("3. 伏笔和人物关系要保持一致\n\n");
+        }
+        
+        // 已写章节正文（简化版，避免提示词过长）
+        if (chaptersWithContent != null && !chaptersWithContent.isEmpty() && startChapter == 1) {
+            // 只在第一批时添加已写章节内容
+            promptBuilder.append("# 已写章节正文（供参考）\n");
+            int maxShow = Math.min(3, chaptersWithContent.size());
+            for (int i = 0; i < maxShow; i++) {
+                Chapter chapter = chaptersWithContent.get(i);
+                Integer chapterNumber = chapter.getChapterNumber();
+                Integer chapterInVolume = null;
+                if (volume.getChapterStart() != null) {
+                    chapterInVolume = chapterNumber - volume.getChapterStart() + 1;
+                }
+                promptBuilder.append("## 卷内第").append(chapterInVolume).append("章正文\n");
+                String chapterContent = chapter.getContent();
+                if (chapterContent != null && chapterContent.length() > 1500) {
+                    chapterContent = chapterContent.substring(0, 1500) + "...";
+                }
+                promptBuilder.append(chapterContent == null ? "" : chapterContent).append("\n\n");
+            }
+        }
+        
+        // 强调输出格式
+        promptBuilder.append("\n# 输出要求\n");
+        promptBuilder.append("请严格按照以下要求输出JSON数组：\n");
+        promptBuilder.append("1. 数组长度必须为 ").append(batchSize).append("\n");
+        promptBuilder.append("2. 第一个元素的chapterInVolume=").append(startChapter).append("\n");
+        promptBuilder.append("3. 最后一个元素的chapterInVolume=").append(endChapter).append("\n");
+        promptBuilder.append("4. 不要输出任何解释性文字，直接输出JSON数组\n");
+        
+        return promptBuilder.toString();
     }
 
     @Transactional
