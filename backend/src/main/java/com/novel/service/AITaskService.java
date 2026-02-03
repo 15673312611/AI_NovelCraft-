@@ -31,19 +31,25 @@ public class AITaskService {
     /**
      * 获取AI任务列表
      */
-    public IPage<AITaskDto> getTasks(int page, int size, String status, String type) {
+    public IPage<AITaskDto> getTasks(int page, int size, String status, String type, Long novelId) {
         Page<AITask> pageParam = new Page<>(page + 1, size);
-        IPage<AITask> tasks;
 
-        if (status != null && type != null) {
-            tasks = aiTaskRepository.findByStatusAndType(status.toUpperCase(), type.toUpperCase(), pageParam);
-        } else if (status != null) {
-            tasks = aiTaskRepository.findByStatus(status.toUpperCase(), pageParam);
-        } else if (type != null) {
-            tasks = aiTaskRepository.findByType(type.toUpperCase(), pageParam);
-        } else {
-            tasks = aiTaskRepository.selectPage(pageParam, null);
+        QueryWrapper<AITask> queryWrapper = new QueryWrapper<>();
+
+        if (StringUtils.hasText(status)) {
+            queryWrapper.eq("status", status.toUpperCase());
         }
+        if (StringUtils.hasText(type)) {
+            queryWrapper.eq("type", type.toUpperCase());
+        }
+        if (novelId != null) {
+            queryWrapper.eq("novel_id", novelId);
+        }
+
+        // 默认按创建时间倒序，便于前端拿到最新任务
+        queryWrapper.orderByDesc("created_at");
+
+        IPage<AITask> tasks = aiTaskRepository.selectPage(pageParam, queryWrapper);
 
         // 转换为DTO
         IPage<AITaskDto> result = new Page<>(tasks.getCurrent(), tasks.getSize(), tasks.getTotal());

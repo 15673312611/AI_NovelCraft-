@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Card, Button, Form, Input, InputNumber, Typography, Space,
+  Card, Button, Form, Input, InputNumber, Select, Typography, Space,
   Modal, Tag, Progress, Divider,
   Alert, Row, Col,
-  FloatButton, notification, App as AntdApp
+  FloatButton, notification, App as AntdApp, Tooltip
 } from 'antd';
 import {
   BookOutlined, PlusOutlined, EditOutlined,
   RobotOutlined,
   BarChartOutlined, BulbOutlined, SettingOutlined, ArrowRightOutlined,
   CheckCircleOutlined, ClockCircleOutlined, ExclamationCircleOutlined,
-  ReloadOutlined, PlayCircleOutlined, EyeOutlined
+  ReloadOutlined, PlayCircleOutlined, EyeOutlined, InfoCircleOutlined
 } from '@ant-design/icons';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import novelVolumeService, { NovelVolume } from '../services/novelVolumeService';
@@ -89,7 +89,6 @@ const VolumeManagementPage: React.FC = () => {
   const [outlineTemplates, setOutlineTemplates] = useState<any[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | undefined>(undefined);
-  const [templateDropdownOpen, setTemplateDropdownOpen] = useState(false);
 
   const { novelId } = useParams<{ novelId: string }>();
   const navigate = useNavigate();
@@ -185,7 +184,7 @@ const VolumeManagementPage: React.FC = () => {
     });
     
     if (shouldShowModal) {
-      console.log('[自动弹窗] ✅ 从创建页面跳转，弹出配置弹窗');
+      console.log('[自动弹窗] 从创建页面跳转，弹出配置弹窗');
       
       // 填充表单
       outlineForm.setFieldsValue({
@@ -229,12 +228,12 @@ const VolumeManagementPage: React.FC = () => {
     if (!novelId) return;
 
     try {
-      console.log('🔍 开始加载小说信息, novelId:', novelId);
+      console.log('开始加载小说信息, novelId:', novelId);
       const novelData = await novelService.getById(novelId);
-      console.log('🔍 小说信息加载成功:', novelData);
+      console.log('小说信息加载成功:', novelData);
       setNovel(novelData);
     } catch (error: any) {
-      console.error('❌ 加载小说信息失败:', error);
+      console.error('加载小说信息失败:', error);
       message.error(error?.message || '加载小说信息失败');
     }
   };
@@ -267,12 +266,12 @@ const VolumeManagementPage: React.FC = () => {
         volumes: volumesList.map(v => ({ id: v.id, status: v.status, hasOutline: !!(v.contentOutline && v.contentOutline.length > 100) }))
       });
 
-      console.log('🔍 卷加载完成，等待小说数据和大纲数据后统一更新步骤');
+      console.log('卷加载完成，等待小说数据和大纲数据后统一更新步骤');
 
       // 注意：不在这里自动切换步骤，由 updateProcessStep 统一处理
       // 避免与状态恢复逻辑冲突
     } catch (error: any) {
-      console.error('❌ 加载卷列表失败:', error);
+      console.error('加载卷列表失败:', error);
       message.error(error?.message || '加载卷列表失败');
     } finally {
       setLoading(false);
@@ -294,17 +293,17 @@ const VolumeManagementPage: React.FC = () => {
   const checkSuperOutline = async () => {
     if (!novelId) return;
 
-    console.log('🔍 checkSuperOutline 被调用，novelId:', novelId);
+    console.log('checkSuperOutline 被调用，novelId:', novelId);
 
     try {
       const outline = await novelOutlineService.getOutlineByNovelId(novelId);
-      console.log('🔍 获取到的大纲:', outline);
+      console.log('获取到的大纲:', outline);
 
       // 检查大纲内容：优先检查 plotStructure，然后检查 outline 字段
       const outlineContent = (outline as any)?.plotStructure || (outline as any)?.outline;
       const hasOutline = !!(outline && outlineContent && outlineContent.trim());
       
-      console.log('🔍 大纲内容检查:', {
+      console.log('大纲内容检查:', {
         hasOutline,
         plotStructure: (outline as any)?.plotStructure?.substring(0, 100),
         outline: (outline as any)?.outline?.substring(0, 100)
@@ -325,19 +324,19 @@ const VolumeManagementPage: React.FC = () => {
           novelId: Number(novelId),
           outline: (outline as any).outline
         } as any);
-          console.log('✅ 已检测到已确认的大纲');
+          console.log('已检测到已确认的大纲');
         } else {
           setConfirmedSuperOutline(null);
-          console.log('✅ 已检测到草稿大纲（未确认），用户可以查看、重新生成或确认');
+          console.log('已检测到草稿大纲（未确认），用户可以查看、重新生成或确认');
         }
       } else {
-        console.log('❌ 未找到大纲');
+        console.log('未找到大纲');
         setConfirmedSuperOutline(null);
         setHasSuperOutline(false);
         setCurrentSuperOutline(null);
       }
     } catch (error: any) {
-      console.error('❌ 检查超级大纲状态失败:', error);
+      console.error('检查超级大纲状态失败:', error);
       setConfirmedSuperOutline(null);
       setHasSuperOutline(false);
       setCurrentSuperOutline(null);
@@ -486,12 +485,12 @@ const VolumeManagementPage: React.FC = () => {
     // 立即滚动到顶部
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
-    console.log('🔍 confirmSuperOutline 被调用');
-    console.log('🔍 currentSuperOutline:', currentSuperOutline);
-    console.log('🔍 novelId:', novelId);
+    console.log('confirmSuperOutline 被调用');
+    console.log('currentSuperOutline:', currentSuperOutline);
+    console.log('novelId:', novelId);
 
     if (!currentSuperOutline) {
-      console.error('❌ currentSuperOutline 为 null，无法确认大纲');
+      console.error('currentSuperOutline 为 null，无法确认大纲');
       message.error('没有找到可确认的大纲，请先生成大纲');
 
       // 尝试重新加载大纲
@@ -598,7 +597,7 @@ const VolumeManagementPage: React.FC = () => {
       });
 
     } catch (error: any) {
-      console.error('❌ 确认大纲失败:', error);
+      console.error('确认大纲失败:', error);
       message.error(error.message || '确认大纲失败');
       // 报错时清理所有进行中状态
       setTaskProgress(null);
@@ -641,33 +640,49 @@ const VolumeManagementPage: React.FC = () => {
           
           setTaskProgress({ percentage: Math.floor(progress), message: '生成卷规划中...' });
 
-          // 1. 首先检查是否有失败的 AI 任务
+          // 1. 首先检查是否有失败的 AI 任务（按 novelId + operationType 精确定位）
           try {
-            const tasksResponse = await aiTaskService.getAITasks(0, 5, undefined, 'VOLUME_GENERATION', parseInt(novelId!));
+            const tasksResponse = await aiTaskService.getAITasks(
+              0,
+              10,
+              undefined,
+              undefined,
+              parseInt(novelId!)
+            );
             const tasks = tasksResponse?.content || [];
-            
-            // 查找最近的任务
-            const latestTask = tasks.sort((a: any, b: any) => {
+
+            // 只关注“基于确认大纲生成卷规划”这一类任务，避免被其他任务误伤
+            const relatedTasks = tasks.filter((t: any) => {
+              const rawParams = t?.parameters;
+              if (!rawParams || typeof rawParams !== 'string') return false;
+              try {
+                const parsed = JSON.parse(rawParams);
+                return parsed?.operationType === 'GENERATE_VOLUMES_FROM_CONFIRMED_OUTLINE';
+              } catch {
+                return false;
+              }
+            });
+
+            const latestTask = relatedTasks.sort((a: any, b: any) => {
               return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
             })[0];
 
-            // 检查任务状态
             if (latestTask) {
-              console.log('[轮询] 最新任务状态:', latestTask.status, '错误信息:', latestTask.errorMessage);
-              
-              if (latestTask.status === 'FAILED') {
+              console.log('[轮询] 卷规划任务状态:', latestTask.status, '错误信息:', latestTask.errorMessage);
+
+              if (latestTask.status === 'FAILED' || latestTask.status === 'CANCELLED') {
                 clearInterval(intervalId);
                 localStorage.removeItem(`novel_${novelId}_generating_volumes`);
                 setTaskProgress(null);
                 setIsConfirmingOutline(false);
-                
-                const errorMsg = latestTask.errorMessage || '未知错误';
+
+                const errorMsg = latestTask.errorMessage || '任务失败';
                 message.error({
                   content: `卷规划生成失败：${errorMsg}`,
                   duration: 8
                 });
-                
-                console.error('[轮询] 任务失败，错误信息:', errorMsg);
+
+                console.error('[轮询] 卷规划任务失败，错误信息:', errorMsg);
                 reject(new Error(errorMsg));
                 return;
               }
@@ -920,7 +935,7 @@ const VolumeManagementPage: React.FC = () => {
         return;
       }
       
-      console.log('[handleGenerateVolumes] ✅ AI配置验证通过');
+      console.log('[handleGenerateVolumes] AI配置验证通过');
 
       // 流式生成大纲（SSE）
       setIsGeneratingOutline(true);
@@ -995,7 +1010,7 @@ const VolumeManagementPage: React.FC = () => {
             
             // 后端流式生成时已自动保存到 novel_outlines 表（状态为DRAFT）
             // 前端只需提示用户生成完成即可
-            console.log('✅ 大纲生成完成，后端已自动保存为草稿状态');
+            console.log('大纲生成完成，后端已自动保存为草稿状态');
             message.success('大纲生成完成！您可以查看、修改或确认大纲');
             
             // 保持 currentSuperOutline，这样页面会继续显示大纲内容而不是回到"准备开始创作"状态
@@ -1317,7 +1332,7 @@ const VolumeManagementPage: React.FC = () => {
     // 确保数据已加载完成再更新步骤
     // 需要等待 novel 加载完成（不为 null）和 volumes 数据加载完成
     if (novel !== null && volumes.length >= 0) {
-      console.log('🔍 数据加载完成，开始更新流程步骤', {
+      console.log('数据加载完成，开始更新流程步骤', {
         novelLoaded: novel !== null,
         volumesLoaded: volumes.length >= 0,
         confirmedSuperOutlineExists: !!confirmedSuperOutline,
@@ -1325,7 +1340,7 @@ const VolumeManagementPage: React.FC = () => {
       });
       updateProcessStep();
     } else {
-      console.log('🔍 等待数据加载完成...', {
+      console.log('等待数据加载完成...', {
         novelLoaded: novel !== null,
         volumesLoaded: volumes.length >= 0
       });
@@ -1879,7 +1894,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                 borderRadius: '8px',
                 border: '1px solid #f1f5f9'
               }}>
-                <span style={{ color: '#6366f1' }}>⚡</span>
+                <RobotOutlined style={{ color: '#6366f1' }} />
                 {taskProgress.message}
               </div>
             </div>
@@ -1919,7 +1934,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                       fontSize: '20px',
                       animation: 'pulse 2s infinite'
                     }}>
-                      ✨
+                      <RobotOutlined style={{ fontSize: '18px', color: 'white' }} />
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: '17px', fontWeight: 600, marginBottom: '4px' }}>
@@ -1970,7 +1985,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                         fontSize: '18px',
                         boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)'
                       }}>
-                        📖
+                        <BookOutlined style={{ fontSize: '18px', color: 'white' }} />
                       </div>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b' }}>
@@ -2009,7 +2024,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                             marginBottom: '20px',
                             animation: 'pulse 2s infinite'
                           }}>
-                            ⏳
+                            <ClockCircleOutlined style={{ fontSize: 52 }} />
                           </div>
                           <div style={{
                         fontSize: '16px',
@@ -2032,45 +2047,42 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                 </div>
               ) : (
                 /* 等待生成状态 */
-                <div style={{ textAlign: 'center', padding: '80px 20px' }}>
+                <div style={{ textAlign: 'center', padding: '72px 20px' }}>
                   <div style={{
-                    width: '120px',
-                    height: '120px',
-                    borderRadius: '50%',
-                    background: 'var(--primary-600)',
+                    width: 56,
+                    height: 56,
+                    borderRadius: 16,
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    margin: '0 auto 32px',
-                    fontSize: '64px',
-                    boxShadow: '0 12px 40px rgba(102, 126, 234, 0.3)'
+                    margin: '0 auto 18px'
                   }}>
-                    🚀
+                    <SettingOutlined style={{ fontSize: 24, color: '#334155' }} />
                   </div>
-                  <Title level={2} style={{ marginBottom: '16px', color: '#1f2937', fontSize: '32px' }}>
-                    准备开始创作
+                  <Title level={3} style={{ marginBottom: 8, color: '#0f172a', fontSize: 22 }}>
+                    开始创作前，请先设定参数
                   </Title>
-                  <Text style={{ fontSize: '16px', color: '#6b7280', display: 'block', marginBottom: '24px' }}>
-                    请在弹窗中确认创作参数，AI 将为您生成完整的故事大纲
+                  <Text style={{ fontSize: 14, color: '#64748b', display: 'block', marginBottom: 20 }}>
+                    系统将根据参数生成故事大纲与分卷规划。
                   </Text>
-                  <div style={{
-                    padding: '20px 32px',
-                    background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
-                    borderRadius: '12px',
-                    border: '1px solid #fbbf24',
-                    display: 'inline-block',
-                    maxWidth: '600px',
-                    fontSize: '14px',
-                    color: '#92400e',
-                    lineHeight: '1.6',
-                    marginBottom: '24px'
-                  }}>
-                    💡 如果弹窗已关闭或生成失败，请点击下方按钮重新开始
-                  </div>
+                  <Alert
+                    type="info"
+                    showIcon
+                    message="如果弹窗已关闭，可点击下方按钮重新打开参数设置。"
+                    style={{
+                      maxWidth: 560,
+                      margin: '0 auto 20px',
+                      textAlign: 'left',
+                      borderRadius: 12
+                    }}
+                  />
                   <div>
-                    <Button 
-                      type="primary" 
+                    <Button
+                      type="primary"
                       size="large"
+                      icon={<SettingOutlined />}
                       onClick={() => {
                         // 重置所有状态
                         setIsGeneratingOutline(false);
@@ -2079,18 +2091,18 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                         setIsGenerating(false);
                         // 打开配置弹窗
                         setQuickStartVisible(true);
-      loadOutlineTemplates();
+                        loadOutlineTemplates();
                         message.info('请重新配置参数');
                       }}
                       style={{
-                        height: '48px',
-                        fontSize: '16px',
-                        borderRadius: '8px',
-                        padding: '0 40px',
-                        fontWeight: 500
+                        height: 44,
+                        fontSize: 15,
+                        borderRadius: 12,
+                        padding: '0 28px',
+                        fontWeight: 600
                       }}
                     >
-                      🔄 重新开始
+                      打开参数设置
                     </Button>
                   </div>
                 </div>
@@ -2127,7 +2139,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                   justifyContent: 'center',
                   fontSize: '18px'
                 }}>
-                  ✅
+                  <CheckCircleOutlined style={{ fontSize: 18, color: 'white' }} />
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '2px' }}>
@@ -2171,7 +2183,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                     fontSize: '18px',
                     boxShadow: '0 2px 8px rgba(82, 196, 26, 0.3)'
                   }}>
-                    📖
+                    <BookOutlined style={{ fontSize: '18px', color: 'white' }} />
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b' }}>
@@ -2364,7 +2376,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                     fontSize: '18px',
                     animation: 'pulse 2s infinite'
             }}>
-              📚
+              <BarChartOutlined style={{ fontSize: 18, color: 'white' }} />
             </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '2px' }}>
@@ -2415,7 +2427,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                       fontSize: '18px',
                       boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)'
                     }}>
-                      📊
+                      <BarChartOutlined style={{ fontSize: 18, color: 'white' }} />
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b' }}>
@@ -2476,19 +2488,13 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                       </Button>
                     </div>
                     
-                    {/* 提示信息 */}
-                    <div style={{
-                      marginTop: '24px',
-                      padding: '16px',
-                      background: '#fef3c7',
-                      border: '1px solid #fde68a',
-                      borderRadius: '8px',
-                      fontSize: '13px',
-                      color: '#92400e',
-                      lineHeight: '1.6'
-                    }}>
-                      <strong>💡 温馨提示：</strong>卷规划生成中，AI 正在根据您确认的大纲智能划分章节结构，这可能需要1-2分钟，请耐心等待...
-                  </div>
+                    <Alert
+                      type="info"
+                      showIcon
+                      message="卷规划生成中"
+                      description="系统正在根据您确认的大纲划分卷与章节结构，通常需要 1-2 分钟，请耐心等待。"
+                      style={{ marginTop: 24, borderRadius: 12 }}
+                    />
                   </div>
                 </Card>
               </div>
@@ -2507,7 +2513,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                   fontSize: '64px',
                   boxShadow: '0 12px 40px rgba(102, 126, 234, 0.3)'
                 }}>
-                  📚
+                  <BarChartOutlined style={{ fontSize: 54, color: 'white' }} />
                 </div>
                 <Title level={2} style={{ marginBottom: '16px', color: '#1f2937', fontSize: '32px' }}>
                   准备生成卷规划
@@ -2528,7 +2534,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                 }}>
                   <div style={{ fontSize: '14px', color: '#475569', lineHeight: '1.8' }}>
                     <div style={{ marginBottom: '12px' }}>
-                      <strong>📌 即将进行：</strong>
+                      <strong>即将进行：</strong>
                     </div>
                     <div style={{ paddingLeft: '20px' }}>
                       • 分析大纲内容和结构<br/>
@@ -2580,7 +2586,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                     fontSize: '20px',
                     boxShadow: '0 4px 14px rgba(59, 130, 246, 0.3)'
                   }}>
-                    📚
+                    <BookOutlined style={{ fontSize: 20, color: 'white' }} />
                   </div>
                   <div>
                     <Title level={4} style={{ margin: 0, color: '#0f172a', fontWeight: 700, fontSize: '18px', letterSpacing: '-0.02em' }}>
@@ -3068,7 +3074,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                       justifyContent: 'center',
                       gap: '8px'
                     }}>
-                      <span style={{ fontSize: '16px' }}>💡</span>
+                      <BulbOutlined style={{ fontSize: 16, color: '#667eea' }} />
                       正在清理旧卷数据并基于当前大纲重新拆分，请勿关闭页面
                     </Text>
                   </div>
@@ -3117,7 +3123,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                 e.currentTarget.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%)';
               }}
             >
-              ✨ 开始创作
+              开始创作
             </Button>
           </div>
         </div>
@@ -3230,7 +3236,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
             fontSize: '13px',
             color: '#1e40af',
           }}>
-            <strong>📊 预计总字数：</strong>
+            <strong>预计总字数：</strong>
             <span style={{ fontSize: '16px', fontWeight: 600, color: '#2563eb', marginLeft: '8px' }}>
               {(totalWordsGenerate / 10000).toFixed(1)}
             </span>
@@ -3296,38 +3302,37 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
         }}
       >
         <div style={{ padding: '0' }}>
-          {/* 苹果风格头部 */}
-          <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+          {/* 头部 - 简约风格 */}
+          <div style={{ textAlign: 'center', marginBottom: 24 }}>
             <div style={{
-              width: '72px',
-              height: '72px',
-              borderRadius: '18px',
-              background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+              width: 48,
+              height: 48,
+              borderRadius: 14,
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 20px',
-              fontSize: '32px',
-              boxShadow: '0 8px 24px rgba(59, 130, 246, 0.25)'
+              margin: '0 auto 16px'
             }}>
-              🚀
+              <SettingOutlined style={{ fontSize: 22, color: '#334155' }} />
             </div>
-            <h2 style={{ 
-              fontSize: '24px', 
-              fontWeight: 700, 
-              color: '#0f172a', 
+            <h2 style={{
+              fontSize: 20,
+              fontWeight: 600,
+              color: '#0f172a',
               margin: '0 0 8px',
-              letterSpacing: '-0.02em'
+              letterSpacing: '-0.01em'
             }}>
-              配置创作参数
+              创作参数设置
             </h2>
-            <p style={{ 
-              fontSize: '15px', 
-              color: '#64748b', 
+            <p style={{
+              fontSize: 13,
+              color: '#64748b',
               margin: 0,
-              lineHeight: 1.5
+              lineHeight: 1.6
             }}>
-              AI 将根据这些参数生成大纲和分卷规划
+              用于生成故事大纲与分卷规划，后续流程仍可继续调整。
             </p>
           </div>
 
@@ -3339,18 +3344,25 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
               setQuickStartVisible(false);
             }}
           >
-            <Row gutter={16}>
+            <Row gutter={20}>
               <Col span={12}>
                 <Form.Item
                   name="targetChapters"
-                  label={<span style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>目标章数</span>}
+                  label={
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '14px', fontWeight: 600, color: '#334155' }}>预期总章数</span>
+                      <Tooltip title="整本小说预计包含的章节数量">
+                        <InfoCircleOutlined style={{ color: '#94a3b8', fontSize: '13px' }} />
+                      </Tooltip>
+                    </div>
+                  }
                   initialValue={300}
                 >
                   <InputNumber
                     min={50}
                     max={1000}
-                    style={{ width: '100%' }}
-                    addonAfter="章"
+                    style={{ width: '100%', borderRadius: '8px' }}
+                    addonAfter={<span style={{ color: '#64748b' }}>章</span>}
                     size="large"
                     onChange={(value) => {
                       const wordsPerChapter = outlineForm.getFieldValue('wordsPerChapter') || 2000;
@@ -3364,14 +3376,21 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
               <Col span={12}>
                 <Form.Item
                   name="wordsPerChapter"
-                  label={<span style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>每章字数</span>}
+                  label={
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '14px', fontWeight: 600, color: '#334155' }}>单章平均字数</span>
+                      <Tooltip title="每一章节的预估字数">
+                        <InfoCircleOutlined style={{ color: '#94a3b8', fontSize: '13px' }} />
+                      </Tooltip>
+                    </div>
+                  }
                   initialValue={2000}
                 >
                   <InputNumber
                     min={2000}
                     max={10000}
-                    style={{ width: '100%' }}
-                    addonAfter="字/章"
+                    style={{ width: '100%', borderRadius: '8px' }}
+                    addonAfter={<span style={{ color: '#64748b' }}>字/章</span>}
                     size="large"
                     onChange={(value) => {
                       const chapters = outlineForm.getFieldValue('targetChapters') || 300;
@@ -3384,219 +3403,134 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
               </Col>
             </Row>
 
-            {/* 统计显示 - 苹果风格 */}
+            {/* 统计显示 - 苹果风格优化 */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              gap: '12px',
-              padding: '18px 24px',
-              background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
-              borderRadius: '14px',
-              marginBottom: '20px'
+              justifyContent: 'space-between',
+              padding: '16px 20px',
+              background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+              borderRadius: '12px',
+              border: '1px solid #e2e8f0',
+              marginBottom: '24px'
             }}>
-              <span style={{ fontSize: '20px' }}>📊</span>
-              <span style={{ fontSize: '14px', fontWeight: 500, color: '#0369a1' }}>预计总字数</span>
-              <span style={{ fontSize: '26px', fontWeight: 700, color: '#0284c7' }}>
-                {(totalWords / 10000).toFixed(1)}
-              </span>
-              <span style={{ fontSize: '14px', fontWeight: 600, color: '#0369a1' }}>万字</span>
-              <span style={{ fontSize: '12px', color: '#0ea5e9', marginLeft: '8px' }}>
-                ({totalWords.toLocaleString()}字)
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ 
+                  width: '36px', 
+                  height: '36px', 
+                  borderRadius: '10px', 
+                  background: '#e0e7ff', 
+                  color: '#4f46e5',
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  fontSize: '18px'
+                }}>
+                  <BarChartOutlined style={{ fontSize: 18 }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>预计全书规模</div>
+                  <div style={{ fontSize: '13px', color: '#475569' }}>根据章数与字数自动计算</div>
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', lineHeight: 1 }}>
+                  {(totalWords / 10000).toFixed(1)} <span style={{ fontSize: '14px', fontWeight: 500, color: '#64748b' }}>万字</span>
+                </div>
+                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
+                  ≈ {totalWords.toLocaleString()} 字
+                </div>
+              </div>
             </div>
 
-            {/* 隐藏的总字数字段 */}
             <Form.Item name="targetWords" hidden initialValue={1000000}>
               <InputNumber />
             </Form.Item>
 
             <Form.Item
-              name="templateId"
-              label={<span style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>选择模板（可选）</span>}
-            >
-              {/* 自定义下拉选择器 - 苹果风格 */}
-              <div style={{ position: 'relative' }}>
-                <div
-                  onClick={() => setTemplateDropdownOpen(!templateDropdownOpen)}
-                  style={{
-                    width: '100%',
-                    height: '48px',
-                    padding: '0 16px',
-                    fontSize: '15px',
-                    border: templateDropdownOpen ? '1.5px solid #3b82f6' : '1.5px solid #e2e8f0',
-                    boxShadow: templateDropdownOpen ? '0 0 0 3px rgba(59, 130, 246, 0.1)' : 'none',
-                    borderRadius: '12px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    background: '#fff',
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!templateDropdownOpen) {
-                      e.currentTarget.style.borderColor = '#cbd5e1';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!templateDropdownOpen) {
-                      e.currentTarget.style.borderColor = '#e2e8f0';
-                    }
-                  }}
-                >
-                  <span style={{
-                    color: selectedTemplateId ? '#0f172a' : '#94a3b8',
-                    fontWeight: selectedTemplateId ? 500 : 400,
-                    flex: 1,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap'
-                  }}>
-                    {loadingTemplates ? '加载中...' : (
-                      selectedTemplateId
-                        ? outlineTemplates.find(t => t.id === selectedTemplateId)?.name || '默认模板'
-                        : '默认使用系统模板'
-                    )}
-                  </span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {selectedTemplateId && (
-                      <span
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedTemplateId(undefined);
-                          outlineForm.setFieldValue('templateId', undefined);
-                        }}
-                        style={{
-                          fontSize: '14px',
-                          color: '#94a3b8',
-                          cursor: 'pointer',
-                          padding: '4px'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.color = '#64748b';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.color = '#94a3b8';
-                        }}
-                      >
-                        ✕
-                      </span>
-                    )}
-                    <span style={{
-                      fontSize: '10px',
-                      color: '#94a3b8',
-                      transform: templateDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                      transition: 'transform 0.2s',
-                      display: 'inline-block'
-                    }}>
-                      ▼
-                    </span>
-                  </div>
-                </div>
-
-                {/* 下拉选项列表 - 苹果风格 */}
-                {templateDropdownOpen && (
-                  <>
-                    <div
-                      onClick={() => setTemplateDropdownOpen(false)}
-                      style={{
-                        position: 'fixed',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        zIndex: 999
-                      }}
-                    />
-                    {/* 下拉菜单 */}
-                    <div
-                      style={{
-                        position: 'absolute',
-                        top: '100%',
-                        left: 0,
-                        right: 0,
-                        marginTop: '4px',
-                        background: '#fff',
-                        border: '1px solid #d9d9d9',
-                        borderRadius: '6px',
-                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
-                        maxHeight: '256px',
-                        overflowY: 'auto',
-                        zIndex: 1000
-                      }}
-                    >
-                      {outlineTemplates.length === 0 ? (
-                        <div style={{
-                          padding: '12px 16px',
-                          color: '#999',
-                          textAlign: 'center',
-                          fontSize: '14px'
-                        }}>
-                          暂无可用模板
-                        </div>
-                      ) : (
-                        outlineTemplates.map((template: any) => (
-                          <div
-                            key={template.id}
-                            onClick={() => {
-                              setSelectedTemplateId(template.id);
-                              outlineForm.setFieldValue('templateId', template.id);
-                              setTemplateDropdownOpen(false);
-                            }}
-                            style={{
-                              padding: '8px 12px',
-                              cursor: 'pointer',
-                              background: selectedTemplateId === template.id ? '#e6f7ff' : '#fff',
-                              borderBottom: '1px solid #f0f0f0',
-                              transition: 'background 0.3s'
-                            }}
-                            onMouseEnter={(e) => {
-                              if (selectedTemplateId !== template.id) {
-                                e.currentTarget.style.background = '#f5f5f5';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (selectedTemplateId !== template.id) {
-                                e.currentTarget.style.background = '#fff';
-                              }
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              {template.isDefault && (
-                                <span style={{ color: '#f59e0b', fontWeight: 600 }}>⭐</span>
-                              )}
-                              <span style={{ fontWeight: template.isDefault ? 600 : 400 }}>
-                                {template.name}
-                              </span>
-                              {template.description && (
-                                <span style={{ fontSize: '12px', color: '#94a3b8', marginLeft: '8px' }}>
-                                  - {template.description}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            </Form.Item>
-
-            <Form.Item
               name="volumeCount"
-              label={<span style={{ fontSize: '14px', fontWeight: 500 }}>预期卷数</span>}
+              label={
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '14px', fontWeight: 600, color: '#334155' }}>规划分卷数</span>
+                  <Tooltip title="将整本小说划分为几大卷">
+                    <InfoCircleOutlined style={{ color: '#94a3b8', fontSize: '13px' }} />
+                  </Tooltip>
+                </div>
+              }
+              rules={[{ required: true, message: '请选择卷数' }]}
               initialValue={5}
             >
               <InputNumber
                 min={3}
                 max={8}
-                style={{ width: '100%', fontSize: '15px' }}
-                placeholder="建议 3-8 卷，默认 5 卷"
+                style={{ width: '100%', borderRadius: '8px' }}
+                placeholder="建议3-8卷，默认5卷"
+                addonAfter={<span style={{ color: '#64748b' }}>卷</span>}
                 size="large"
-                addonAfter="卷"
               />
+            </Form.Item>
+            {/* 模板选择器 - 使用 Select（避免被 Modal 边缘裁切） */}
+            <Form.Item 
+              name="templateId" 
+              label={
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '14px', fontWeight: 600, color: '#334155' }}>大纲模板</span>
+                  <Tooltip title="选择一个模板来指导大纲生成结构">
+                    <InfoCircleOutlined style={{ color: '#94a3b8', fontSize: '13px' }} />
+                  </Tooltip>
+                </div>
+              }
+            >
+              <Select
+                size="large"
+                allowClear
+                showSearch
+                value={selectedTemplateId}
+                placeholder={loadingTemplates ? '加载中...' : '默认使用系统模板'}
+                optionFilterProp="title"
+                optionLabelProp="title"
+                getPopupContainer={() => document.body}
+                dropdownStyle={{ zIndex: 2000 }}
+                onChange={(value) => {
+                  const next = (value as number | undefined);
+                  setSelectedTemplateId(next);
+                  outlineForm.setFieldValue('templateId', next);
+                }}
+                style={{ width: '100%' }}
+              >
+                {outlineTemplates.length === 0 ? (
+                  <Select.Option key="__empty" value={-1} title="暂无可用模板" disabled>
+                    <span style={{ color: '#94a3b8' }}>暂无可用模板</span>
+                  </Select.Option>
+                ) : (
+                  outlineTemplates.map((template: any) => (
+                    <Select.Option
+                      key={template.id}
+                      value={template.id}
+                      title={template.name}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {template.isDefault && (
+                          <Tag
+                            color="gold"
+                            style={{ margin: 0, fontSize: '12px', lineHeight: '18px', padding: '0 6px' }}
+                          >
+                            默认
+                          </Tag>
+                        )}
+                        <span style={{ fontWeight: template.isDefault ? 600 : 400, color: '#1e293b' }}>
+                          {template.name}
+                        </span>
+                        {template.description && (
+                          <span style={{ fontSize: '12px', color: '#94a3b8', marginLeft: 'auto' }}>
+                            {template.description}
+                          </span>
+                        )}
+                      </div>
+                    </Select.Option>
+                  ))
+                )}
+              </Select>
             </Form.Item>
 
             {/* 隐藏的构思字段，从创建页面自动填充 */}
@@ -3605,18 +3539,12 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
             </Form.Item>
           </Form>
 
-          <div style={{
-            marginTop: '16px',
-            padding: '12px 16px',
-            background: '#fef3c7',
-            border: '1px solid #fde68a',
-            borderRadius: '8px',
-            fontSize: '13px',
-            color: '#92400e',
-            lineHeight: '1.6'
-          }}>
-            <strong>📌 提示：</strong>这些参数将影响 AI 生成的大纲结构和卷规划，您可以在后续流程中进一步调整具体内容。
-          </div>
+          <Alert
+            type="info"
+            showIcon
+            message="这些参数将影响大纲与分卷规划的生成效果，后续流程仍可继续调整。"
+            style={{ marginTop: 16, borderRadius: 12 }}
+          />
         </div>
       </Modal>
 
@@ -3704,7 +3632,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                   alignItems: 'center',
                   gap: '6px'
                 }}>
-                  <span style={{ opacity: 0.9 }}>📖</span>
+                  <BookOutlined style={{ opacity: 0.9 }} />
                   <span>第{selectedVolume.chapterStart}-{selectedVolume.chapterEnd}章</span>
                 </div>
                 <div style={{
@@ -3719,7 +3647,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                   alignItems: 'center',
                   gap: '6px'
                 }}>
-                  <span style={{ opacity: 0.9 }}>✍️</span>
+                  <EditOutlined style={{ opacity: 0.9 }} />
                   <span>约{selectedVolume.estimatedWordCount}字</span>
                 </div>
               </div>
@@ -3746,7 +3674,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                   justifyContent: 'space-between'
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '16px' }}>📄</span>
+                    <BookOutlined style={{ fontSize: 16, color: '#475569' }} />
                     卷信息
                   </div>
                   <Button

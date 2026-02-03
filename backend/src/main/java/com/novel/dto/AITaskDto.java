@@ -100,6 +100,7 @@ public class AITaskDto {
         dto.setPrompt(entity.getInput());
         dto.setResult(entity.getOutput());
         dto.setParameters(entity.getParameters());
+        dto.setErrorMessage(entity.getError());
         dto.setUserId(entity.getUserId());
         dto.setNovelId(entity.getNovelId());
         dto.setModel("gpt-4");

@@ -323,6 +323,7 @@ public class VolumeChapterOutlineController {
     /**
      * 辅助方法：如果请求中包含指定字段，则更新（JSON 字段）
      * JSON 字段空值时必须设为 null，不能是空字符串，否则 MySQL 会报错
+     * 如果传入的值不是有效 JSON，则包装为 {"content": "..."} 格式
      */
     private void updateJsonFieldIfPresent(Map<String, Object> request, String fieldName, java.util.function.Consumer<String> setter) {
         if (request.containsKey(fieldName)) {
@@ -330,8 +331,44 @@ public class VolumeChapterOutlineController {
             if (value == null || value.toString().trim().isEmpty()) {
                 setter.accept(null);
             } else {
-                setter.accept(String.valueOf(value));
+                String strValue = String.valueOf(value).trim();
+                // 检查是否是有效的 JSON
+                if (isValidJson(strValue)) {
+                    setter.accept(strValue);
+                } else {
+                    // 不是有效 JSON，包装为 {"content": "..."} 格式
+                    try {
+                        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                        java.util.Map<String, String> wrapper = new java.util.HashMap<>();
+                        wrapper.put("content", strValue);
+                        setter.accept(mapper.writeValueAsString(wrapper));
+                    } catch (Exception e) {
+                        // 如果包装失败，设为 null 避免数据库报错
+                        logger.warn("包装 JSON 字段 {} 失败: {}", fieldName, e.getMessage());
+                        setter.accept(null);
+                    }
+                }
             }
+        }
+    }
+
+    /**
+     * 检查字符串是否是有效的 JSON
+     */
+    private boolean isValidJson(String str) {
+        if (str == null || str.trim().isEmpty()) {
+            return false;
+        }
+        String trimmed = str.trim();
+        // JSON 必须以 { 或 [ 开头
+        if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+            return false;
+        }
+        try {
+            new com.fasterxml.jackson.databind.ObjectMapper().readTree(trimmed);
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 

@@ -38,9 +38,10 @@ public class AITaskController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) String type) {
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) Long novelId) {
 
-        IPage<AITaskDto> tasks = aiTaskService.getTasks(page, size, status, type);
+        IPage<AITaskDto> tasks = aiTaskService.getTasks(page, size, status, type, novelId);
 
         Map<String, Object> response = new HashMap<>();
         response.put("content", tasks.getRecords());

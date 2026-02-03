@@ -520,6 +520,8 @@ const WritingStudioPage: React.FC = () => {
   
   // 章纲缺失提醒弹窗状态
   const [outlineMissingModalVisible, setOutlineMissingModalVisible] = useState(false)
+  // 标记章纲缺失弹窗的来源：'generate' 从生成按钮进入（显示“继续生成”），'outline' 从章纲按钮进入（不显示“继续生成”）
+  const [outlineMissingSource, setOutlineMissingSource] = useState<'generate' | 'outline'>('generate')
   const [outlineGenerateModalVisible, setOutlineGenerateModalVisible] = useState(false)
   const [isGeneratingOutline, setIsGeneratingOutline] = useState(false)
   const [outlineGenerateProgress, setOutlineGenerateProgress] = useState<string>('')
@@ -975,22 +977,12 @@ const WritingStudioPage: React.FC = () => {
         })
         setEditingChapterOutline(mapOutlineToEditingForm(res.outline, chapterNumber))
       } else {
-        const inferredVolume = volumeForChapter
-        const chapterInVolume =
-          inferredVolume && (inferredVolume as any).chapterStart != null
-            ? chapterNumber - Number((inferredVolume as any).chapterStart) + 1
-            : undefined
-        setEditingChapterOutline({
-          outlineId: undefined,
-          globalChapterNumber: chapterNumber,
-          chapterInVolume,
-          volumeNumber: inferredVolume?.volumeNumber,
-          direction: '',
-          keyPlotPoints: '',
-          foreshadowAction: 'NONE',
-          foreshadowDetail: '',
-          status: undefined,
-        })
+        // 章纲不存在，弹出提示询问是否生成（标记来源为 'outline'，不显示“继续生成”按钮）
+        console.log('[章纲] 章纲不存在，弹出生成提示')
+        setChapterOutlineLoading(false)
+        setOutlineMissingSource('outline')
+        setOutlineMissingModalVisible(true)
+        return
       }
 
       // 此处不再单独维护显隐状态，由 editingChapterOutline / loading 状态驱动
@@ -1463,8 +1455,9 @@ const WritingStudioPage: React.FC = () => {
         const outlineRes = await getChapterOutline(novelIdNumber, selectedChapter.chapterNumber)
         console.log('[章纲检查] 接口返回:', outlineRes)
         if (!outlineRes.hasOutline) {
-          // 章纲不存在，弹出提醒
+          // 章纲不存在，弹出提醒（标记来源为 'generate'，显示“继续生成”按钮）
           console.log('[章纲检查] 章纲不存在，弹出提醒')
+          setOutlineMissingSource('generate')
           setOutlineMissingModalVisible(true)
           return
         }
@@ -4145,6 +4138,7 @@ const WritingStudioPage: React.FC = () => {
               取消
             </Button>
             <Button 
+              type={outlineMissingSource === 'outline' ? 'primary' : 'default'}
               size="large"
               icon={<FileTextOutlined />}
               onClick={openOutlineGenerateModal}
@@ -4152,60 +4146,77 @@ const WritingStudioPage: React.FC = () => {
                 minWidth: 130,
                 height: 44,
                 borderRadius: 11,
-                fontWeight: 500,
-                fontSize: 14,
-                background: 'linear-gradient(180deg, #f0f5ff 0%, #e6edff 100%)',
-                borderColor: '#adc6ff',
-                color: '#2f54eb',
-                boxShadow: '0 2px 8px rgba(47, 84, 235, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.8)',
+                fontWeight: outlineMissingSource === 'outline' ? 600 : 500,
+                fontSize: outlineMissingSource === 'outline' ? 15 : 14,
+                background: outlineMissingSource === 'outline'
+                  ? 'linear-gradient(145deg, #667eea 0%, #5a67d8 50%, #764ba2 100%)'
+                  : 'linear-gradient(180deg, #f0f5ff 0%, #e6edff 100%)',
+                borderColor: outlineMissingSource === 'outline' ? 'transparent' : '#adc6ff',
+                color: outlineMissingSource === 'outline' ? '#fff' : '#2f54eb',
+                boxShadow: outlineMissingSource === 'outline'
+                  ? '0 4px 16px rgba(102, 126, 234, 0.4), 0 2px 8px rgba(102, 126, 234, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.2)'
+                  : '0 2px 8px rgba(47, 84, 235, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.8)',
                 transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'linear-gradient(180deg, #e6edff 0%, #d6e4ff 100%)'
-                e.currentTarget.style.borderColor = '#91a7ff'
-                e.currentTarget.style.transform = 'translateY(-1px)'
-                e.currentTarget.style.boxShadow = '0 4px 12px rgba(47, 84, 235, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.8)'
+                if (outlineMissingSource === 'outline') {
+                  e.currentTarget.style.transform = 'translateY(-2px)'
+                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.45), 0 3px 10px rgba(102, 126, 234, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.25)'
+                } else {
+                  e.currentTarget.style.background = 'linear-gradient(180deg, #e6edff 0%, #d6e4ff 100%)'
+                  e.currentTarget.style.borderColor = '#91a7ff'
+                  e.currentTarget.style.transform = 'translateY(-1px)'
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(47, 84, 235, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.8)'
+                }
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'linear-gradient(180deg, #f0f5ff 0%, #e6edff 100%)'
-                e.currentTarget.style.borderColor = '#adc6ff'
-                e.currentTarget.style.transform = 'translateY(0)'
-                e.currentTarget.style.boxShadow = '0 2px 8px rgba(47, 84, 235, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.8)'
+                if (outlineMissingSource === 'outline') {
+                  e.currentTarget.style.transform = 'translateY(0)'
+                  e.currentTarget.style.boxShadow = '0 4px 16px rgba(102, 126, 234, 0.4), 0 2px 8px rgba(102, 126, 234, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.2)'
+                } else {
+                  e.currentTarget.style.background = 'linear-gradient(180deg, #f0f5ff 0%, #e6edff 100%)'
+                  e.currentTarget.style.borderColor = '#adc6ff'
+                  e.currentTarget.style.transform = 'translateY(0)'
+                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(47, 84, 235, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.8)'
+                }
               }}
             >
               生成章纲
             </Button>
-            <Button 
-              type="primary"
-              size="large"
-              icon={<RocketOutlined />}
-              onClick={() => {
-                setOutlineMissingModalVisible(false)
-                handleSendAIRequest(true)
-              }}
-              style={{ 
-                minWidth: 130,
-                height: 44,
-                borderRadius: 11,
-                fontWeight: 600,
-                fontSize: 15,
-                letterSpacing: '0.4px',
-                background: 'linear-gradient(145deg, #667eea 0%, #5a67d8 50%, #764ba2 100%)',
-                border: 'none',
-                boxShadow: '0 4px 16px rgba(102, 126, 234, 0.4), 0 2px 8px rgba(102, 126, 234, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.2)',
-                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)'
-                e.currentTarget.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.45), 0 3px 10px rgba(102, 126, 234, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.25)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)'
-                e.currentTarget.style.boxShadow = '0 4px 16px rgba(102, 126, 234, 0.4), 0 2px 8px rgba(102, 126, 234, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.2)'
-              }}
-            >
-              继续生成
-            </Button>
+            {/* 仅当从“生成”按钮进入时显示“继续生成”按钮 */}
+            {outlineMissingSource === 'generate' && (
+              <Button 
+                type="primary"
+                size="large"
+                icon={<RocketOutlined />}
+                onClick={() => {
+                  setOutlineMissingModalVisible(false)
+                  handleSendAIRequest(true)
+                }}
+                style={{ 
+                  minWidth: 130,
+                  height: 44,
+                  borderRadius: 11,
+                  fontWeight: 600,
+                  fontSize: 15,
+                  letterSpacing: '0.4px',
+                  background: 'linear-gradient(145deg, #667eea 0%, #5a67d8 50%, #764ba2 100%)',
+                  border: 'none',
+                  boxShadow: '0 4px 16px rgba(102, 126, 234, 0.4), 0 2px 8px rgba(102, 126, 234, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.2)',
+                  transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)'
+                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.45), 0 3px 10px rgba(102, 126, 234, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.25)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)'
+                  e.currentTarget.style.boxShadow = '0 4px 16px rgba(102, 126, 234, 0.4), 0 2px 8px rgba(102, 126, 234, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.2)'
+                }}
+              >
+                继续生成
+              </Button>
+            )}
           </div>
         </div>
       </Modal>

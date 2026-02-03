@@ -28,6 +28,9 @@ import WritingStudioPage from '@/pages/WritingStudioPage'
 import ShortStoryListPage from '@/pages/shortstory/ShortStoryListPage'
 import ShortStoryCreatePage from '@/pages/shortstory/ShortStoryCreatePage'
 import ShortStoryWorkflowPage from '@/pages/shortstory/ShortStoryWorkflowPage'
+import VideoScriptListPage from '@/pages/videoscript/VideoScriptListPage'
+import VideoScriptCreatePage from '@/pages/videoscript/VideoScriptCreatePage'
+import VideoScriptWorkflowPage from '@/pages/videoscript/VideoScriptWorkflowPage'
 import './App.new.css'
 
 
@@ -37,7 +40,8 @@ const App: React.FC = () => {
   // 检查是否是写作页面(不显示导航栏和侧边栏)
   // 注意：/short-stories/create 不是写作页面，需要排除
   const isWritingPage = location.pathname.includes('/writing') || 
-    (location.pathname.includes('/short-stories/') && !location.pathname.includes('/short-stories/create'))
+    (location.pathname.includes('/short-stories/') && !location.pathname.includes('/short-stories/create')) ||
+    (location.pathname.includes('/video-scripts/') && !location.pathname.includes('/video-scripts/create'))
   
   // 检查是否是认证页面(登录/注册,不显示导航栏和侧边栏)
   const isAuthPage = location.pathname === '/login' || location.pathname === '/register'
@@ -52,6 +56,7 @@ const App: React.FC = () => {
             <Route path="/novels/:novelId/volumes/:volumeId/writing" element={<ProtectedRoute><VolumeWritingStudio /></ProtectedRoute>} />
             <Route path="/novels/:novelId/writing-studio" element={<ProtectedRoute><WritingStudioPage /></ProtectedRoute>} />
             <Route path="/short-stories/:id" element={<ProtectedRoute><ShortStoryWorkflowPage /></ProtectedRoute>} />
+            <Route path="/video-scripts/:id" element={<ProtectedRoute><VideoScriptWorkflowPage /></ProtectedRoute>} />
           </Routes>
         </Layout>
       ) : isAuthPage ? (
@@ -82,6 +87,9 @@ const App: React.FC = () => {
             {/* 短篇小说路由 */}
             <Route path="/short-stories" element={<ProtectedRoute><ShortStoryListPage /></ProtectedRoute>} />
             <Route path="/short-stories/create" element={<ProtectedRoute><ShortStoryCreatePage /></ProtectedRoute>} />
+            {/* 短视频剧本路由 */}
+            <Route path="/video-scripts" element={<ProtectedRoute><VideoScriptListPage /></ProtectedRoute>} />
+            <Route path="/video-scripts/create" element={<ProtectedRoute><VideoScriptCreatePage /></ProtectedRoute>} />
           </Routes>
         </ModernLayout>
       )}
