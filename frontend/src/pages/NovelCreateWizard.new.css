@@ -1,227 +1,273 @@
 /* ==========================================
-   新建小说向导
+   新建小说向导 - Zen Studio Design
    ========================================== */
 
-.novel-create-page {
+:root {
+  /* Clean, normal light theme (polished) */
+  --zen-page-bg: #f8fafc;
+  --zen-card-bg: #ffffff;
+  --zen-surface-muted: #f8fafc;
+  --zen-text-primary: #0f172a;
+  --zen-text-secondary: #64748b;
+  --zen-text-tertiary: #94a3b8;
+  --zen-border: #e2e8f0;
+  --zen-primary: #4f46e5;
+  --zen-primary-hover: #4338ca;
+  --zen-focus-ring: rgba(79, 70, 229, 0.14);
+  --zen-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 12px 24px rgba(15, 23, 42, 0.06);
+}
+
+.novel-create-zen {
   width: 100%;
+  min-height: calc(100vh - 64px);
+  background: linear-gradient(180deg, #ffffff 0%, var(--zen-page-bg) 70%, #eef2ff 140%);
+  color: var(--zen-text-primary);
+  padding: 36px 0 56px;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+.zen-container {
+  width: 100%;
+  max-width: 760px;
+  padding: 0 24px;
+  margin: 0 auto;
+}
+
+/* Header */
+.zen-header {
+  margin-bottom: 24px;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
 }
 
-.novel-create-container {
-  width: 100%;
-  max-width: 640px;
-}
-
-/* 返回按钮 */
-.novel-create-back {
+.zen-back-btn {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--zen-border);
+  color: var(--zen-text-secondary);
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 0;
-  margin-bottom: 32px;
+  margin-bottom: 14px;
+  box-shadow: 0 8px 18px -14px rgba(15, 23, 42, 0.25);
+}
+
+.zen-back-btn:hover {
+  border-color: rgba(79, 70, 229, 0.35);
+  color: var(--zen-primary);
+  background: rgba(79, 70, 229, 0.06);
+  box-shadow: 0 14px 26px -18px rgba(79, 70, 229, 0.35);
+}
+
+.zen-title {
+  margin: 10px 0 8px 0;
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--zen-text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.zen-subtitle {
   font-size: 14px;
-  font-weight: 500;
-  color: #64748b;
-  background: none;
-  border: none;
-  cursor: pointer;
-  transition: color 0.2s;
+  color: var(--zen-text-secondary);
+  max-width: 60ch;
+  line-height: 1.75;
 }
 
-.novel-create-back:hover {
-  color: #0f172a;
-}
-
-/* 页面头部 */
-.novel-create-header {
-  margin-bottom: 40px;
-}
-
-.novel-create-header h1 {
-  font-size: 32px;
-  font-weight: 700;
-  color: #0f172a;
-  margin: 0 0 10px;
-  letter-spacing: -0.025em;
-}
-
-.novel-create-header p {
-  font-size: 15px;
-  color: #64748b;
-  margin: 0;
-  line-height: 1.6;
-}
-
-/* 表单区域 */
-.novel-create-form {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  padding: 36px;
-}
-
-/* 表单组 */
-.novel-form-group {
-  margin-bottom: 36px;
-}
-
-.novel-form-group:last-of-type {
-  margin-bottom: 0;
-}
-
-.novel-form-label {
-  display: block;
-  font-size: 15px;
-  font-weight: 600;
-  color: #0f172a;
-  margin-bottom: 12px;
-}
-
-.novel-form-hint {
-  font-size: 13px;
-  color: #94a3b8;
-  margin-top: 10px;
-  line-height: 1.5;
-}
-
-/* 输入框 */
-.novel-input {
-  width: 100%;
-  height: 56px !important;
-  padding: 0 20px !important;
-  font-size: 16px !important;
-  border: 1px solid #e2e8f0 !important;
-  border-radius: 12px !important;
-  background: #fff !important;
-  transition: all 0.2s ease !important;
-  color: #0f172a !important;
-}
-
-.novel-input:hover {
-  border-color: #cbd5e1 !important;
-}
-
-.novel-input:focus {
-  border-color: #0f172a !important;
-  box-shadow: none !important;
-}
-
-.novel-input::placeholder {
-  color: #94a3b8 !important;
-}
-
-/* 文本域 */
-.novel-textarea {
-  width: 100%;
-  min-height: 280px !important;
-  padding: 20px !important;
-  font-size: 15px !important;
-  line-height: 1.8 !important;
-  border: 1px solid #e2e8f0 !important;
-  border-radius: 12px !important;
-  background: #fff !important;
-  resize: vertical !important;
-  transition: all 0.2s ease !important;
-  color: #0f172a !important;
-}
-
-.novel-textarea:hover {
-  border-color: #cbd5e1 !important;
-}
-
-.novel-textarea:focus {
-  border-color: #0f172a !important;
-  box-shadow: none !important;
-  outline: none !important;
-}
-
-.novel-textarea::placeholder {
-  color: #94a3b8 !important;
-}
-
-/* 覆盖 antd textarea 样式 */
-.novel-create-form .ant-input-textarea-show-count {
+/* 核心表单 */
+.zen-form-card {
+  background: var(--zen-card-bg);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 18px;
+  padding: 32px;
+  box-shadow: var(--zen-shadow);
   position: relative;
+  overflow: hidden;
 }
 
-.novel-create-form .ant-input-textarea-show-count .ant-input {
-  border: none !important;
-  box-shadow: none !important;
+.zen-form-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
-.novel-create-form .ant-input-textarea-show-count > .ant-input-textarea {
-  border: 1px solid #e2e8f0 !important;
-  border-radius: 12px !important;
+.zen-form-card::before {
+  content: none;
 }
 
-.novel-create-form .ant-input-textarea-show-count > .ant-input-textarea:hover {
-  border-color: #cbd5e1 !important;
+.zen-form-item {
+  margin-bottom: 18px;
 }
 
-.novel-create-form .ant-input-textarea-show-count > .ant-input-textarea:focus-within {
-  border-color: #0f172a !important;
-  box-shadow: none !important;
-}
-
-.novel-create-form .ant-input-textarea-show-count::after {
-  font-size: 13px;
-  color: #94a3b8;
-  margin-top: 8px;
-}
-
-/* 提交按钮 */
-.novel-submit-btn {
-  width: 100%;
-  height: 52px !important;
-  margin-top: 36px;
-  font-size: 15px !important;
-  font-weight: 600 !important;
-  border-radius: 12px !important;
-  background: #0f172a !important;
-  border: none !important;
-  transition: all 0.2s ease !important;
-}
-
-.novel-submit-btn:hover:not(:disabled) {
-  background: #1e293b !important;
-}
-
-.novel-submit-btn:disabled {
-  background: #94a3b8 !important;
-}
-
-/* 表单验证错误 */
-.novel-create-form .ant-form-item-explain-error {
-  font-size: 13px;
-  margin-top: 8px;
-  color: #ef4444;
-}
-
-.novel-create-form .ant-form-item {
+.zen-form-item:last-child {
   margin-bottom: 0;
 }
 
-/* 响应式 */
-@media (max-width: 768px) {
-  .novel-create-header h1 {
-    font-size: 26px;
+.zen-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.zen-form-card .ant-form-item-explain-error {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.zen-form-card .zen-count {
+  color: var(--zen-text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* 输入框风格 - 沉浸式 */
+.zen-input {
+  height: 44px !important;
+  border: 1px solid var(--zen-border) !important;
+  border-radius: 12px !important;
+  padding: 0 14px !important;
+  font-size: 15px !important;
+  background: var(--zen-surface-muted) !important;
+  color: var(--zen-text-primary) !important;
+  box-shadow: none !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease !important;
+}
+
+.zen-input::placeholder {
+  color: var(--zen-text-tertiary) !important;
+}
+
+.zen-input:hover {
+  border-color: rgba(79, 70, 229, 0.30) !important;
+  background: #ffffff !important;
+}
+
+.zen-input:focus {
+  border-color: var(--zen-primary) !important;
+  box-shadow: 0 0 0 3px var(--zen-focus-ring) !important;
+  background: #ffffff !important;
+}
+
+/* 文本域风格 */
+.zen-textarea {
+  border: 1px solid var(--zen-border) !important;
+  border-radius: 12px !important;
+  padding: 14px !important;
+  font-size: 15px !important;
+  background: var(--zen-surface-muted) !important;
+  color: var(--zen-text-primary) !important;
+  line-height: 1.65 !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease !important;
+  resize: none !important;
+}
+
+.zen-textarea::placeholder {
+  color: var(--zen-text-tertiary) !important;
+}
+
+.zen-textarea:hover {
+  border-color: rgba(79, 70, 229, 0.30) !important;
+  background: #ffffff !important;
+}
+
+.zen-textarea:focus {
+  border-color: var(--zen-primary) !important;
+  box-shadow: 0 0 0 3px var(--zen-focus-ring) !important;
+  background: #ffffff !important;
+}
+
+/* 提交按钮 - 发光 */
+.zen-submit-btn {
+  width: 100%;
+  height: 46px !important;
+  background: linear-gradient(180deg, #4f46e5 0%, #4338ca 100%) !important;
+  border: none !important;
+  border-radius: 12px !important;
+  font-size: 16px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  box-shadow: 0 14px 26px -16px rgba(79, 70, 229, 0.55) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease !important;
+  margin-top: 8px;
+}
+
+.zen-submit-btn:disabled {
+  filter: saturate(0.7);
+}
+
+.zen-submit-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 34px -18px rgba(79, 70, 229, 0.65) !important;
+  filter: brightness(1.02);
+}
+
+/* 灵感提示 - 底部微弱显示 */
+.zen-hints {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  color: var(--zen-text-secondary);
+  font-size: 13px;
+}
+
+.zen-hint-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.zen-hint-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  background: rgba(79, 70, 229, 0.10);
+  color: var(--zen-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+  .novel-create-zen {
+    padding: 20px 0 32px;
   }
 
-  .novel-create-form {
-    padding: 24px;
+  .zen-container {
+    padding: 0 16px;
+  }
+
+  .zen-back-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .zen-form-card {
+    padding: 18px;
     border-radius: 14px;
   }
 
-  .novel-input {
-    height: 48px !important;
-  }
-
-  .novel-textarea {
-    min-height: 200px !important;
-  }
-
-  .novel-submit-btn {
-    height: 48px !important;
+  .zen-title {
+    font-size: 24px;
   }
 }

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Card, Button, Form, Input, InputNumber, Select, Typography, Space,
   Modal, Tag, Progress, Divider,
@@ -10,7 +11,7 @@ import {
   RobotOutlined,
   BarChartOutlined, BulbOutlined, SettingOutlined, ArrowRightOutlined,
   CheckCircleOutlined, ClockCircleOutlined, ExclamationCircleOutlined,
-  ReloadOutlined, PlayCircleOutlined, EyeOutlined, InfoCircleOutlined
+  ReloadOutlined, PlayCircleOutlined, EyeOutlined, InfoCircleOutlined, DownOutlined, StarFilled
 } from '@ant-design/icons';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import novelVolumeService, { NovelVolume } from '../services/novelVolumeService';
@@ -30,6 +31,132 @@ interface LocationState {
   initialIdea?: string;
   autoGenerate?: boolean;
 }
+
+interface OutlineTemplateSelectProps {
+  value?: number;
+  onChange: (value: number | undefined) => void;
+  options: any[];
+  loading?: boolean;
+}
+
+const OutlineTemplateSelect: React.FC<OutlineTemplateSelectProps> = ({ value, onChange, options, loading }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const updatePosition = () => {
+      if (triggerRef.current && isOpen) {
+        const rect = triggerRef.current.getBoundingClientRect();
+        setPosition({
+          top: rect.bottom + 8,
+          left: rect.left,
+          width: rect.width
+        });
+      }
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        triggerRef.current && 
+        !triggerRef.current.contains(e.target as Node) &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const handleToggle = () => {
+    if (!loading) {
+      if (!isOpen && triggerRef.current) {
+        const rect = triggerRef.current.getBoundingClientRect();
+        setPosition({
+          top: rect.bottom + 8,
+          left: rect.left,
+          width: rect.width
+        });
+      }
+      setIsOpen(!isOpen);
+    }
+  };
+
+  const selectedOption = options.find(o => o.id === value);
+
+  return (
+    <div className="apple-select">
+      <div 
+        ref={triggerRef}
+        className={`apple-select-trigger ${isOpen ? 'open' : ''}`}
+        onClick={handleToggle}
+      >
+        {selectedOption ? (
+          <span className="apple-select-value">{selectedOption.name}</span>
+        ) : (
+          <span className="apple-select-placeholder">
+            {loading ? '加载中...' : '默认使用系统模板'}
+          </span>
+        )}
+        <DownOutlined className="apple-select-arrow" />
+      </div>
+
+      {isOpen && createPortal(
+        <div 
+          ref={dropdownRef}
+          className="apple-select-dropdown-portal"
+          style={{ 
+            top: position.top, 
+            left: position.left, 
+            width: position.width 
+          }}
+        >
+          <div 
+            className={`apple-select-option ${!value ? 'selected' : ''}`}
+            onClick={() => {
+              onChange(undefined);
+              setIsOpen(false);
+            }}
+          >
+             <span className="apple-select-option-name">默认使用系统模板</span>
+          </div>
+          {options.map((option) => (
+            <div
+              key={option.id}
+              className={`apple-select-option ${value === option.id ? 'selected' : ''}`}
+              onClick={() => {
+                onChange(option.id);
+                setIsOpen(false);
+              }}
+            >
+              {option.isDefault && <StarFilled className="apple-select-option-star" />}
+              <span className="apple-select-option-name">{option.name}</span>
+              {option.description && (
+                <span className="apple-select-option-desc">{option.description}</span>
+              )}
+            </div>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+};
 
 const VolumeManagementPage: React.FC = () => {
   const { message } = AntdApp.useApp();
@@ -3469,7 +3596,7 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                 size="large"
               />
             </Form.Item>
-            {/* 模板选择器 - 使用 Select（避免被 Modal 边缘裁切） */}
+            {/* 模板选择器 - 使用原生 select（更稳定，避免某些环境下 antd Select 无法展开） */}
             <Form.Item 
               name="templateId" 
               label={
@@ -3481,56 +3608,24 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
                 </div>
               }
             >
-              <Select
-                size="large"
-                allowClear
-                showSearch
+              <OutlineTemplateSelect
                 value={selectedTemplateId}
-                placeholder={loadingTemplates ? '加载中...' : '默认使用系统模板'}
-                optionFilterProp="title"
-                optionLabelProp="title"
-                getPopupContainer={() => document.body}
-                dropdownStyle={{ zIndex: 2000 }}
-                onChange={(value) => {
-                  const next = (value as number | undefined);
-                  setSelectedTemplateId(next);
-                  outlineForm.setFieldValue('templateId', next);
+                options={outlineTemplates}
+                loading={loadingTemplates}
+                onChange={(val) => {
+                  setSelectedTemplateId(val);
+                  outlineForm.setFieldValue('templateId', val);
                 }}
-                style={{ width: '100%' }}
-              >
-                {outlineTemplates.length === 0 ? (
-                  <Select.Option key="__empty" value={-1} title="暂无可用模板" disabled>
-                    <span style={{ color: '#94a3b8' }}>暂无可用模板</span>
-                  </Select.Option>
-                ) : (
-                  outlineTemplates.map((template: any) => (
-                    <Select.Option
-                      key={template.id}
-                      value={template.id}
-                      title={template.name}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {template.isDefault && (
-                          <Tag
-                            color="gold"
-                            style={{ margin: 0, fontSize: '12px', lineHeight: '18px', padding: '0 6px' }}
-                          >
-                            默认
-                          </Tag>
-                        )}
-                        <span style={{ fontWeight: template.isDefault ? 600 : 400, color: '#1e293b' }}>
-                          {template.name}
-                        </span>
-                        {template.description && (
-                          <span style={{ fontSize: '12px', color: '#94a3b8', marginLeft: 'auto' }}>
-                            {template.description}
-                          </span>
-                        )}
-                      </div>
-                    </Select.Option>
-                  ))
-                )}
-              </Select>
+              />
+
+              {(() => {
+                const selected = Array.isArray(outlineTemplates)
+                  ? outlineTemplates.find((t: any) => t?.id === selectedTemplateId)
+                  : null;
+                return selected?.description ? (
+                  <div className="vm-template-hint">{selected.description}</div>
+                ) : null;
+              })()}
             </Form.Item>
 
             {/* 隐藏的构思字段，从创建页面自动填充 */}

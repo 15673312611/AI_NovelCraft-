@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Button, Input, Empty, Spin, Modal, message, Tag, Form } from 'antd'
-import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, FileTextOutlined, DownOutlined, CheckOutlined, ClockCircleOutlined, NodeIndexOutlined } from '@ant-design/icons'
+import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, FileTextOutlined, DownOutlined, ClockCircleOutlined, NodeIndexOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { AppDispatch, RootState } from '@/store'
@@ -30,44 +30,9 @@ const NovelListPage: React.FC = () => {
   const [editingNovel, setEditingNovel] = useState<any | null>(null)
   const [editForm] = Form.useForm()
 
-  const [sortMenuOpen, setSortMenuOpen] = useState(false)
-  const sortDropdownRef = useRef<HTMLDivElement | null>(null)
-  
   const [graphModalVisible, setGraphModalVisible] = useState(false)
   const [selectedNovelForGraph, setSelectedNovelForGraph] = useState<{ id: number; title: string } | null>(null)
 
-  const handleToggleSortMenu = () => {
-    setSortMenuOpen((prev) => !prev)
-  }
-
-  const handleSelectSort = (key: string) => {
-    setSortBy(key)
-    setSortMenuOpen(false)
-  }
-
-  useEffect(() => {
-    if (!sortMenuOpen) return
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (sortDropdownRef.current && !sortDropdownRef.current.contains(event.target as Node)) {
-        setSortMenuOpen(false)
-      }
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setSortMenuOpen(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    document.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [sortMenuOpen])
 
   // 初始加载
   useEffect(() => {
@@ -253,6 +218,8 @@ const NovelListPage: React.FC = () => {
 
   return (
     <div className="modern-novel-list">
+      <div className="page-bg-decoration"></div>
+      
       {/* 顶部标题区 */}
       <div className="page-header-modern">
         <div className="page-title-group">
@@ -275,30 +242,28 @@ const NovelListPage: React.FC = () => {
         </div>
 
         <div className="actions-section">
-          {/* 排序下拉 */}
-          <div className="sort-dropdown-wrapper" ref={sortDropdownRef} style={{ position: 'relative' }}>
-            <div className={`sort-trigger-modern ${sortMenuOpen ? 'active' : ''}`} onClick={handleToggleSortMenu}>
+          {/* 排序下拉（使用原生 select 覆盖，避免自定义下拉在某些浏览器/布局下无法展开） */}
+          <div className="sort-native-wrapper">
+            <select
+              className="sort-native-select"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              aria-label="排序方式"
+            >
+              {sortOptions.map(({ key, label }) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
+
+            <div className="sort-trigger-modern">
               <span className="sort-icon">
                 {sortBy === 'updatedAt' || sortBy === 'createdAt' ? <ClockCircleOutlined /> : <NodeIndexOutlined />}
               </span>
               <span className="sort-label">{sortOptions.find(o => o.key === sortBy)?.label || '排序'}</span>
               <DownOutlined className="dropdown-arrow" style={{ fontSize: 10, marginLeft: 4 }} />
             </div>
-
-            {sortMenuOpen && (
-              <div className="sort-menu-modern">
-                {sortOptions.map(({ key, label }) => (
-                  <div
-                    key={key}
-                    className={`sort-option ${sortBy === key ? 'active' : ''}`}
-                    onClick={() => handleSelectSort(key)}
-                  >
-                    <span>{label}</span>
-                    {sortBy === key && <CheckOutlined />}
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* 新建按钮 */}

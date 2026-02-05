@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
-import { Form, Input, Button, message } from 'antd'
-import { ArrowLeftOutlined } from '@ant-design/icons'
+import { Form, Input, Button, message, Typography } from 'antd'
+import { ArrowLeftOutlined, ThunderboltOutlined, BulbOutlined, CompassOutlined, FireOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch } from 'react-redux'
 import { AppDispatch } from '@/store'
@@ -9,6 +9,7 @@ import { createNovel } from '@/store/slices/novelSlice'
 import './NovelCreateWizard.new.css'
 
 const { TextArea } = Input
+const { Title } = Typography
 
 interface CreateNovelForm {
   title: string
@@ -34,7 +35,7 @@ const NovelCreateWizard: React.FC = () => {
         totalWordTarget: 300000,
       })).unwrap()
 
-      message.success('小说创建成功！')
+      message.success('创作空间已初始化')
       
       navigate(`/novels/${result.id}/volumes`, {
         state: { initialIdea: values.description, autoGenerate: true }
@@ -48,83 +49,91 @@ const NovelCreateWizard: React.FC = () => {
   }
 
   return (
-    <div className="novel-create-page">
-      <div className="novel-create-container">
-        {/* 返回按钮 */}
-        <button className="novel-create-back" onClick={() => navigate('/novels')}>
-          <ArrowLeftOutlined />
-          <span>返回小说列表</span>
-        </button>
-
-        {/* 页面头部 */}
-        <div className="novel-create-header">
-          <h1>创建新小说</h1>
-          <p>输入你的创意构思，AI 将帮你构建完整的故事框架和分卷规划</p>
+    <div className="novel-create-zen">
+      <div className="zen-container">
+        {/* Header */}
+        <div className="zen-header">
+          <button className="zen-back-btn" onClick={() => navigate('/novels')}>
+            <ArrowLeftOutlined /> 返回列表
+          </button>
+          <Title level={1} className="zen-title">开启新的创作之旅</Title>
+          <div className="zen-subtitle">
+            每一个伟大的故事，都始于一个简单的念头。在这里，让 AI 协助你将灵感编织成宏大的世界。
+          </div>
         </div>
 
-        {/* 表单 */}
-        <div className="novel-create-form">
+        {/* Central Form Card */}
+        <div className="zen-form-card">
           <Form
             form={form}
             layout="vertical"
             onFinish={onFinish}
+            className="zen-form"
           >
-            {/* 作品名称 */}
-            <div className="novel-form-group">
-              <label className="novel-form-label">作品名称</label>
+            {/* Title */}
+            <div className="zen-form-item">
+              <label className="zen-label">作品名称</label>
               <Form.Item
                 name="title"
-                rules={[
-                  { required: true, message: '请输入作品名称' },
-                  { max: 100, message: '名称不能超过100个字符' },
-                ]}
+                rules={[{ required: true, message: '请输入标题' }]}
+                style={{ marginBottom: 0 }}
               >
                 <Input 
-                  placeholder="给你的故事起个名字" 
-                  className="novel-input"
+                  placeholder="给你的故事起个响亮的名字..." 
+                  className="zen-input"
+                  autoComplete="off"
                 />
               </Form.Item>
             </div>
 
-            {/* 创作构思 */}
-            <div className="novel-form-group">
-              <label className="novel-form-label">创作构思</label>
+            {/* Description */}
+            <div className="zen-form-item">
+              <label className="zen-label">核心构思</label>
               <Form.Item
                 name="description"
                 rules={[
-                  { required: true, message: '请输入创作构思' },
-                  { min: 50, message: '构思至少需要50个字符' },
-                  { max: 3000, message: '构思不能超过3000个字符' },
+                  { required: true, message: '请输入构思' },
+                  { min: 50, message: '请至少输入50个字以生成有效大纲' }
                 ]}
+                style={{ marginBottom: 0 }}
               >
                 <TextArea 
-                  placeholder="描述你的故事构思...
-
-可以包含：
-• 故事背景和世界观设定
-• 主角人设和性格特点
-• 核心冲突和矛盾
-• 大致的情节走向" 
-                  showCount
+                  placeholder="描述你的世界观、主角人设、核心冲突..." 
+                  className="zen-textarea"
+                  autoSize={{ minRows: 6, maxRows: 12 }}
+                  showCount={{ formatter: ({ count }) => <span className="zen-count">{count}/3000</span> }}
                   maxLength={3000}
-                  className="novel-textarea"
                 />
               </Form.Item>
-              <p className="novel-form-hint">
-                构思越详细，AI 生成的大纲和分卷规划越精准
-              </p>
             </div>
 
-            {/* 提交按钮 */}
+            {/* Submit */}
             <Button
               type="primary"
               htmlType="submit"
               loading={loading}
-              className="novel-submit-btn"
+              className="zen-submit-btn"
+              icon={!loading && <ThunderboltOutlined />}
             >
-              {loading ? '创建中...' : '开始创作'}
+              {loading ? '正在构建世界...' : '开始创作'}
             </Button>
           </Form>
+        </div>
+
+        {/* Inspiration Hints */}
+        <div className="zen-hints">
+          <div className="zen-hint-item">
+            <div className="zen-hint-icon"><BulbOutlined /></div>
+            <span>世界观设定</span>
+          </div>
+          <div className="zen-hint-item">
+            <div className="zen-hint-icon"><CompassOutlined /></div>
+            <span>剧情结构</span>
+          </div>
+          <div className="zen-hint-item">
+            <div className="zen-hint-icon"><FireOutlined /></div>
+            <span>核心冲突</span>
+          </div>
         </div>
       </div>
     </div>
