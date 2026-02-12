@@ -1,165 +1,393 @@
-# 📚 AI网文创作系统
+<p align="center">
+  <img src="https://img.shields.io/badge/🚀_AI驱动-网文创作革命-gradient?style=for-the-badge&labelColor=000&color=blue" alt="AI Novel"/>
+</p>
 
-<div align="center">
+<h1 align="center">📚 AI 智能网文创作系统</h1>
 
-![License](https://img.shields.io/badge/license-Personal%20Use%20Only-blue.svg)
-![Java](https://img.shields.io/badge/Java-17+-orange.svg)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-2.7+-green.svg)
-![React](https://img.shields.io/badge/React-18+-61dafb.svg)
-![TypeScript](https://img.shields.io/badge/TypeScript-5+-blue.svg)
+<p align="center">
+  <strong>多模型大语言模型（LLM）驱动的 AI 小说 / 网文创作平台：从世界观与角色设定、大纲与分卷，到章节生成、润色与去 AI 味（消痕）的一体化工作流</strong>
+</p>
 
-一个智能化的网络小说创作辅助系统，结合多种AI大模型，为作者提供从构思到成稿的全流程创作支持。
+<p align="center">
+  <strong>微信：soe303（交流 / 反馈 / 合作）</strong>
+</p>
 
-[功能特性](#-功能特性) • [技术栈](#-技术栈) • [快速开始](#-快速开始) • [使用说明](#-使用说明) • [开发指南](#-开发指南)
+<p align="center">
+  <a href="https://novel.cutb.cn/">
+    <img src="https://img.shields.io/badge/🌐_在线体验-novel.cutb.cn-blue?style=for-the-badge" alt="Live Demo"/>
+  </a>
+</p>
 
-</div>
+<p align="center">
+  <img src="https://img.shields.io/badge/Java-17+-ED8B00?style=flat-square&logo=openjdk&logoColor=white" alt="Java"/>
+  <img src="https://img.shields.io/badge/Spring_Boot-2.7.18-6DB33F?style=flat-square&logo=spring-boot&logoColor=white" alt="Spring Boot"/>
+  <img src="https://img.shields.io/badge/React-18.2-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React"/>
+  <img src="https://img.shields.io/badge/TypeScript-5.0-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript"/>
+  <img src="https://img.shields.io/badge/Ant_Design-5.x-0170FE?style=flat-square&logo=ant-design&logoColor=white" alt="Ant Design"/>
+  <img src="https://img.shields.io/badge/MySQL-8.0-4479A1?style=flat-square&logo=mysql&logoColor=white" alt="MySQL"/>
+  <img src="https://img.shields.io/badge/Redis-7.x-DC382D?style=flat-square&logo=redis&logoColor=white" alt="Redis"/>
+  <img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker"/>
+</p>
 
-作者微信:soe303  可以探讨
+<p align="center">
+  <img src="https://img.shields.io/badge/DeepSeek-Supported-00D4AA?style=flat-square" alt="DeepSeek"/>
+  <img src="https://img.shields.io/badge/通义千问-Supported-FF6A00?style=flat-square" alt="Qwen"/>
+  <img src="https://img.shields.io/badge/Kimi-Supported-7C3AED?style=flat-square" alt="Kimi"/>
+  <img src="https://img.shields.io/badge/OpenAI_Compatible-Supported-412991?style=flat-square" alt="OpenAI"/>
+</p>
 
----
-
-## ✨ 功能特性
-
-### 🎯 核心功能
-
-- **📝 智能大纲生成**
-  - AI辅助生成小说超级大纲
-  - 支持卷级规划和章节拆分
-  - 自动生成卷标题和主题
-  - 详细的情节线、角色发展和伏笔设计
-
-- **📖 分卷创作管理**
-  - 灵活的卷规划系统
-  - 每卷独立的主题和大纲
-  - 章节范围自动管理
-  - 字数估算和进度追踪
-
-- **✍️ AI流式写作**
-  - 实时流式内容生成
-  - 支持多轮对话式创作
-  - 上下文记忆保持
-  - 自动保存和版本管理
-
-- **🎨 AI消痕处理**
-  - 智能识别AI痕迹
-  - 流式消痕处理
-  - 保持文风一致性
-  - 提升内容自然度
-
-- **🔍 形容词挖掘**
-  - 批量挖掘高质量形容词
-  - 按类别分类（外貌、性格、场景等）
-  - AI生成、人工审核
-  - 词库管理和复用
-
-- **🤖 多AI模型支持**
-  - **DeepSeek**：高性价比，适合长文本
-  - **通义千问**：阿里云服务，多种规格
-  - **Kimi (月之暗面)**：超长上下文（最高262K）
-  - 前端配置，灵活切换
-  - 支持自定义API地址
-  - 
- ### 作者微信:soe303
- 
- ### 项目演示
- <img width="2560" height="1398" alt="image" src="https://github.com/user-attachments/assets/3aa8f44a-094c-42f2-99e7-573952ce6b2a" />
- <img width="2560" height="1398" alt="image" src="https://github.com/user-attachments/assets/8e052d39-11f8-4776-b69a-b27b2a72f3ff" />
-<img width="2560" height="1398" alt="image" src="https://github.com/user-attachments/assets/90daaaa2-8695-4bba-bad5-457cdce98f98" />
-
-
-### 🌟 特色亮点
-
-- ✅ **纯前端AI配置**：API密钥仅存储在浏览器，安全可控
-- ✅ **实时进度显示**：真实的任务轮询状态，进度一目了然
-- ✅ **异步任务管理**：后台AI任务，支持并发处理
-- ✅ **智能URL适配**：自动处理不同AI服务商的API格式差异
-- ✅ **流式实时输出**：边生成边显示，提供即时反馈
-- ✅ **完整的创作流程**：从构思到成稿的全流程支持
+<p align="center">
+  <a href="#-核心特性">核心特性</a> •
+  <a href="#-系统架构">系统架构</a> •
+  <a href="#-快速开始">快速开始</a> •
+  <a href="#-功能演示">功能演示</a> •
+  <a href="#-技术栈">技术栈</a> •
+  <a href="#-部署指南">部署指南</a>
+</p>
 
 ---
 
-## 🛠 技术栈
+## 🎯 项目介绍
 
-### 后端技术
+> **「让 AI 成为每一位网文作者的长期创作伙伴」**
 
-- **核心框架**：Spring Boot 2.7.x
-- **开发语言**：Java 17+
-- **数据库**：MySQL 5.7+
-- **持久层**：MyBatis Plus
-- **AI集成**：RestTemplate + SSE (Server-Sent Events)
-- **异步处理**：Spring Async + CompletableFuture
+这是一个面向**长篇小说 / 网文**的 AI 写作系统，围绕“可持续写长文”的核心难题做了工程化落地：
+- **结构化创作**：世界观、角色卡、主线/支线、伏笔与回收、分卷与章节细纲。
+- **长上下文写作**：按项目/卷/章管理上下文，尽量减少断片与设定漂移。
+- **章节生成与改写**：流式生成（SSE）、多轮迭代、指令式重写。
+- **润色与去 AI 味（消痕）**：降低模板化与“机械味”，更接近网文表达。
+- **多模型接入**：DeepSeek / 通义千问 / Kimi / OpenAI Compatible 等，支持按任务切换与成本控制。
 
-### 前端技术
+### 🔎 GitHub 关键词（AI 小说相关）
+`ai-novel` `ai-novel-writing` `novel-writing` `webnovel` `llm` `large-language-model` `story-generation` `plot-generation` `outline-generation` `worldbuilding` `character-profile` `chapter-generation` `style-polish` `rewrite` `sse-streaming` `prompt-engineering` `rag` `spring-boot` `react` `typescript`
 
-- **核心框架**：React 18.x
-- **开发语言**：TypeScript 5.x
-- **UI组件库**：Ant Design 5.x
-- **路由管理**：React Router 6.x
-- **状态管理**：React Hooks (useState, useEffect)
-- **HTTP客户端**：Fetch API
-- **构建工具**：Vite
+### 🏆 为什么选择我们？
 
-### AI服务支持
+| 痛点 | 传统方案 | 本系统方案 |
+|------|---------|-----------|
+| **大纲混乱** | 手动整理，容易遗漏 | AI 自动生成结构化超级大纲，包含伏笔、角色弧线 |
+| **章节断裂** | 上下文记忆有限 | 智能上下文管理，支持 262K 超长记忆（Kimi） |
+| **AI 味重** | 输出直接使用 | 专业「消痕」算法，去除 AI 生成痕迹 |
+| **多模型切换** | 每次重新配置 | 前端一键切换，配置持久化 |
+| **进度失控** | 无法追踪 | 实时进度监控，字数统计，任务队列 |
+| **API 安全** | Key 暴露风险 | Key 仅存浏览器本地，永不上传服务器 |
 
-- DeepSeek API
-- 通义千问（DashScope）API
-- Kimi（Moonshot）API
-- OpenAI兼容接口
+---
+
+## ✨ 核心特性
+
+### 📝 智能创作引擎
+
+<table>
+<tr>
+<td width="50%">
+
+#### 🧠 AI 大纲生成
+- **超级大纲**：一键生成 10 万字级别的完整小说框架
+- **结构化输出**：主线剧情 / 支线剧情 / 角色发展 / 伏笔设计
+- **卷级规划**：自动拆分为多卷，每卷独立主题
+- **章节细纲**：精确到每一章的情节点和字数规划
+
+</td>
+<td width="50%">
+
+#### ✍️ 流式写作
+- **SSE 实时流**：边生成边显示，所见即所得
+- **上下文感知**：自动关联前文，保持剧情连贯
+- **多轮对话**：支持追问和修改指令
+- **自动保存**：断点续写，永不丢失
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+#### 🎨 AI 消痕系统
+- **深度去 AI 化**：消除机器生成的刻板表达
+- **文风保持**：保留作者个人风格
+- **流式处理**：实时查看消痕效果
+- **对比预览**：原文 vs 消痕后对比
+
+</td>
+<td width="50%">
+
+#### 📊 创作管理
+- **项目仪表盘**：所有小说一览无余
+- **进度追踪**：字数统计、完成度、日更目标
+- **任务队列**：后台异步处理，不阻塞操作
+- **版本历史**：随时回溯修改记录
+
+</td>
+</tr>
+</table>
+
+### 🤖 多模型智能调度
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      AI 模型调度中心                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐          │
+│   │  DeepSeek   │   │  通义千问    │   │    Kimi     │          │
+│   │  128K 上下文 │   │  32K-128K   │   │  262K 上下文 │          │
+│   │  高性价比    │   │  平衡之选    │   │  超长记忆    │          │
+│   └──────┬──────┘   └──────┬──────┘   └──────┬──────┘          │
+│          │                 │                 │                  │
+│          └────────────────┼────────────────┘                  │
+│                           ▼                                     │
+│              ┌─────────────────────────┐                       │
+│              │   智能路由 & 负载均衡    │                       │
+│              │   • 自动故障转移        │                       │
+│              │   • 成本优化策略        │                       │
+│              │   • 响应质量评估        │                       │
+│              └─────────────────────────┘                       │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+| 模型 | 推荐用途 | 上下文 | 特点 |
+|------|---------|--------|------|
+| `deepseek-chat` | 日常写作、大纲生成 | 128K | 性价比之王，质量稳定 |
+| `deepseek-reasoner` | 复杂剧情推理 | 128K | 深度思考，逻辑严密 |
+| `qwen-plus` | 通用创作 | 32K | 响应快，平衡之选 |
+| `qwen-max` | 高质量输出 | 32K | 阿里旗舰，效果优秀 |
+| `moonshot-v1-128k` | 长篇连贯写作 | 128K | 上下文超长 |
+| `moonshot-v1-32k` | 常规写作 | 32K | Kimi 基础版 |
+
+---
+
+## 🏗️ 系统架构
+
+```
+                                    ┌──────────────────────────────────────┐
+                                    │            客户端层                   │
+                                    │  ┌────────────────────────────────┐  │
+                                    │  │     React 18 + TypeScript 5    │  │
+                                    │  │  ┌──────┐ ┌──────┐ ┌────────┐  │  │
+                                    │  │  │Redux │ │Axios │ │AntDesign│ │  │
+                                    │  │  │Toolkit│ │ SSE │ │   5.x  │  │  │
+                                    │  │  └──────┘ └──────┘ └────────┘  │  │
+                                    │  └────────────────────────────────┘  │
+                                    └──────────────────┬───────────────────┘
+                                                       │ HTTPS / WebSocket
+                                                       ▼
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│                                    网关层 (Nginx)                                      │
+│                    负载均衡 • SSL 终结 • 静态资源 • 反向代理                             │
+└──────────────────────────────────────────────────────┬───────────────────────────────┘
+                                                       │
+                                                       ▼
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│                                   应用服务层                                           │
+│  ┌─────────────────────────────────────────────────────────────────────────────────┐ │
+│  │                         Spring Boot 2.7.18 Application                          │ │
+│  │                                                                                  │ │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │ │
+│  │  │ AuthModule  │  │ NovelModule │  │  AIModule   │  │ TaskModule  │            │ │
+│  │  │ • JWT 认证   │  │ • 小说管理  │  │ • 模型调度  │  │ • 异步任务  │            │ │
+│  │  │ • 权限控制   │  │ • 大纲生成  │  │ • 流式输出  │  │ • 进度追踪  │            │ │
+│  │  │ • 会话管理   │  │ • 卷章管理  │  │ • 消痕处理  │  │ • 队列管理  │            │ │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘            │ │
+│  │                                                                                  │ │
+│  │  ┌───────────────────────────────────────────────────────────────────────────┐  │ │
+│  │  │                           核心服务层                                        │  │ │
+│  │  │  AIWritingService • OutlineService • VolumeService • ChapterService       │  │ │
+│  │  │  TraceRemovalService • PolishService • TaskScheduler • CacheManager       │  │ │
+│  │  └───────────────────────────────────────────────────────────────────────────┘  │ │
+│  │                                                                                  │ │
+│  │  ┌───────────────────────────────────────────────────────────────────────────┐  │ │
+│  │  │                           数据访问层 (MyBatis Plus)                         │  │ │
+│  │  │  NovelMapper • ChapterMapper • VolumeMapper • TaskMapper • UserMapper      │  │ │
+│  │  └───────────────────────────────────────────────────────────────────────────┘  │ │
+│  └─────────────────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────┬───────────────────────────────┘
+                                                       │
+                          ┌────────────────────────────┼────────────────────────────┐
+                          │                            │                            │
+                          ▼                            ▼                            ▼
+              ┌───────────────────┐      ┌───────────────────┐      ┌───────────────────┐
+              │   MySQL 8.0       │      │   Redis 7.x       │      │   AI Provider     │
+              │   • 业务数据       │      │   • 会话缓存       │      │   • DeepSeek      │
+              │   • 小说内容       │      │   • 任务队列       │      │   • 通义千问       │
+              │   • 用户信息       │      │   • 分布式锁       │      │   • Kimi          │
+              └───────────────────┘      └───────────────────┘      └───────────────────┘
+```
+
+### 🔧 核心模块说明
+
+| 模块 | 职责 | 关键技术 |
+|------|------|---------|
+| **认证模块** | 用户注册登录、JWT 令牌管理、权限校验 | Spring Security, JWT, BCrypt |
+| **小说模块** | 小说 CRUD、大纲管理、卷章结构 | MyBatis Plus, 分页插件 |
+| **AI 模块** | 多模型调度、流式输出、消痕处理 | RestTemplate, SSE, WebClient |
+| **任务模块** | 异步任务、进度追踪、失败重试 | @Async, CompletableFuture |
+| **缓存模块** | 热点数据缓存、会话存储 | Redis, Lettuce |
+
+---
+
+## 🖼️ 项目截图（docs/img）
+
+> 截图文件位于 `docs/img/`，提交到仓库后 GitHub 会直接展示。
+
+<details>
+<summary><b>📸 点击展开界面截图</b></summary>
+
+<br>
+
+### 🏠 首页 / 创作工作台
+
+<img src="docs/img/首页.png" width="100%" alt="首页 / 创作工作台"/>
+
+---
+
+### ✍️ 写作页面
+
+<img src="docs/img/写作页面.png" width="100%" alt="写作页面"/>
+
+---
+
+### 📌 其他页面
+
+<img src="docs/img/3.png" width="100%" alt="页面截图 3"/>
+
+<img src="docs/img/4.png" width="100%" alt="页面截图 4"/>
+
+<img src="docs/img/49.png" width="100%" alt="页面截图 49"/>
+
+</details>
+
+---
+
+## 🛠️ 技术栈
+
+### 后端技术矩阵
+
+| 类别 | 技术 | 版本 | 说明 |
+|------|------|------|------|
+| **核心框架** | Spring Boot | 2.7.18 | 企业级应用框架 |
+| **安全框架** | Spring Security | 5.7.x | 认证授权 |
+| **持久层** | MyBatis Plus | 3.5.x | 增强型 ORM |
+| **数据库** | MySQL | 8.0+ | 关系型数据库 |
+| **缓存** | Redis | 7.x | 分布式缓存 |
+| **连接池** | HikariCP | 4.x | 高性能连接池 |
+| **API 文档** | SpringDoc | 1.6.x | OpenAPI 3.0 |
+| **工具库** | Lombok | 1.18.x | 代码简化 |
+| **JSON** | Jackson | 2.13.x | 序列化框架 |
+
+### 前端技术矩阵
+
+| 类别 | 技术 | 版本 | 说明 |
+|------|------|------|------|
+| **核心框架** | React | 18.2 | 声明式 UI 框架 |
+| **开发语言** | TypeScript | 5.0 | 类型安全 |
+| **UI 组件库** | Ant Design | 5.x | 企业级设计系统 |
+| **状态管理** | Redux Toolkit | 1.9.x | 状态容器 |
+| **路由** | React Router | 6.x | 声明式路由 |
+| **HTTP 客户端** | Axios | 1.4.x | Promise HTTP |
+| **构建工具** | Vite | 4.x | 极速构建 |
+| **代码规范** | ESLint + Prettier | - | 代码质量 |
+
+### DevOps & 基础设施
+
+| 类别 | 技术 | 说明 |
+|------|------|------|
+| **容器化** | Docker | 应用容器化 |
+| **编排** | Docker Compose | 多容器编排 |
+| **反向代理** | Nginx | 负载均衡 & 静态资源 |
+| **版本控制** | Git | 代码版本管理 |
+| **CI/CD** | GitHub Actions | 自动化部署（可选） |
 
 ---
 
 ## 🚀 快速开始
 
-### 环境要求
+### 📋 环境要求
 
-- **JDK**: 17 或更高版本
-- **Node.js**: 16 或更高版本
-- **MySQL**: 5.7 或更高版本
-- **Maven**: 3.6 或更高版本
+| 依赖 | 最低版本 | 推荐版本 |
+|------|---------|---------|
+| JDK | 17 | 17 LTS |
+| Node.js | 16 | 18 LTS |
+| MySQL | 5.7 | 8.0 |
+| Redis | 6.0 | 7.x |
+| Maven | 3.6 | 3.9 |
 
-### 安装步骤
-
-#### 1. 克隆项目
+### ⚡ 一键部署（Docker）
 
 ```bash
-git clone https://github.com/yourusername/novel-creation-system.git
+# 克隆项目
+git clone https://github.com/your-username/novel-creation-system.git
 cd novel-creation-system
+
+# 使用 Docker Compose 一键启动
+docker-compose up -d
+
+# 访问系统
+# 前端：http://localhost:8701
+# 后端：http://localhost:8080/api
 ```
 
-#### 2. 数据库初始化
+### 🔧 手动部署
+
+<details>
+<summary><b>点击展开详细步骤</b></summary>
+
+#### 1️⃣ 数据库初始化
 
 ```bash
-# 创建数据库
+# 登录 MySQL
 mysql -u root -p
-CREATE DATABASE novel_creation CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-# 导入数据库脚本
-mysql -u root -p novel_creation < database/schema.sql
+# 创建数据库
+CREATE DATABASE ai_novel CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+# 退出后导入数据
+mysql -u root -p ai_novel < database/ai_novel.sql
+
+# （可选）创建管理员账号
+mysql -u root -p ai_novel < database/init_admin.sql
 ```
 
-#### 3. 配置后端
+#### 2️⃣ 后端配置
 
 编辑 `backend/src/main/resources/application-dev.yml`：
 
 ```yaml
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/novel_creation?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://localhost:3306/ai_novel?useSSL=false&serverTimezone=Asia/Shanghai
     username: your_username
     password: your_password
+  redis:
+    host: localhost
+    port: 6379
+
+jwt:
+  secret: your-jwt-secret-key-at-least-32-characters
 ```
 
-#### 4. 启动后端
+或使用环境变量：
+
+```bash
+export DB_HOST=localhost
+export DB_USERNAME=root
+export DB_PASSWORD=your_password
+export REDIS_HOST=localhost
+export JWT_SECRET=your-jwt-secret-key
+```
+
+#### 3️⃣ 启动后端
 
 ```bash
 cd backend
-mvn clean install
+mvn clean package -DskipTests
+java -jar target/novel-creation-system-1.0.0.jar --spring.profiles.active=dev
+
+# 或开发模式
 mvn spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-后端将在 `http://localhost:8080` 启动。
-
-#### 5. 启动前端
+#### 4️⃣ 启动前端
 
 ```bash
 cd frontend
@@ -167,244 +395,233 @@ npm install
 npm run dev
 ```
 
-前端将在 `http://localhost:5173` 启动。
+#### 5️⃣ 访问系统
+
+- 前端：http://localhost:3000
+- 后端 API：http://localhost:8080/api
+- API 文档：http://localhost:8080/api/swagger-ui.html
+
+</details>
 
 ---
 
-## 📖 使用说明
+## ⚙️ 配置说明
 
-### 1. 配置AI服务
+### 环境变量一览
 
-首次使用前，需要在设置页面配置AI服务：
+| 变量名 | 说明 | 默认值 | 必填 |
+|--------|------|--------|------|
+| `DB_HOST` | 数据库主机 | `localhost` | 否 |
+| `DB_PORT` | 数据库端口 | `3306` | 否 |
+| `DB_NAME` | 数据库名称 | `ai_novel` | 否 |
+| `DB_USERNAME` | 数据库用户名 | `root` | 是 |
+| `DB_PASSWORD` | 数据库密码 | - | 是 |
+| `REDIS_HOST` | Redis 主机 | `localhost` | 否 |
+| `REDIS_PORT` | Redis 端口 | `6379` | 否 |
+| `REDIS_PASSWORD` | Redis 密码 | - | 否 |
+| `JWT_SECRET` | JWT 签名密钥 | - | 是（生产环境） |
+| `JWT_EXPIRATION` | JWT 过期时间(ms) | `604800000` | 否 |
 
-1. 访问 **设置** 页面
-2. 选择AI服务商（DeepSeek/通义千问/Kimi）
-3. 输入你的 **API Key**
-4. 选择使用的 **模型**
-5. （可选）自定义 **API Base URL**
-6. 点击 **保存配置**
+### AI 配置（浏览器端）
 
-> 💡 **提示**：配置仅保存在浏览器本地缓存，不会上传到服务器。
+系统采用**前端配置**策略，API Key 安全存储于浏览器 `localStorage`，永不上传服务器：
 
-### 2. 创建小说项目
+1. 登录系统后，进入 **设置** 页面
+2. 选择 AI 服务商：DeepSeek / 通义千问 / Kimi / 自定义
+3. 填入 API Key 和 Base URL
+4. 选择模型并保存
 
-1. 在首页点击 **创建小说**
-2. 填写小说基本信息（标题、类型、简介等）
-3. 输入初步构思
-4. 点击 **生成大纲**，AI将自动生成详细大纲
-5. 审阅并确认大纲
-
-### 3. 生成卷规划
-
-1. 进入 **卷规划** 页面
-2. 设置卷数（建议3-6卷）
-3. 点击 **按原主题生成所有卷大纲**
-4. AI将根据超级大纲自动拆分为各卷，并生成卷标题和主题
-5. 查看各卷的实时生成进度
-
-### 4. 开始写作
-
-1. 选择要写作的卷
-2. 点击 **查看/写作**
-3. 在弹出的卷详情中，点击 **生成卷大纲**（如果还没有）
-4. 点击 **开始写作**
-5. 在写作页面使用AI辅助功能：
-   - **AI续写**：基于上下文智能续写
-   - **AI消痕**：优化文本，减少AI痕迹
-   - **手动编辑**：随时修改和调整
-
-### 5. 高级功能
-
-- **形容词挖掘**：在工具页面批量生成优质形容词，构建自己的词库
-- **任务管理**：查看所有AI任务的状态和历史
-- **进度追踪**：实时监控各卷的写作进度和字数统计
+> 🔒 **安全提示**：所有 AI 调用均在后端进行，前端仅传递加密配置，API Key 不会出现在网络请求中。
 
 ---
 
-## 🎨 界面预览
-
-### 主要页面
-
-- **首页**：小说列表和快速创建入口
-- **大纲生成**：流式大纲生成，实时查看
-- **卷规划**：可视化卷结构，拖拽调整
-- **写作工作室**：沉浸式写作环境
-- **设置中心**：AI配置和系统设置
-
----
-
-## 🔧 开发指南
-
-### 项目结构
+## 📁 项目结构
 
 ```
 novel-creation-system/
-├── backend/                    # 后端项目
-│   ├── src/main/java/
-│   │   └── com/novel/
-│   │       ├── config/        # 配置类
-│   │       ├── controller/    # 控制器
-│   │       ├── service/       # 业务逻辑
-│   │       ├── dto/          # 数据传输对象
-│   │       ├── domain/       # 实体类
-│   │       └── mapper/       # 数据访问层
-│   └── src/main/resources/
-│       ├── application.yml    # 主配置文件
-│       └── mapper/           # MyBatis映射文件
 │
-├── frontend/                  # 前端项目
+├── backend/                          # 🔧 后端服务 (Spring Boot)
+│   ├── src/main/java/com/novel/
+│   │   ├── config/                   # 配置类
+│   │   │   ├── SecurityConfig.java   # 安全配置
+│   │   │   ├── CorsConfig.java       # 跨域配置
+│   │   │   └── RedisConfig.java      # Redis 配置
+│   │   ├── controller/               # 控制器层
+│   │   │   ├── AuthController.java   # 认证接口
+│   │   │   ├── NovelController.java  # 小说接口
+│   │   │   ├── AIController.java     # AI 接口
+│   │   │   └── ChapterController.java# 章节接口
+│   │   ├── service/                  # 服务层
+│   │   │   ├── AIWritingService.java # AI 写作服务
+│   │   │   ├── OutlineService.java   # 大纲服务
+│   │   │   └── TraceRemovalService.java # 消痕服务
+│   │   ├── domain/                   # 实体类
+│   │   ├── mapper/                   # MyBatis Mapper
+│   │   └── dto/                      # 数据传输对象
+│   ├── src/main/resources/
+│   │   ├── application.yml           # 主配置
+│   │   ├── application-dev.yml       # 开发环境
+│   │   ├── application-prod.yml      # 生产环境
+│   │   └── mapper/                   # XML 映射文件
+│   └── pom.xml                       # Maven 配置
+│
+├── frontend/                         # 🎨 前端应用 (React)
 │   ├── src/
-│   │   ├── pages/           # 页面组件
-│   │   ├── services/        # API服务
-│   │   ├── types/          # TypeScript类型定义
-│   │   ├── utils/          # 工具函数
-│   │   └── App.tsx         # 应用入口
-│   └── package.json
+│   │   ├── pages/                    # 页面组件
+│   │   │   ├── HomePage.tsx          # 首页
+│   │   │   ├── WritingPage.tsx       # 写作页
+│   │   │   └── SettingsPage.tsx      # 设置页
+│   │   ├── components/               # 通用组件
+│   │   ├── services/                 # API 服务
+│   │   ├── store/                    # Redux Store
+│   │   ├── hooks/                    # 自定义 Hooks
+│   │   ├── utils/                    # 工具函数
+│   │   └── types/                    # TypeScript 类型
+│   ├── package.json
+│   └── vite.config.ts
 │
-└── README.md
+├── database/                         # 📊 数据库脚本
+│   ├── ai_novel.sql                  # 完整建表脚本
+│   └── init_admin.sql                # 管理员初始化
+│
+├── docker-compose.yml                # 🐳 Docker 编排
+├── nginx.conf                        # 🌐 Nginx 配置
+└── README.md                         # 📖 项目文档
 ```
 
-### 本地开发
+---
 
-#### 后端开发
+## 🐳 Docker 部署
+
+### docker-compose.yml 配置
+
+```yaml
+version: '3.8'
+services:
+  backend:
+    image: novel-backend:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - DB_HOST=mysql
+      - REDIS_HOST=redis
+    depends_on:
+      - mysql
+      - redis
+
+  frontend:
+    image: novel-frontend:latest
+    ports:
+      - "8701:80"
+    depends_on:
+      - backend
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ai_novel
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+
+volumes:
+  mysql_data:
+  redis_data:
+```
+
+### 构建与部署
 
 ```bash
-cd backend
-mvn spring-boot:run -Dspring-boot.run.profiles=dev
+# 构建镜像
+docker-compose build
+
+# 启动服务
+docker-compose up -d
+
+# 查看日志
+docker-compose logs -f
+
+# 停止服务
+docker-compose down
 ```
-
-- 默认端口：8080
-- 热重载：使用Spring DevTools
-- API文档：访问 `/swagger-ui.html`（如果已配置）
-
-#### 前端开发
-
-```bash
-cd frontend
-npm run dev
-```
-
-- 默认端口：5173
-- 热重载：Vite自动HMR
-- API代理：已配置代理到 `http://localhost:8080`
-
-### 代码规范
-
-- **Java**：遵循阿里巴巴Java开发手册
-- **TypeScript**：使用ESLint + Prettier
-- **提交规范**：建议使用Conventional Commits
-
----
-
-## 🎯 AI模型推荐
-
-### 日常写作推荐
-
-| 服务商 | 推荐模型 | 特点 | 适用场景 |
-|--------|---------|------|---------|
-| DeepSeek | `deepseek-chat` | 高性价比，质量稳定 | 日常写作、大纲生成 |
-| 通义千问 | `qwen-plus` | 平衡性能和速度 | 通用创作 |
-| Kimi | `kimi-latest` | 上下文长 | 长篇连贯创作 |
-
-### 长文本/超长上下文
-
-| 服务商 | 推荐模型 | 上下文长度 | 适用场景 |
-|--------|---------|-----------|---------|
-| DeepSeek | `deepseek-v3-1-250821-thinking` | 128K | 复杂推理 |
-| 通义千问 | `qwen-max-longcontext` | 长上下文 | 大纲整体规划 |
-| Kimi | `kimi-k2-turbo-preview` | 262K | 全卷上下文写作 |
-
-### 成本控制建议
-
-- ✅ 大纲生成：使用标准模型即可
-- ✅ 章节写作：根据预算选择合适模型
-- ✅ AI消痕：可使用经济型模型
-- ⚠️ 批量操作：注意API调用频率和成本
-
----
-
-## ❓ 常见问题
-
-### Q: 提示"AI配置无效"怎么办？
-
-**A**: 检查以下几点：
-1. 是否在设置页面配置了AI服务？
-2. API Key是否正确？
-3. 是否选择了服务商和模型？
-4. 尝试重新保存配置
-
-### Q: 批量生成卷大纲没有反应？
-
-**A**: 
-1. 检查AI配置是否有效
-2. 查看浏览器控制台是否有错误
-3. 查看后端日志
-4. 确保网络连接正常
-
-### Q: 进度条一直不动？
-
-**A**: 
-- 现在使用的是真实轮询状态，如果进度不动，说明后端任务可能遇到问题
-- 检查后端日志查看具体错误
-- 可能是AI服务调用失败，检查API密钥和网络
-
-### Q: 如何更换AI服务商？
-
-**A**: 在设置页面重新选择服务商，输入对应的API Key并保存即可。
-
----
-
-## 🤝 贡献指南
-
-由于本项目采用个人使用许可，暂不接受外部贡献。如有建议或发现问题，欢迎提Issue讨论。
-
----
-
-## 📄 开源协议
-
-本项目采用 **个人使用许可证**（Personal Use License）。
-
-- ✅ **允许**：个人学习、研究和非商业使用
-- ❌ **禁止**：商业使用、二次分发、售卖或用于盈利目的
-- ℹ️ 详见 [LICENSE](./LICENSE) 文件
 
 ---
 
 ## 📮 联系方式
 
-- **问题反馈**：通过GitHub Issues
-- **功能建议**：通过GitHub Issues
+<table>
+<tr>
+<td align="center">
+  <img src="https://img.shields.io/badge/微信-soe303-07C160?style=for-the-badge&logo=wechat&logoColor=white" alt="WeChat"/>
+  <br>
+  <sub>技术交流 & 问题咨询</sub>
+</td>
+<td align="center">
+  <a href="https://github.com/your-username/novel-creation-system/issues">
+    <img src="https://img.shields.io/badge/GitHub-Issues-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub Issues"/>
+  </a>
+  <br>
+  <sub>Bug 反馈 & 功能建议</sub>
+</td>
+</tr>
+</table>
 
 ---
 
-## 🙏 致谢
+## 📄 开源协议
 
-感谢以下开源项目和服务：
+本项目采用 **个人使用许可证**（Personal Use License）
 
-- [Spring Boot](https://spring.io/projects/spring-boot) - 强大的Java应用框架
-- [React](https://react.dev/) - 优秀的前端框架
-- [Ant Design](https://ant.design/) - 企业级UI设计语言
-- [MyBatis Plus](https://baomidou.com/) - 强大的持久层框架
-- [DeepSeek](https://www.deepseek.com/) - 高性价比AI服务
-- [通义千问](https://tongyi.aliyun.com/) - 阿里云AI服务
-- [Kimi](https://www.moonshot.cn/) - 超长上下文AI服务
+| 许可 | 说明 |
+|------|------|
+| ✅ 允许 | 个人学习、研究、非商业使用 |
+| ❌ 禁止 | 商业用途、二次分发、售卖盈利 |
+
+详见 [LICENSE](./LICENSE) 文件
 
 ---
 
-## ⚠️ 免责声明
+## 🙏 鸣谢
 
-1. 本项目仅供个人学习和研究使用
-2. 使用本系统创作的内容，版权归内容创作者所有
-3. 使用第三方AI服务产生的费用由用户自行承担
-4. 请遵守各AI服务商的使用条款和政策
-5. 不建议完全依赖AI生成内容，应结合人工创作和修改
+感谢以下开源项目和服务的支持：
+
+<p align="center">
+  <a href="https://spring.io/projects/spring-boot"><img src="https://img.shields.io/badge/Spring_Boot-6DB33F?style=for-the-badge&logo=spring-boot&logoColor=white" alt="Spring Boot"/></a>
+  <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React"/></a>
+  <a href="https://ant.design/"><img src="https://img.shields.io/badge/Ant_Design-0170FE?style=for-the-badge&logo=ant-design&logoColor=white" alt="Ant Design"/></a>
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript"/></a>
+  <a href="https://vitejs.dev/"><img src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite"/></a>
+</p>
+
+<p align="center">
+  <a href="https://www.deepseek.com/"><img src="https://img.shields.io/badge/DeepSeek-00D4AA?style=for-the-badge" alt="DeepSeek"/></a>
+  <a href="https://tongyi.aliyun.com/"><img src="https://img.shields.io/badge/通义千问-FF6A00?style=for-the-badge" alt="通义千问"/></a>
+  <a href="https://www.moonshot.cn/"><img src="https://img.shields.io/badge/Kimi-7C3AED?style=for-the-badge" alt="Kimi"/></a>
+</p>
 
 ---
 
 <div align="center">
 
-**如果这个项目对你有帮助，请给个⭐Star支持一下！**
+## ⭐ 觉得有用？给个 Star 支持一下！
 
-Made with ❤️ for novel writers
+**您的 Star 是我持续更新的动力 💪**
+
+<br>
+
+<img src="https://img.shields.io/github/stars/your-username/novel-creation-system?style=social" alt="GitHub Stars"/>
+<img src="https://img.shields.io/github/forks/your-username/novel-creation-system?style=social" alt="GitHub Forks"/>
+<img src="https://img.shields.io/github/watchers/your-username/novel-creation-system?style=social" alt="GitHub Watchers"/>
+
+<br>
+<br>
+
+**Made with ❤️ by 网文创作爱好者**
 
 </div>
