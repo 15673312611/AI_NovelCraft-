@@ -1,0 +1,501 @@
+/* ==========================================
+   卷管理页面 - 苹果简约风格弹窗
+   ========================================== */
+
+/* ==========================================
+   配置弹窗 - 苹果简约风格
+   ========================================== */
+.volume-management-page .ant-modal-content {
+  border-radius: 24px !important;
+  overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.15) !important;
+}
+
+.volume-management-page .ant-modal-header {
+  padding: 28px 32px 0 !important;
+  border-bottom: none !important;
+  background: transparent !important;
+}
+
+.volume-management-page .ant-modal-title {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: #64748b !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.volume-management-page .ant-modal-body {
+  padding: 24px 32px 32px !important;
+}
+
+.volume-management-page .ant-modal-footer {
+  padding: 0 32px 28px !important;
+  border-top: none !important;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.volume-management-page .ant-modal-footer .ant-btn {
+  height: 48px !important;
+  padding: 0 28px !important;
+  border-radius: 12px !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+}
+
+.volume-management-page .ant-modal-footer .ant-btn-default {
+  border: 1.5px solid #e2e8f0 !important;
+  color: #64748b !important;
+  background: white !important;
+}
+
+.volume-management-page .ant-modal-footer .ant-btn-default:hover {
+  border-color: #3b82f6 !important;
+  color: #3b82f6 !important;
+}
+
+.volume-management-page .ant-modal-footer .ant-btn-primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+  border: none !important;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25) !important;
+}
+
+.volume-management-page .ant-modal-footer .ant-btn-primary:hover {
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.35) !important;
+  transform: translateY(-1px);
+}
+
+.volume-management-page .ant-modal-close {
+  top: 20px !important;
+  right: 20px !important;
+}
+
+.volume-management-page .ant-modal-close-x {
+  width: 36px !important;
+  height: 36px !important;
+  line-height: 36px !important;
+  border-radius: 10px !important;
+  background: #f1f5f9 !important;
+  color: #64748b !important;
+  font-size: 14px !important;
+  transition: all 0.2s !important;
+}
+
+.volume-management-page .ant-modal-close-x:hover {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+/* ==========================================
+   弹窗内表单样式
+   ========================================== */
+.volume-management-page .ant-modal .ant-form-item-label > label {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #0f172a !important;
+}
+
+.volume-management-page .ant-modal .ant-input,
+.volume-management-page .ant-modal .ant-input-number,
+.volume-management-page .ant-modal .ant-select-selector,
+.volume-management-page .ant-modal .ant-input-number-input {
+  border-radius: 12px !important;
+  border: 1.5px solid #e2e8f0 !important;
+  font-size: 15px !important;
+  transition: all 0.2s !important;
+}
+
+.volume-management-page .ant-modal .ant-input:hover,
+.volume-management-page .ant-modal .ant-input-number:hover,
+.volume-management-page .ant-modal .ant-select-selector:hover {
+  border-color: #cbd5e1 !important;
+}
+
+.volume-management-page .ant-modal .ant-input:focus,
+.volume-management-page .ant-modal .ant-input-number-focused,
+.volume-management-page .ant-modal .ant-select-focused .ant-select-selector {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}
+
+.volume-management-page .ant-modal .ant-input-number {
+  width: 100% !important;
+}
+
+.volume-management-page .ant-modal .ant-input-number-group-addon {
+  background: #f8fafc !important;
+  border: 1.5px solid #e2e8f0 !important;
+  border-left: none !important;
+  border-radius: 0 12px 12px 0 !important;
+  color: #64748b !important;
+  font-weight: 500 !important;
+}
+
+.volume-management-page .ant-modal textarea.ant-input {
+  border-radius: 12px !important;
+  padding: 14px 16px !important;
+  line-height: 1.7 !important;
+  resize: none !important;
+}
+
+/* ==========================================
+   弹窗内Alert样式
+   ========================================== */
+.volume-management-page .ant-modal .ant-alert {
+  border-radius: 14px !important;
+  border: none !important;
+  padding: 16px 20px !important;
+}
+
+.volume-management-page .ant-modal .ant-alert-info {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(37, 99, 235, 0.12) 100%) !important;
+}
+
+.volume-management-page .ant-modal .ant-alert-message {
+  color: #1e40af !important;
+  font-weight: 600 !important;
+}
+
+.volume-management-page .ant-modal .ant-alert-description {
+  color: #3b82f6 !important;
+}
+
+/* ==========================================
+   自定义弹窗头部
+   ========================================== */
+.modal-hero {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.modal-hero-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+  font-size: 32px;
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.25);
+}
+
+.modal-hero h2 {
+  font-size: 24px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 8px;
+  letter-spacing: -0.02em;
+}
+
+.modal-hero p {
+  font-size: 15px;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ==========================================
+   统计展示卡片
+   ========================================== */
+.stats-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 18px 24px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-radius: 14px;
+  margin-bottom: 24px;
+}
+
+.stats-display-icon {
+  font-size: 20px;
+}
+
+.stats-display-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #0369a1;
+}
+
+.stats-display-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: #0284c7;
+  margin: 0 4px;
+}
+
+.stats-display-unit {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0369a1;
+}
+
+.stats-display-sub {
+  font-size: 12px;
+  color: #0ea5e9;
+  margin-left: 8px;
+}
+
+/* ==========================================
+   提示卡片
+   ========================================== */
+.tip-card {
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-radius: 14px;
+  font-size: 13px;
+  color: #92400e;
+  line-height: 1.6;
+  margin-top: 20px;
+}
+
+.tip-card strong {
+  color: #78350f;
+}
+
+/* ==========================================
+   大纲模板选择器 - 原生 select（更稳定）
+   ========================================== */
+.vm-template-native-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.vm-template-native-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 48px;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
+  border: none;
+  background: transparent;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+.vm-template-trigger {
+  width: 100%;
+  height: 48px;
+  padding: 0 16px;
+  font-size: 15px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: white;
+  color: #0f172a;
+  transition: all 0.2s;
+}
+
+.vm-template-trigger.placeholder {
+  color: #94a3b8;
+}
+
+.vm-template-trigger-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 12px;
+}
+
+.vm-template-native-wrapper:hover .vm-template-trigger {
+  border-color: #cbd5e1;
+}
+
+.vm-template-native-wrapper:focus-within .vm-template-trigger {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.vm-template-native-select:disabled {
+  cursor: not-allowed;
+}
+
+.vm-template-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #94a3b8;
+}
+
+/* ==========================================
+   下拉选择器 - 苹果风格 (Portal Version)
+   ========================================== */
+.apple-select-dropdown-portal {
+  position: fixed;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 9999; /* Ensure it's above modal */
+  padding: 8px;
+  box-sizing: border-box;
+  animation: appleSelectSlideDown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top center;
+}
+
+@keyframes appleSelectSlideDown {
+  from {
+    opacity: 0;
+    transform: scaleY(0.9) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1) translateY(0);
+  }
+}
+.apple-select {
+  position: relative;
+}
+
+.apple-select-trigger {
+  width: 100%;
+  height: 48px;
+  padding: 0 16px;
+  font-size: 15px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: white;
+  transition: all 0.2s;
+}
+
+.apple-select-trigger:hover {
+  border-color: #cbd5e1;
+}
+
+.apple-select-trigger.open {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.apple-select-placeholder {
+  color: #94a3b8;
+}
+
+.apple-select-value {
+  color: #0f172a;
+  font-weight: 500;
+}
+
+.apple-select-arrow {
+  font-size: 10px;
+  color: #94a3b8;
+  transition: transform 0.2s;
+}
+
+.apple-select-trigger.open .apple-select-arrow {
+  transform: rotate(180deg);
+}
+
+.apple-select-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 1000;
+  padding: 8px;
+}
+
+.apple-select-option {
+  padding: 12px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.apple-select-option:hover {
+  background: #f1f5f9;
+}
+
+.apple-select-option.selected {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.apple-select-option-star {
+  color: #f59e0b;
+}
+
+.apple-select-option-name {
+  font-weight: 500;
+  color: #0f172a;
+}
+
+.apple-select-option-desc {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-left: auto;
+}
+
+/* ==========================================
+   表单行布局
+   ========================================== */
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.form-row-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+/* ==========================================
+   响应式
+   ========================================== */
+@media (max-width: 640px) {
+  .volume-management-page .ant-modal-content {
+    border-radius: 20px 20px 0 0 !important;
+  }
+
+  .volume-management-page .ant-modal-body {
+    padding: 20px 24px 24px !important;
+  }
+
+  .form-row,
+  .form-row-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-display {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .modal-hero-icon {
+    width: 60px;
+    height: 60px;
+    font-size: 28px;
+  }
+
+  .modal-hero h2 {
+    font-size: 20px;
+  }
+}
+

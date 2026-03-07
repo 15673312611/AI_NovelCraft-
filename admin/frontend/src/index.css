@@ -1,0 +1,1043 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  /* 现代化配色 - 深色主题 */
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #171717;
+  --bg-tertiary: #262626;
+  --bg-elevated: #1c1c1c;
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --bg-active: rgba(255, 255, 255, 0.08);
+  
+  /* 文字颜色 */
+  --text-primary: #fafafa;
+  --text-secondary: rgba(250, 250, 250, 0.65);
+  --text-tertiary: rgba(250, 250, 250, 0.45);
+  --text-quaternary: rgba(250, 250, 250, 0.25);
+  
+  /* 品牌色 - 蓝绿色系 */
+  --accent-primary: #0ea5e9;
+  --accent-primary-hover: #0284c7;
+  --accent-primary-light: rgba(14, 165, 233, 0.1);
+  --accent-secondary: #06b6d4;
+  --accent-success: #22c55e;
+  --accent-warning: #f97316;
+  --accent-error: #ef4444;
+  --accent-info: #3b82f6;
+  
+  /* 边框 */
+  --border-primary: rgba(255, 255, 255, 0.08);
+  --border-secondary: rgba(255, 255, 255, 0.06);
+  --border-hover: rgba(14, 165, 233, 0.3);
+  
+  /* 阴影 */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 2px 4px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 8px 0 rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 16px 0 rgba(0, 0, 0, 0.6);
+  --shadow-xl: 0 12px 24px 0 rgba(0, 0, 0, 0.7);
+  --shadow-glow: 0 0 20px rgba(14, 165, 233, 0.3);
+  
+  /* 圆角 */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+  
+  /* 间距 */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  --spacing-2xl: 24px;
+  --spacing-3xl: 32px;
+  
+  /* 过渡 */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'SF Pro Display', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  overflow-x: hidden;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* ==================== Layout ==================== */
+.ant-layout {
+  background: var(--bg-primary) !important;
+}
+
+.ant-layout-sider {
+  background: var(--bg-secondary) !important;
+  border-right: 1px solid var(--border-primary) !important;
+}
+
+.ant-layout-header {
+  background: rgba(23, 23, 23, 0.8) !important;
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border-bottom: 1px solid var(--border-primary) !important;
+  padding: 0 24px !important;
+  height: 60px !important;
+  line-height: 60px !important;
+}
+
+.ant-layout-content {
+  background: transparent !important;
+}
+
+/* ==================== Menu ==================== */
+.ant-menu-dark {
+  background: transparent !important;
+  border: none !important;
+}
+
+.ant-menu-dark .ant-menu-item {
+  color: var(--text-secondary) !important;
+  margin: 2px 8px !important;
+  border-radius: var(--radius-md) !important;
+  height: 40px !important;
+  line-height: 40px !important;
+  transition: all var(--transition-base) !important;
+  font-weight: 500 !important;
+  font-size: 14px !important;
+}
+
+.ant-menu-dark .ant-menu-item:hover {
+  color: var(--text-primary) !important;
+  background: var(--bg-hover) !important;
+}
+
+.ant-menu-dark .ant-menu-item-selected {
+  background: var(--accent-primary-light) !important;
+  color: var(--accent-primary) !important;
+  font-weight: 600 !important;
+}
+
+.ant-menu-dark .ant-menu-item-selected::after {
+  display: none;
+}
+
+.ant-menu-dark .ant-menu-item .anticon {
+  font-size: 16px !important;
+}
+
+/* ==================== Card ==================== */
+.ant-card {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: var(--radius-xl) !important;
+  box-shadow: var(--shadow-sm) !important;
+  transition: all var(--transition-base);
+}
+
+.ant-card:hover {
+  border-color: var(--border-hover) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+.ant-card-head {
+  border-bottom: 1px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+  background: transparent !important;
+  padding: 16px 20px !important;
+  min-height: auto !important;
+}
+
+.ant-card-head-title {
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  padding: 0 !important;
+}
+
+.ant-card-body {
+  color: var(--text-secondary) !important;
+  padding: 20px !important;
+}
+
+/* ==================== Table ==================== */
+.ant-table-wrapper {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: var(--radius-xl) !important;
+  overflow: hidden;
+}
+
+.ant-table {
+  background: transparent !important;
+  color: var(--text-primary) !important;
+}
+
+.ant-table-thead > tr > th {
+  background: rgba(255, 255, 255, 0.03) !important;
+  color: var(--text-secondary) !important;
+  border: none !important;
+  font-weight: 600 !important;
+  font-size: 13px !important;
+  padding: 14px 16px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ant-table-thead > tr > th::before {
+  display: none !important;
+}
+
+.ant-table-tbody > tr {
+  background: transparent !important;
+  border-bottom: 1px solid var(--border-secondary) !important;
+  transition: all var(--transition-fast);
+}
+
+.ant-table-tbody > tr:hover {
+  background: rgba(14, 165, 233, 0.05) !important;
+}
+
+.ant-table-tbody > tr:last-child {
+  border-bottom: none !important;
+}
+
+.ant-table-tbody > tr > td {
+  border: none !important;
+  color: var(--text-primary) !important;
+  padding: 14px 16px !important;
+  font-size: 14px !important;
+}
+
+.ant-table-pagination {
+  margin: 16px 16px !important;
+}
+
+/* ==================== Button ==================== */
+.ant-btn {
+  border-radius: var(--radius-md) !important;
+  font-weight: 500 !important;
+  transition: all var(--transition-base) !important;
+  border: none !important;
+  height: 38px !important;
+  padding: 0 16px !important;
+  font-size: 14px !important;
+  box-shadow: none !important;
+}
+
+.ant-btn-primary {
+  background: var(--accent-primary) !important;
+  color: white !important;
+}
+
+.ant-btn-primary:hover {
+  background: var(--accent-primary-hover) !important;
+  transform: translateY(-1px);
+}
+
+.ant-btn-primary:active {
+  transform: translateY(0);
+}
+
+.ant-btn-default {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-primary) !important;
+}
+
+.ant-btn-default:hover {
+  background: var(--bg-active) !important;
+  border-color: var(--border-hover) !important;
+  color: var(--accent-primary) !important;
+}
+
+.ant-btn-text {
+  color: var(--text-secondary) !important;
+}
+
+.ant-btn-text:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+.ant-btn-link {
+  color: var(--accent-primary) !important;
+  padding: 0 !important;
+  height: auto !important;
+}
+
+.ant-btn-link:hover {
+  color: var(--accent-primary-hover) !important;
+}
+
+.ant-btn-dangerous {
+  background: var(--accent-error) !important;
+  color: white !important;
+}
+
+.ant-btn-dangerous:hover {
+  background: #dc2626 !important;
+}
+
+/* ==================== Input ==================== */
+.ant-input,
+.ant-input-password,
+.ant-input-number,
+.ant-picker {
+  background: var(--bg-hover) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: var(--radius-md) !important;
+  color: var(--text-primary) !important;
+  height: 38px !important;
+  padding: 8px 12px !important;
+  transition: all var(--transition-base) !important;
+  font-size: 14px !important;
+}
+
+.ant-input::placeholder,
+.ant-input-password::placeholder {
+  color: var(--text-tertiary) !important;
+}
+
+.ant-input:hover,
+.ant-input-password:hover,
+.ant-picker:hover {
+  border-color: var(--border-hover) !important;
+  background: var(--bg-active) !important;
+}
+
+.ant-input:focus,
+.ant-input-password:focus,
+.ant-picker-focused {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1) !important;
+  background: var(--bg-active) !important;
+}
+
+.ant-input-affix-wrapper {
+  background: var(--bg-hover) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: var(--radius-md) !important;
+  padding: 8px 12px !important;
+}
+
+.ant-input-affix-wrapper:hover {
+  border-color: var(--border-hover) !important;
+}
+
+.ant-input-affix-wrapper-focused {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1) !important;
+}
+
+.ant-input-prefix,
+.ant-input-suffix {
+  color: var(--text-tertiary) !important;
+}
+
+/* ==================== Select ==================== */
+.ant-select-selector {
+  background: var(--bg-hover) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: var(--radius-md) !important;
+  color: var(--text-primary) !important;
+  height: 38px !important;
+  padding: 0 12px !important;
+}
+
+.ant-select:hover .ant-select-selector {
+  border-color: var(--border-hover) !important;
+}
+
+.ant-select-focused .ant-select-selector {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1) !important;
+}
+
+.ant-select-dropdown {
+  background: var(--bg-elevated) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: var(--radius-xl) !important;
+  box-shadow: var(--shadow-lg) !important;
+  padding: 4px !important;
+}
+
+.ant-select-item {
+  color: var(--text-secondary) !important;
+  border-radius: var(--radius-md) !important;
+  margin: 2px 0 !important;
+  padding: 8px 12px !important;
+}
+
+.ant-select-item-option-selected {
+  background: var(--accent-primary-light) !important;
+  color: var(--accent-primary) !important;
+  font-weight: 600 !important;
+}
+
+.ant-select-item-option-active {
+  background: var(--bg-hover) !important;
+}
+
+/* ==================== Tag ==================== */
+.ant-tag {
+  border: none !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 4px 10px !important;
+  font-weight: 500 !important;
+  font-size: 12px !important;
+  line-height: 18px !important;
+}
+
+.ant-tag-success {
+  background: rgba(34, 197, 94, 0.15) !important;
+  color: #22c55e !important;
+}
+
+.ant-tag-processing {
+  background: rgba(14, 165, 233, 0.15) !important;
+  color: #0ea5e9 !important;
+}
+
+.ant-tag-error {
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #ef4444 !important;
+}
+
+.ant-tag-warning {
+  background: rgba(249, 115, 22, 0.15) !important;
+  color: #f97316 !important;
+}
+
+.ant-tag-default {
+  background: var(--bg-hover) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* ==================== Modal ==================== */
+.ant-modal-content {
+  background: var(--bg-elevated) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: var(--radius-2xl) !important;
+  box-shadow: var(--shadow-xl) !important;
+}
+
+.ant-modal-header {
+  background: transparent !important;
+  border-bottom: 1px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+  padding: 20px 24px !important;
+}
+
+.ant-modal-title {
+  color: var(--text-primary) !important;
+  font-weight: 600 !important;
+  font-size: 18px !important;
+}
+
+.ant-modal-body {
+  color: var(--text-secondary) !important;
+  padding: 24px !important;
+}
+
+.ant-modal-footer {
+  border-top: 1px solid var(--border-primary) !important;
+  padding: 16px 24px !important;
+}
+
+.ant-modal-close {
+  color: var(--text-tertiary) !important;
+}
+
+.ant-modal-close:hover {
+  color: var(--text-primary) !important;
+  background: var(--bg-hover) !important;
+}
+
+/* ==================== Dropdown ==================== */
+.ant-dropdown-menu {
+  background: var(--bg-elevated) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: var(--radius-xl) !important;
+  box-shadow: var(--shadow-lg) !important;
+  padding: 4px !important;
+}
+
+.ant-dropdown-menu-item {
+  color: var(--text-secondary) !important;
+  border-radius: var(--radius-md) !important;
+  margin: 2px 0 !important;
+  padding: 8px 12px !important;
+  transition: all var(--transition-fast) !important;
+}
+
+.ant-dropdown-menu-item:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+.ant-dropdown-menu-item-divider {
+  background: var(--border-secondary) !important;
+  margin: 4px 0 !important;
+}
+
+/* ==================== Badge ==================== */
+.ant-badge-count {
+  background: var(--accent-primary) !important;
+  box-shadow: 0 0 0 1px var(--bg-secondary) !important;
+  font-weight: 600 !important;
+}
+
+/* ==================== Avatar ==================== */
+.ant-avatar {
+  background: var(--accent-primary) !important;
+  border: 2px solid var(--border-primary) !important;
+  font-weight: 600 !important;
+}
+
+/* ==================== Pagination ==================== */
+.ant-pagination-item {
+  background: var(--bg-hover) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: var(--radius-md) !important;
+  transition: all var(--transition-fast) !important;
+}
+
+.ant-pagination-item a {
+  color: var(--text-secondary) !important;
+}
+
+.ant-pagination-item:hover {
+  border-color: var(--border-hover) !important;
+}
+
+.ant-pagination-item:hover a {
+  color: var(--accent-primary) !important;
+}
+
+.ant-pagination-item-active {
+  background: var(--accent-primary) !important;
+  border-color: var(--accent-primary) !important;
+}
+
+.ant-pagination-item-active a {
+  color: white !important;
+}
+
+.ant-pagination-prev button,
+.ant-pagination-next button {
+  background: var(--bg-hover) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: var(--radius-md) !important;
+  color: var(--text-secondary) !important;
+}
+
+.ant-pagination-prev:hover button,
+.ant-pagination-next:hover button {
+  border-color: var(--border-hover) !important;
+  color: var(--accent-primary) !important;
+}
+
+/* ==================== Form ==================== */
+.ant-form-item-label > label {
+  color: var(--text-secondary) !important;
+  font-weight: 500 !important;
+  font-size: 13px !important;
+}
+
+.ant-form-item-required::before {
+  color: var(--accent-error) !important;
+}
+
+/* ==================== Switch ==================== */
+.ant-switch {
+  background: rgba(255, 255, 255, 0.15) !important;
+}
+
+.ant-switch-checked {
+  background: var(--accent-primary) !important;
+}
+
+/* ==================== Statistic ==================== */
+.ant-statistic-title {
+  color: var(--text-tertiary) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ant-statistic-content {
+  color: var(--text-primary) !important;
+  font-weight: 700 !important;
+}
+
+/* ==================== Progress ==================== */
+.ant-progress-bg {
+  background: var(--accent-primary) !important;
+}
+
+.ant-progress-text {
+  color: var(--text-secondary) !important;
+  font-weight: 600 !important;
+}
+
+/* ==================== Empty ==================== */
+.ant-empty-description {
+  color: var(--text-tertiary) !important;
+}
+
+/* ==================== Spin ==================== */
+.ant-spin-dot-item {
+  background: var(--accent-primary) !important;
+}
+
+/* ==================== Message ==================== */
+.ant-message-notice-content {
+  background: var(--bg-elevated) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: var(--radius-xl) !important;
+  box-shadow: var(--shadow-lg) !important;
+  color: var(--text-primary) !important;
+  padding: 12px 16px !important;
+}
+
+/* ==================== Notification ==================== */
+.ant-notification-notice {
+  background: var(--bg-elevated) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: var(--radius-xl) !important;
+  box-shadow: var(--shadow-lg) !important;
+  padding: 16px 20px !important;
+}
+
+.ant-notification-notice-message {
+  color: var(--text-primary) !important;
+  font-weight: 600 !important;
+}
+
+.ant-notification-notice-description {
+  color: var(--text-secondary) !important;
+}
+
+/* ==================== Tooltip ==================== */
+.ant-tooltip-inner {
+  background: var(--bg-elevated) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: var(--radius-md) !important;
+  color: var(--text-primary) !important;
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+.ant-tooltip-arrow-content {
+  background: var(--bg-elevated) !important;
+}
+
+/* ==================== Scrollbar ==================== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  transition: background var(--transition-base);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ==================== Animations ==================== */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fade-in {
+  animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.slide-in-right {
+  animation: slideInRight 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.scale-in {
+  animation: scaleIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+.bounce {
+  animation: bounce 1s ease-in-out infinite;
+}
+
+/* ==================== Utility Classes ==================== */
+.glass-effect {
+  background: rgba(23, 23, 23, 0.8);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid var(--border-primary);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hover-lift {
+  transition: transform var(--transition-base);
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+}
+
+.gradient-border {
+  position: relative;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+.gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* ==================== Skeleton Loading ==================== */
+.ant-skeleton-element {
+  background: var(--bg-hover) !important;
+}
+
+.ant-skeleton-content .ant-skeleton-title,
+.ant-skeleton-content .ant-skeleton-paragraph > li {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 25%,
+    rgba(255, 255, 255, 0.08) 37%,
+    rgba(255, 255, 255, 0.05) 63%
+  ) !important;
+  background-size: 400% 100% !important;
+  animation: shimmer 1.4s ease infinite !important;
+}
+
+.ant-skeleton-avatar {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 25%,
+    rgba(255, 255, 255, 0.08) 37%,
+    rgba(255, 255, 255, 0.05) 63%
+  ) !important;
+  background-size: 400% 100% !important;
+  animation: shimmer 1.4s ease infinite !important;
+}
+
+.ant-skeleton-button {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 25%,
+    rgba(255, 255, 255, 0.08) 37%,
+    rgba(255, 255, 255, 0.05) 63%
+  ) !important;
+  background-size: 400% 100% !important;
+  animation: shimmer 1.4s ease infinite !important;
+}
+
+.ant-skeleton-input {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 25%,
+    rgba(255, 255, 255, 0.08) 37%,
+    rgba(255, 255, 255, 0.05) 63%
+  ) !important;
+  background-size: 400% 100% !important;
+  animation: shimmer 1.4s ease infinite !important;
+}
+
+/* ==================== Tabs ==================== */
+.ant-tabs-nav {
+  margin-bottom: 20px !important;
+}
+
+.ant-tabs-tab {
+  color: var(--text-secondary) !important;
+  font-weight: 500 !important;
+  padding: 10px 16px !important;
+  transition: all var(--transition-base) !important;
+}
+
+.ant-tabs-tab:hover {
+  color: var(--text-primary) !important;
+}
+
+.ant-tabs-tab-active {
+  color: var(--accent-primary) !important;
+}
+
+.ant-tabs-ink-bar {
+  background: var(--accent-primary) !important;
+  height: 3px !important;
+  border-radius: 3px 3px 0 0 !important;
+}
+
+.ant-tabs-nav::before {
+  border-bottom: 1px solid var(--border-secondary) !important;
+}
+
+/* ==================== Descriptions ==================== */
+.ant-descriptions-item-label {
+  color: var(--text-tertiary) !important;
+  font-weight: 600 !important;
+  font-size: 13px !important;
+}
+
+.ant-descriptions-item-content {
+  color: var(--text-primary) !important;
+  font-size: 14px !important;
+}
+
+.ant-descriptions-bordered .ant-descriptions-item-label {
+  background: rgba(255, 255, 255, 0.02) !important;
+}
+
+.ant-descriptions-bordered .ant-descriptions-item-content {
+  background: transparent !important;
+}
+
+.ant-descriptions-bordered .ant-descriptions-view {
+  border: 1px solid var(--border-primary) !important;
+}
+
+.ant-descriptions-bordered .ant-descriptions-row {
+  border-bottom: 1px solid var(--border-secondary) !important;
+}
+
+/* ==================== Divider ==================== */
+.ant-divider {
+  border-color: var(--border-secondary) !important;
+}
+
+.ant-divider-horizontal.ant-divider-with-text {
+  color: var(--text-tertiary) !important;
+  font-weight: 600 !important;
+  font-size: 13px !important;
+}
+
+/* ==================== Alert ==================== */
+.ant-alert {
+  border-radius: var(--radius-lg) !important;
+  border: 1px solid var(--border-primary) !important;
+}
+
+.ant-alert-success {
+  background: rgba(34, 197, 94, 0.1) !important;
+  border-color: rgba(34, 197, 94, 0.3) !important;
+}
+
+.ant-alert-info {
+  background: rgba(14, 165, 233, 0.1) !important;
+  border-color: rgba(14, 165, 233, 0.3) !important;
+}
+
+.ant-alert-warning {
+  background: rgba(249, 115, 22, 0.1) !important;
+  border-color: rgba(249, 115, 22, 0.3) !important;
+}
+
+.ant-alert-error {
+  background: rgba(239, 68, 68, 0.1) !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
+}
+
+/* ==================== Steps ==================== */
+.ant-steps-item-process .ant-steps-item-icon {
+  background: var(--accent-primary) !important;
+  border-color: var(--accent-primary) !important;
+}
+
+.ant-steps-item-finish .ant-steps-item-icon {
+  border-color: var(--accent-primary) !important;
+}
+
+.ant-steps-item-finish .ant-steps-item-icon > .ant-steps-icon {
+  color: var(--accent-primary) !important;
+}
+
+.ant-steps-item-title {
+  color: var(--text-primary) !important;
+  font-weight: 500 !important;
+}
+
+.ant-steps-item-description {
+  color: var(--text-tertiary) !important;
+}
+
+/* ==================== Upload ==================== */
+.ant-upload-wrapper {
+  color: var(--text-primary) !important;
+}
+
+.ant-upload.ant-upload-drag {
+  background: var(--bg-hover) !important;
+  border: 2px dashed var(--border-primary) !important;
+  border-radius: var(--radius-xl) !important;
+  transition: all var(--transition-base) !important;
+}
+
+.ant-upload.ant-upload-drag:hover {
+  border-color: var(--accent-primary) !important;
+  background: var(--bg-active) !important;
+}
+
+.ant-upload-drag-icon .anticon {
+  color: var(--accent-primary) !important;
+}
+
+.ant-upload-text {
+  color: var(--text-primary) !important;
+  font-weight: 500 !important;
+}
+
+.ant-upload-hint {
+  color: var(--text-tertiary) !important;
+}
+
+/* ==================== Responsive ==================== */
+@media (max-width: 768px) {
+  .ant-layout-header {
+    padding: 0 16px !important;
+  }
+  
+  .ant-card {
+    margin-bottom: 16px;
+  }
+  
+  .ant-table-wrapper {
+    overflow-x: auto;
+  }
+  
+  .ant-layout-sider {
+    position: fixed !important;
+    left: -240px !important;
+    transition: left 0.3s !important;
+    z-index: 1000 !important;
+  }
+  
+  .ant-layout-sider.mobile-open {
+    left: 0 !important;
+  }
+}

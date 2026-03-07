@@ -1,0 +1,549 @@
+/* NovelCraft 公告弹窗 - 电脑端大屏设计 */
+
+.announcement-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(12px);
+  animation: announcement-fade-in 0.3s ease-out;
+}
+
+.announcement-overlay.closing {
+  animation: announcement-fade-out 0.25s ease-out forwards;
+}
+
+@keyframes announcement-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes announcement-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.announcement-modal {
+  position: relative;
+  width: 100%;
+  max-width: 860px;
+  max-height: 90vh;
+  background: #ffffff;
+  border-radius: 24px;
+  box-shadow: 0 32px 100px -20px rgba(0, 0, 0, 0.5);
+  animation: announcement-modal-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.announcement-modal.closing {
+  animation: announcement-modal-out 0.25s ease-out forwards;
+}
+
+@keyframes announcement-modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes announcement-modal-out {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95) translateY(20px);
+  }
+}
+
+/* 顶部装饰条 */
+.announcement-modal::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5px;
+  background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+}
+
+/* 装饰背景 - 隐藏 */
+.announcement-decoration {
+  display: none;
+}
+
+/* 图标 - 隐藏 */
+.announcement-icon-wrapper {
+  display: none;
+}
+
+/* 关闭按钮 */
+.announcement-close-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 10;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.announcement-close-btn:hover {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.announcement-close-btn:active {
+  transform: scale(0.95);
+}
+
+.announcement-close-btn svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* 内容区域 */
+.announcement-content {
+  position: relative;
+  z-index: 1;
+  padding: 40px 48px 36px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 标题 */
+.announcement-title {
+  margin: 0 0 28px 0;
+  font-size: 26px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  text-align: center;
+  padding: 0 40px;
+}
+
+/* 内容主体 */
+.announcement-body {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 12px;
+  margin-right: -12px;
+  min-height: 400px;
+  max-height: 600px;
+  font-size: 16px;
+  line-height: 1.9;
+  color: #374151;
+}
+
+/* 自定义滚动条 */
+.announcement-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.announcement-body::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.announcement-body::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.announcement-body::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* 富文本样式 */
+.announcement-body p {
+  margin: 0 0 20px 0;
+  text-align: justify;
+}
+
+.announcement-body p:last-child {
+  margin-bottom: 0;
+}
+
+.announcement-body h1 {
+  font-size: 26px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 36px 0 20px 0;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.announcement-body h1:first-child {
+  margin-top: 0;
+}
+
+.announcement-body h2 {
+  font-size: 22px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 32px 0 16px 0;
+  padding-left: 16px;
+  border-left: 4px solid #6366f1;
+}
+
+.announcement-body h2:first-child {
+  margin-top: 0;
+}
+
+.announcement-body h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #334155;
+  margin: 24px 0 12px 0;
+}
+
+.announcement-body h3:first-child {
+  margin-top: 0;
+}
+
+.announcement-body strong,
+.announcement-body b {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.announcement-body em,
+.announcement-body i {
+  font-style: italic;
+  color: #475569;
+}
+
+/* 列表样式 */
+.announcement-body ul,
+.announcement-body ol {
+  margin: 20px 0;
+  padding-left: 8px;
+  list-style: none;
+}
+
+.announcement-body ul li,
+.announcement-body ol li {
+  position: relative;
+  padding-left: 32px;
+  margin: 14px 0;
+}
+
+.announcement-body ul li::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 11px;
+  width: 8px;
+  height: 8px;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  border-radius: 50%;
+}
+
+.announcement-body ol {
+  counter-reset: list-counter;
+}
+
+.announcement-body ol li {
+  counter-increment: list-counter;
+}
+
+.announcement-body ol li::before {
+  content: counter(list-counter);
+  position: absolute;
+  left: 0;
+  top: 2px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+}
+
+/* 链接样式 */
+.announcement-body a {
+  color: #6366f1;
+  text-decoration: none;
+  font-weight: 500;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.announcement-body a:hover {
+  color: #4f46e5;
+  border-bottom-color: #4f46e5;
+}
+
+/* 代码样式 */
+.announcement-body code {
+  padding: 4px 10px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-family: 'JetBrains Mono', 'SF Mono', Monaco, Consolas, monospace;
+  font-size: 14px;
+  color: #7c3aed;
+}
+
+.announcement-body pre {
+  margin: 20px 0;
+  padding: 20px 24px;
+  background: #1e293b;
+  border-radius: 16px;
+  overflow-x: auto;
+}
+
+.announcement-body pre code {
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: #e2e8f0;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+/* 引用样式 */
+.announcement-body blockquote {
+  margin: 24px 0;
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-left: 5px solid #6366f1;
+  border-radius: 0 16px 16px 0;
+  color: #475569;
+  font-size: 15px;
+}
+
+.announcement-body blockquote p {
+  margin: 0;
+}
+
+/* 分割线 */
+.announcement-body hr {
+  margin: 32px 0;
+  border: none;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, #e2e8f0 15%, #e2e8f0 85%, transparent 100%);
+}
+
+/* 表格样式 */
+.announcement-body table {
+  width: 100%;
+  margin: 20px 0;
+  border-collapse: collapse;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px #e2e8f0;
+}
+
+.announcement-body th,
+.announcement-body td {
+  padding: 14px 20px;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.announcement-body th {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.announcement-body tr:last-child td {
+  border-bottom: none;
+}
+
+.announcement-body tr:hover td {
+  background: #f8fafc;
+}
+
+/* 图片样式 */
+.announcement-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 16px;
+  margin: 20px 0;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+/* 高亮文本 */
+.announcement-body mark {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%);
+  color: #4f46e5;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+/* 确认按钮 */
+.announcement-confirm-btn {
+  margin-top: 36px;
+  padding: 18px 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 14px;
+  font-size: 17px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  box-shadow: 0 12px 32px -8px rgba(99, 102, 241, 0.5);
+  align-self: flex-end;
+}
+
+.announcement-confirm-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 40px -8px rgba(99, 102, 241, 0.6);
+}
+
+.announcement-confirm-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.announcement-confirm-btn svg {
+  transition: transform 0.25s ease;
+}
+
+.announcement-confirm-btn:hover svg {
+  transform: translateX(5px);
+}
+
+/* 响应式适配 - 平板 */
+@media (max-width: 900px) {
+  .announcement-overlay {
+    padding: 32px;
+  }
+
+  .announcement-modal {
+    max-width: 100%;
+    border-radius: 20px;
+  }
+
+  .announcement-content {
+    padding: 36px 32px 32px;
+  }
+
+  .announcement-title {
+    font-size: 24px;
+  }
+
+  .announcement-body {
+    font-size: 15px;
+    max-height: 400px;
+  }
+}
+
+/* 响应式适配 - 手机 */
+@media (max-width: 640px) {
+  .announcement-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .announcement-modal {
+    border-radius: 24px 24px 0 0;
+    max-height: 92vh;
+    animation: announcement-modal-in-mobile 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .announcement-modal::before {
+    border-radius: 24px 24px 0 0;
+  }
+
+  .announcement-modal.closing {
+    animation: announcement-modal-out-mobile 0.25s ease-out forwards;
+  }
+
+  @keyframes announcement-modal-in-mobile {
+    from {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes announcement-modal-out-mobile {
+    from {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+  }
+
+  .announcement-content {
+    padding: 28px 24px 24px;
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+  }
+
+  .announcement-close-btn {
+    top: 16px;
+    right: 16px;
+    width: 36px;
+    height: 36px;
+  }
+
+  .announcement-close-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .announcement-title {
+    font-size: 20px;
+    margin-bottom: 20px;
+    padding: 0 30px;
+  }
+
+  .announcement-body {
+    font-size: 15px;
+    max-height: 55vh;
+    line-height: 1.8;
+  }
+
+  .announcement-body h2 {
+    font-size: 17px;
+  }
+
+  .announcement-body h3 {
+    font-size: 15px;
+  }
+
+  .announcement-confirm-btn {
+    width: 100%;
+    padding: 16px;
+    margin-top: 24px;
+    border-radius: 12px;
+  }
+}

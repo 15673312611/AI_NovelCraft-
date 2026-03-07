@@ -1,0 +1,588 @@
+/* Modern Novel List Page Styles */
+
+.modern-novel-list {
+  padding: 48px 0 60px;
+  max-width: 1400px;
+  margin: 0 auto;
+  background: #f8fafc;
+  border-radius: 24px;
+}
+
+/* 背景装饰（浅色，不使用黑色） */
+.page-bg-decoration {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 500px at 15% 10%, rgba(59, 130, 246, 0.12), transparent 60%),
+    radial-gradient(700px 420px at 85% 20%, rgba(124, 58, 237, 0.10), transparent 60%),
+    radial-gradient(800px 520px at 45% 90%, rgba(16, 185, 129, 0.06), transparent 60%),
+    linear-gradient(180deg, #f8fafc 0%, #ffffff 60%, #f8fafc 100%);
+}
+
+/* 顶部区域 */
+.page-header-modern {
+  margin-bottom: 24px;
+}
+
+.page-title-group h1 {
+  font-size: 32px;
+  font-weight: 800;
+  margin-bottom: 8px;
+  font-family: 'Noto Serif SC', serif;
+  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.page-title-group p {
+  color: var(--text-secondary);
+  font-size: 15px;
+  max-width: 600px;
+}
+
+/* 工具栏容器 */
+.toolbar-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 40px;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+/* 搜索区域 */
+.search-section {
+  flex: 1;
+  max-width: 480px;
+}
+
+.modern-search-input-large {
+  border-radius: 12px !important;
+  padding: 8px 16px !important;
+  background: white !important;
+  border: 1px solid rgba(226, 232, 240, 0.8) !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02) !important;
+  transition: all 0.2s ease !important;
+  height: 48px;
+}
+
+.modern-search-input-large:hover,
+.modern-search-input-large:focus-within {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025) !important;
+  transform: translateY(-1px);
+}
+
+.modern-search-input-large input {
+  font-size: 15px !important;
+  background: transparent !important;
+}
+
+/* 操作区域 */
+.actions-section {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* 排序下拉：使用原生 select 覆盖触发器（更稳定，避免自绘菜单被裁切/点击失效） */
+.sort-native-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.sort-native-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
+  border: none;
+  background: transparent;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+/* 排序触发器 */
+.sort-trigger-modern {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: white;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  border-radius: 12px;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  height: 48px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  user-select: none;
+}
+
+/* 由于 select 在上层，hover/focus 通过 wrapper 驱动 */
+.sort-native-wrapper:hover .sort-trigger-modern,
+.sort-native-wrapper:focus-within .sort-trigger-modern {
+  background: #f8fafc;
+  color: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.sort-icon {
+  display: flex;
+  align-items: center;
+}
+
+/* 排序菜单 */
+.sort-menu-modern {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 
+    0 4px 6px -1px rgba(0, 0, 0, 0.05),
+    0 10px 15px -3px rgba(0, 0, 0, 0.05),
+    0 0 0 1px rgba(0, 0, 0, 0.05);
+  padding: 6px;
+  min-width: 160px;
+  z-index: 50;
+  transform-origin: top right;
+  animation: scaleIn 0.2s ease-out;
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.sort-option {
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 10px;
+  cursor: pointer;
+  color: #64748b;
+  font-size: 14px;
+  transition: all 0.15s;
+}
+
+.sort-option:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+.sort-option.active {
+  background: #eff6ff;
+  color: #3b82f6;
+  font-weight: 500;
+}
+
+/* 新建按钮 */
+.create-novel-btn-modern {
+  height: 48px !important;
+  padding: 0 28px !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  border-radius: 12px !important;
+  background: linear-gradient(135deg, #60a5fa 0%, #2563eb 55%, #7c3aed 100%) !important;
+  border: none !important;
+  box-shadow:
+    0 10px 18px -10px rgba(37, 99, 235, 0.55),
+    0 6px 10px -6px rgba(124, 58, 237, 0.25) !important;
+  display: inline-flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 8px !important;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s ease, filter 0.25s ease !important;
+  white-space: nowrap !important;
+}
+
+.create-novel-btn-modern:hover {
+  transform: translateY(-2px) !important;
+  box-shadow:
+    0 18px 28px -14px rgba(37, 99, 235, 0.65),
+    0 10px 16px -10px rgba(124, 58, 237, 0.35) !important;
+  filter: saturate(1.05) brightness(1.03);
+}
+
+.create-novel-btn-modern:active {
+  transform: translateY(0) !important;
+}
+
+/* 小说卡片网格 */
+.novels-grid-modern {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 24px;
+}
+
+/* 现代卡片样式 - 精致优雅 */
+.novel-card-modern {
+  background: white;
+  border-radius: 20px;
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  overflow: hidden;
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.03), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+}
+
+.novel-card-modern:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.1), 0 10px 15px -5px rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.2);
+}
+
+.novel-card-modern:hover .card-cover-area {
+  background-image: 
+    linear-gradient(rgba(59, 130, 246, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59, 130, 246, 0.04) 1px, transparent 1px),
+    linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(147, 197, 253, 0.15) 100%),
+    linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%) !important;
+  color: #2563eb !important;
+}
+
+.novel-card-modern:hover .card-cover-area::before {
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.2) 0%, rgba(147, 197, 253, 0.1) 40%, transparent 70%);
+  animation: float 4s ease-in-out infinite;
+}
+
+.novel-card-modern:hover .card-cover-area::after {
+  background: radial-gradient(circle, rgba(96, 165, 250, 0.15) 0%, transparent 70%);
+}
+
+/* 卡片封面区域 - 现代简约 */
+.card-cover-area {
+  height: 180px;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  overflow: hidden;
+  transition: all 0.35s ease;
+}
+
+/* 书脊阴影 */
+.card-cover-area::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: rgba(0,0,0,0.05);
+  box-shadow: 2px 0 4px rgba(0,0,0,0.05);
+  z-index: 1;
+}
+
+/* 花哨的背景设计 */
+.card-cover-area {
+  background: 
+    linear-gradient(135deg, rgba(59, 130, 246, 0.03) 0%, rgba(147, 197, 253, 0.08) 100%),
+    linear-gradient(135deg, #ffffff 0%, #f8fafc 100%) !important;
+  color: #3b82f6 !important;
+  position: relative;
+  border-bottom: 1px solid #e0e7ff;
+  overflow: hidden;
+}
+
+/* 多层装饰圆圈 - 更花哨 */
+.card-cover-area::before {
+  content: '';
+  position: absolute;
+  top: -80px;
+  right: -80px;
+  width: 240px;
+  height: 240px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.12) 0%, rgba(147, 197, 253, 0.06) 40%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: float 6s ease-in-out infinite;
+}
+
+.card-cover-area::after {
+  content: '';
+  position: absolute;
+  bottom: -60px;
+  left: -60px;
+  width: 180px;
+  height: 180px;
+  background: radial-gradient(circle, rgba(96, 165, 250, 0.08) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: float 8s ease-in-out infinite reverse;
+}
+
+@keyframes float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-10px, 10px) scale(1.05); }
+}
+
+/* 网格纹理背景 */
+.card-cover-area {
+  background-image: 
+    linear-gradient(rgba(59, 130, 246, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59, 130, 246, 0.02) 1px, transparent 1px),
+    linear-gradient(135deg, rgba(59, 130, 246, 0.03) 0%, rgba(147, 197, 253, 0.08) 100%),
+    linear-gradient(135deg, #ffffff 0%, #f8fafc 100%) !important;
+  background-size: 20px 20px, 20px 20px, 100% 100%, 100% 100%;
+  background-position: 0 0, 0 0, 0 0, 0 0;
+}
+
+/* 放大书的图标 - 巨大化 */
+.novel-icon-placeholder {
+  font-size: 120px !important; /* 强制覆盖，确保足够大 */
+  opacity: 0.9 !important; /* 增加不透明度 */
+  filter: drop-shadow(0 8px 20px rgba(59, 130, 246, 0.25));
+  transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 2;
+  position: relative;
+  stroke-width: 2px; /* 尝试增加线条粗细（如果图标支持） */
+  color: #3b82f6; /* 确保颜色鲜艳 */
+}
+
+/* 确保图标容器居中 */
+.novel-icon-placeholder svg {
+  width: 120px;
+  height: 120px;
+  display: block; /* 防止行内元素间隙 */
+}
+
+.novel-card-modern:hover .novel-icon-placeholder {
+  transform: scale(1.1) translateY(-8px) rotate(-3deg);
+  opacity: 1 !important;
+  filter: drop-shadow(0 15px 30px rgba(59, 130, 246, 0.4));
+  color: #2563eb;
+}
+
+/* 卡片内容 */
+.card-content {
+  padding: 24px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: white;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.card-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  line-height: 1.4;
+  font-family: 'Noto Serif SC', serif;
+  display: -webkit-box;
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 48px;
+}
+
+.card-desc {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  line-height: 1.6;
+  margin-bottom: 16px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  height: 42px;
+}
+
+.card-meta {
+  margin-top: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border-light);
+  padding-top: 12px;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 悬浮操作栏 */
+.card-hover-actions {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  opacity: 0;
+  transform: translateY(-5px);
+  transition: all 0.2s ease;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.novel-card-modern:hover .card-hover-actions {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.action-btn-mini {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+  pointer-events: auto;
+}
+
+.action-btn-mini:hover {
+  background: var(--primary-color);
+  color: white;
+  box-shadow: var(--shadow-md);
+  transform: scale(1.1);
+}
+
+.action-btn-mini.danger:hover {
+  background: #ef4444;
+}
+
+/* 继续写作大按钮 - 悬浮时出现 */
+.resume-btn-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: all 0.3s ease;
+  pointer-events: none; /* 默认不阻挡点击 */
+}
+
+/* 仅在非常需要强调时使用，目前设计建议保持干净，通过点击卡片本身进入 */
+
+/* 快速筛选标签 */
+.quick-filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.filter-chip {
+  padding: 8px 20px;
+  border-radius: 99px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.filter-chip:hover {
+  border-color: #3b82f6;
+  color: #3b82f6;
+  background: #eff6ff;
+}
+
+.filter-chip.active {
+  background: #3b82f6;
+  color: white;
+  border-color: #3b82f6;
+}
+
+/* 状态标签 */
+.status-badge {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  z-index: 2;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.status-badge.in-progress {
+  color: #3b82f6;
+  background: rgba(239, 246, 255, 0.95);
+  border-color: rgba(59, 130, 246, 0.2);
+}
+
+.status-badge.completed {
+  color: #22c55e;
+  background: rgba(240, 253, 244, 0.95);
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+.status-badge.draft {
+  color: #64748b;
+  background: rgba(248, 250, 252, 0.95);
+  border-color: rgba(100, 116, 139, 0.2);
+}
+
+/* 进度条 */
+.progress-bar-wrapper {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 6px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.progress-bar {
+  height: 4px;
+  background: #f1f5f9;
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%);
+  border-radius: 99px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}

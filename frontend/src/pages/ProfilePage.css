@@ -1,0 +1,351 @@
+/* ==========================================
+   个人资料页面 - 宽屏双栏布局
+   ========================================== */
+
+.profile-page-v2 {
+  min-height: 100vh;
+  background: #f8fafc;
+  padding: 32px 40px;
+}
+
+.profile-loading-v2 {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 400px;
+}
+
+.profile-container-v2 {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* 页面标题 */
+.profile-header-v2 {
+  margin-bottom: 28px;
+}
+
+.profile-header-v2 h1 {
+  font-size: 26px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 6px;
+  letter-spacing: -0.02em;
+}
+
+.profile-header-v2 p {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0;
+}
+
+/* 双栏网格布局 */
+.profile-grid-v2 {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+/* 卡片通用样式 */
+.profile-card-v2 {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+/* 左侧用户卡片 */
+.profile-user-card {
+  padding: 24px;
+}
+
+.profile-user-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 16px;
+}
+
+.profile-avatar-wrapper-v2 {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.profile-avatar-v2 {
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.2);
+}
+
+.profile-avatar-badge-v2 {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 22px;
+  height: 22px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border-radius: 50%;
+  border: 2px solid white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 11px;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.35);
+}
+
+.profile-user-info h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 6px;
+}
+
+.profile-status-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #10b981;
+  font-weight: 500;
+}
+
+.profile-status-tag .status-dot {
+  width: 6px;
+  height: 6px;
+  background: #10b981;
+  border-radius: 50%;
+}
+
+/* 信息列表 */
+.profile-info-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.profile-info-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #f8fafc;
+  border-radius: 12px;
+  transition: background 0.2s;
+}
+
+.profile-info-row:hover {
+  background: #f1f5f9;
+}
+
+.profile-info-icon-v2 {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  flex-shrink: 0;
+}
+
+.profile-info-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.profile-info-text .label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.profile-info-text .value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-readonly-tag {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  background: #e0e7ff;
+  color: #4f46e5;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+/* 右侧安全设置卡片 */
+.profile-security-card {
+  padding: 24px 28px;
+}
+
+.profile-card-title-v2 {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.profile-card-icon-v2 {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #f59e0b 0%, #d97706 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 18px;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);
+}
+
+.profile-card-title-v2 h3 {
+  font-size: 17px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 3px;
+}
+
+.profile-card-title-v2 p {
+  font-size: 13px;
+  color: #94a3b8;
+  margin: 0;
+}
+
+/* 表单样式 */
+.profile-form-v2 .ant-form-item {
+  margin-bottom: 18px;
+}
+
+.profile-form-v2 .ant-form-item-label > label {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #0f172a !important;
+}
+
+.profile-input-v2 {
+  height: 46px !important;
+  border-radius: 12px !important;
+  border: 1.5px solid #e2e8f0 !important;
+  transition: all 0.2s ease !important;
+}
+
+.profile-input-v2:hover {
+  border-color: #cbd5e1 !important;
+}
+
+.profile-input-v2.ant-input-affix-wrapper-focused,
+.profile-input-v2:focus {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}
+
+.profile-input-v2 .ant-input {
+  font-size: 14px !important;
+}
+
+.input-icon-v2 {
+  color: #94a3b8;
+  font-size: 15px;
+}
+
+.profile-form-row-v2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.profile-form-row-v2 .ant-form-item {
+  margin-bottom: 18px;
+}
+
+.profile-submit-btn-v2 {
+  height: 46px !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  border-radius: 12px !important;
+  background: linear-gradient(145deg, #3b82f6 0%, #1d4ed8 100%) !important;
+  border: none !important;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3) !important;
+  transition: all 0.25s ease !important;
+  padding: 0 32px !important;
+}
+
+.profile-submit-btn-v2:hover:not(:disabled) {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 18px rgba(59, 130, 246, 0.35) !important;
+}
+
+.profile-form-v2 .ant-form-item-explain-error {
+  font-size: 12px;
+  margin-top: 6px;
+  color: #ef4444;
+}
+
+/* 底部提示 */
+.profile-tips-v2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 14px 20px;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-radius: 12px;
+  font-size: 13px;
+  color: #3b82f6;
+}
+
+.profile-tips-v2 .anticon {
+  font-size: 16px;
+  color: #2563eb;
+}
+
+/* 响应式 */
+@media (max-width: 900px) {
+  .profile-grid-v2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .profile-page-v2 {
+    padding: 20px 16px;
+  }
+
+  .profile-header-v2 h1 {
+    font-size: 22px;
+  }
+
+  .profile-card-v2 {
+    border-radius: 14px;
+  }
+
+  .profile-user-card,
+  .profile-security-card {
+    padding: 20px;
+  }
+
+  .profile-form-row-v2 {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-submit-btn-v2 {
+    width: 100%;
+  }
+}

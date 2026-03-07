@@ -1,0 +1,122 @@
+:root {
+  /* --- 核心色板 (Palette) --- */
+  /* 主色：一种深邃而优雅的靛蓝，比默认蓝色更有书卷气 */
+  --primary-color: #3b82f6; 
+  --primary-hover: #2563eb;
+  --primary-bg-light: #eff6ff;
+
+  /* 背景色：不再是纯白，而是有温度的纸张色 */
+  --bg-body: #f8fafc; /* 极淡的冷灰，护眼且现代 */
+  --bg-card: #ffffff;
+  --bg-sidebar: rgba(255, 255, 255, 0.85); /* 磨砂玻璃基底 */
+
+  /* 文字颜色：使用不同灰度来区分层级 */
+  --text-primary: #1e293b; /* 接近黑色的深蓝灰 */
+  --text-secondary: #64748b; /* 次级文字 */
+  --text-tertiary: #94a3b8; /* 辅助/提示文字 */
+
+  /* 边框与分割线 */
+  --border-color: #e2e8f0;
+  --border-light: #f1f5f9;
+
+  /* --- 阴影系统 (Elevation) --- */
+  /* 极简风的核心在于“悬浮感”而非厚重的边框 */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-float: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-inner: inset 0 2px 4px 0 rgb(0 0 0 / 0.06);
+  --shadow-glow: 0 0 15px rgba(59, 130, 246, 0.15);
+
+  /* --- 渐变体系 (Gradients) --- */
+  --gradient-primary: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  --gradient-surface: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  --gradient-glass: linear-gradient(145deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.6) 100%);
+
+  /* --- 尺寸与圆角 --- */
+  --radius-sm: 8px;
+  --radius-md: 12px; /* 现代卡片标准圆角 */
+  --radius-lg: 16px; /* 大卡片圆角 */
+  --radius-full: 9999px;
+  
+  --sidebar-width: 260px;
+  --header-height: 72px;
+
+  /* --- 动效 --- */
+  --transition-base: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 全局重置与基础样式 */
+body {
+  background-color: var(--bg-body);
+  color: var(--text-primary);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 覆盖 Ant Design 默认样式，使其更轻量 */
+.ant-layout {
+  background: var(--bg-body) !important;
+}
+
+.ant-layout-sider {
+  background: transparent !important;
+}
+
+.ant-menu {
+  background: transparent !important;
+  border-inline-end: none !important;
+}
+
+.ant-menu-item {
+  border-radius: var(--radius-md) !important;
+  margin: 4px 8px !important;
+  width: calc(100% - 16px) !important;
+  transition: var(--transition-base) !important;
+  color: var(--text-secondary) !important;
+}
+
+.ant-menu-item:hover {
+  color: var(--primary-color) !important;
+  background: var(--primary-bg-light) !important;
+}
+
+.ant-menu-item-selected {
+  background: var(--primary-color) !important;
+  color: white !important;
+  box-shadow: var(--shadow-md);
+}
+
+.ant-menu-item-selected:hover {
+  background: var(--primary-hover) !important;
+  color: white !important;
+}
+
+/* 卡片通用样式 */
+.modern-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-light);
+  transition: var(--transition-base);
+}
+
+.modern-card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+/* 按钮美化 */
+.ant-btn {
+  border-radius: var(--radius-sm);
+  box-shadow: none !important;
+}
+
+.ant-btn-primary {
+  background: var(--primary-color);
+}
+
+.ant-btn-primary:hover {
+  background: var(--primary-hover) !important;
+}

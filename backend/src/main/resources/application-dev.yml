@@ -25,7 +25,7 @@ logging:
 # 开发环境特殊配置
 dev:
   cors:
-    allowed-origins: "http://localhost:3000,http://localhost:8080"
+    allowed-origins: "http://localhost:3200,http://localhost:8080"
     allowed-methods: "GET,POST,PUT,DELETE,OPTIONS"
     allowed-headers: "*"
     allow-credentials: true 

@@ -4,7 +4,7 @@
   "description": "AI辅助小说创作系统前端",
   "private": true,
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --port 3200 --strictPort",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",

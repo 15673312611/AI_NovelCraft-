@@ -263,7 +263,11 @@ const AppHeader: React.FC = () => {
       </div>
       <RechargeModal 
         visible={rechargeModalVisible} 
-        onCancel={() => setRechargeModalVisible(false)} 
+        onCancel={() => setRechargeModalVisible(false)}
+        onSuccess={() => {
+          setRechargeModalVisible(false)
+          loadCreditInfo()
+        }}
       />
     </Header>
   )

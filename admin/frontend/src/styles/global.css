@@ -1,0 +1,360 @@
+/* 
+ * AI Novel Admin - 企业级全局样式
+ * 基于 Ant Design 5.x 主题系统
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* ==================== CSS Variables ==================== */
+:root {
+  --color-bg-base: #0a0a0a;
+  --color-bg-container: #171717;
+  --color-bg-elevated: #1c1c1c;
+  --color-bg-spotlight: #262626;
+  
+  --color-text-base: #fafafa;
+  --color-text-secondary: rgba(250, 250, 250, 0.65);
+  --color-text-tertiary: rgba(250, 250, 250, 0.45);
+  --color-text-quaternary: rgba(250, 250, 250, 0.25);
+  
+  --color-border-base: rgba(255, 255, 255, 0.08);
+  --color-border-secondary: rgba(255, 255, 255, 0.06);
+  
+  --color-primary: #0ea5e9;
+  --color-primary-hover: #0284c7;
+  --color-success: #22c55e;
+  --color-warning: #f97316;
+  --color-error: #ef4444;
+  
+  --radius-sm: 6px;
+  --radius-base: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  
+  --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ==================== Base Styles ==================== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'SF Pro Display', 
+               'Inter', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--color-bg-base);
+  color: var(--color-text-base);
+  line-height: 1.5714;
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* ==================== Scrollbar ==================== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ==================== Selection ==================== */
+::selection {
+  background: rgba(14, 165, 233, 0.3);
+  color: #fff;
+}
+
+/* ==================== Focus Styles ==================== */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* ==================== Animations ==================== */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Animation Classes */
+.animate-fade-in {
+  animation: fadeIn 0.3s var(--transition-base);
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.4s var(--transition-base);
+}
+
+.animate-fade-in-down {
+  animation: fadeInDown 0.4s var(--transition-base);
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.3s var(--transition-base);
+}
+
+.animate-slide-in-left {
+  animation: slideInLeft 0.4s var(--transition-base);
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.4s var(--transition-base);
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ==================== Utility Classes ==================== */
+.glass {
+  background: rgba(23, 23, 23, 0.8);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--color-primary), #06b6d4);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hover-lift {
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ==================== Layout Enhancements ==================== */
+.ant-layout-header {
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+}
+
+/* ==================== Pro Components Overrides ==================== */
+.ant-pro-layout {
+  min-height: 100vh;
+}
+
+.ant-pro-layout .ant-layout-sider {
+  border-right: 1px solid var(--color-border-base);
+}
+
+.ant-pro-sider-logo {
+  padding: 16px;
+}
+
+.ant-pro-global-header {
+  border-bottom: 1px solid var(--color-border-base);
+}
+
+/* ==================== Card Enhancements ==================== */
+.ant-card {
+  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+}
+
+.ant-card:hover {
+  border-color: rgba(14, 165, 233, 0.3);
+}
+
+/* ==================== Table Enhancements ==================== */
+.ant-table-wrapper {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.ant-table-thead > tr > th {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+
+/* ==================== Button Enhancements ==================== */
+.ant-btn-primary {
+  font-weight: 500;
+}
+
+.ant-btn-primary:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.ant-btn-primary:not(:disabled):active {
+  transform: translateY(0);
+}
+
+/* ==================== Input Enhancements ==================== */
+.ant-input-affix-wrapper,
+.ant-select-selector,
+.ant-picker {
+  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+}
+
+/* ==================== Modal Enhancements ==================== */
+.ant-modal-content {
+  border: 1px solid var(--color-border-base);
+}
+
+/* ==================== Tag Enhancements ==================== */
+.ant-tag {
+  font-weight: 500;
+}
+
+/* ==================== Statistic Enhancements ==================== */
+.ant-statistic-title {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.ant-statistic-content-value {
+  font-weight: 700;
+}
+
+/* ==================== Responsive ==================== */
+@media (max-width: 768px) {
+  .ant-layout-header {
+    padding: 0 16px !important;
+  }
+  
+  .ant-card-body {
+    padding: 16px;
+  }
+}
+
+/* ==================== Print Styles ==================== */
+@media print {
+  .ant-layout-sider,
+  .ant-layout-header {
+    display: none;
+  }
+  
+  .ant-layout-content {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+}
