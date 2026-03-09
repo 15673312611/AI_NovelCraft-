@@ -1,4 +1,4 @@
-﻿import request from './request'
+import request from './request'
 
 export interface UserCredit {
   id: number
@@ -60,6 +60,8 @@ export interface CreditPackage {
   sortOrder: number
 }
 
+export type YiPayType = 'alipay' | 'wxpay' | 'qqpay' | 'cashier'
+
 export interface YiPayConfig {
   enabled: boolean
   gatewayUrl: string
@@ -68,6 +70,17 @@ export interface YiPayConfig {
   notifyUrl: string
   returnUrl: string
   orderExpireMinutes: number
+  supportedTypes: YiPayType[]
+}
+
+export interface YiPayVerifyResult {
+  success: boolean
+  message: string
+  code?: number
+  pid?: string
+  active?: number | string
+  money?: string
+  queryApi?: string
 }
 
 export const adminCreditService = {
@@ -133,5 +146,9 @@ export const adminCreditService = {
 
   updatePaymentConfig: (config: Partial<YiPayConfig>) => {
     return request.put('credits/config/payment', config)
-  }
+  },
+
+  verifyPaymentConfig: (config: Partial<YiPayConfig>) => {
+    return request.post<YiPayVerifyResult>('credits/config/payment/verify', config)
+  },
 }

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Input,
   Space,
@@ -73,6 +73,7 @@ const CreditsPage = () => {
   const [bonusForm] = Form.useForm()
 
   const [paymentLoading, setPaymentLoading] = useState(false)
+  const [paymentVerifyLoading, setPaymentVerifyLoading] = useState(false)
   const [paymentForm] = Form.useForm<YiPayConfig>()
 
   const [modalVisible, setModalVisible] = useState(false)
@@ -130,6 +131,7 @@ const CreditsPage = () => {
         notifyUrl: res.notifyUrl || '',
         returnUrl: res.returnUrl || '',
         orderExpireMinutes: Number(res.orderExpireMinutes || 30),
+        supportedTypes: Array.isArray(res.supportedTypes) && res.supportedTypes.length > 0 ? res.supportedTypes : ['alipay', 'wxpay'],
       })
     } catch {
       message.error('加载支付配置失败')
@@ -261,6 +263,7 @@ const CreditsPage = () => {
         notifyUrl: values.notifyUrl || '',
         returnUrl: values.returnUrl || '',
         orderExpireMinutes: Number(values.orderExpireMinutes || 30),
+        supportedTypes: values.supportedTypes || [],
       })
       message.success('支付配置已保存')
       await loadPaymentConfig()
@@ -268,6 +271,28 @@ const CreditsPage = () => {
       message.error('支付配置保存失败')
     } finally {
       setPaymentLoading(false)
+    }
+  }
+
+  const handleVerifyPaymentConfig = async () => {
+    try {
+      const values = await paymentForm.validateFields()
+      setPaymentVerifyLoading(true)
+      const res: any = await adminCreditService.verifyPaymentConfig({
+        gatewayUrl: values.gatewayUrl || '',
+        pid: values.pid || '',
+        key: values.key || '',
+        supportedTypes: values.supportedTypes || [],
+      })
+      if (res?.success) {
+        message.success(res?.message || '连接测试成功')
+      } else {
+        message.error(res?.message || '连接测试失败')
+      }
+    } catch (error: any) {
+      message.error(error?.message || '连接测试失败')
+    } finally {
+      setPaymentVerifyLoading(false)
     }
   }
 
@@ -530,7 +555,7 @@ const CreditsPage = () => {
                   </Form.Item>
                 </Col>
                 <Col span={8}>
-                  <Form.Item name="pid" label="商户PID" rules={[{ required: true, message: '请输入商户PID' }]}>
+                  <Form.Item name="pid" label="商户PID">
                     <Input placeholder="例如: 10001" />
                   </Form.Item>
                 </Col>
@@ -538,13 +563,26 @@ const CreditsPage = () => {
 
               <Row gutter={16}>
                 <Col span={12}>
-                  <Form.Item name="gatewayUrl" label="支付网关地址" rules={[{ required: true, message: '请输入支付网关地址' }]}>
+                  <Form.Item name="gatewayUrl" label="支付网关地址">
                     <Input placeholder="https://xxx.com/submit.php" />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item name="key" label="商户密钥" rules={[{ required: true, message: '请输入商户密钥' }]}>
-                    <Input.Password placeholder="留空不会覆盖，显示****说明已有配置" />
+                  <Form.Item name="key" label="商户密钥">
+                    <Input.Password placeholder="留空或保持掩码将沿用已保存密钥" />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="supportedTypes" label="可用支付方式" rules={[{ required: true, message: '请至少选择一种支付方式' }]}>
+                    <Select mode="multiple" placeholder="选择用户端可用支付方式">
+                      <Select.Option value="alipay">支付宝</Select.Option>
+                      <Select.Option value="wxpay">微信支付</Select.Option>
+                      <Select.Option value="qqpay">QQ钱包</Select.Option>
+                      <Select.Option value="cashier">收银台(不指定支付方式)</Select.Option>
+                    </Select>
                   </Form.Item>
                 </Col>
               </Row>
@@ -563,7 +601,10 @@ const CreditsPage = () => {
               </Row>
 
               <Divider style={{ borderColor: 'rgba(255,255,255,0.1)' }} />
-              <Button type="primary" loading={paymentLoading} onClick={handleSavePaymentConfig}>保存支付配置</Button>
+              <Space>
+                <Button loading={paymentVerifyLoading} onClick={handleVerifyPaymentConfig}>测试连接</Button>
+                <Button type="primary" loading={paymentLoading} onClick={handleSavePaymentConfig}>保存支付配置</Button>
+              </Space>
             </Form>
           </div>
 

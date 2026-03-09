@@ -20,9 +20,14 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
@@ -38,6 +43,14 @@ public class CreditRechargeOrderService {
     private static final String STATUS_PENDING = "PENDING";
     private static final String STATUS_PAID = "PAID";
     private static final String STATUS_CLOSED = "CLOSED";
+
+    private static final String PAY_TYPE_ALIPAY = "alipay";
+    private static final String PAY_TYPE_WXPAY = "wxpay";
+    private static final String PAY_TYPE_QQPAY = "qqpay";
+    private static final String PAY_TYPE_CASHIER = "cashier";
+
+    private static final Set<String> ALL_PAY_TYPES = Arrays.stream(new String[]{PAY_TYPE_ALIPAY, PAY_TYPE_WXPAY, PAY_TYPE_QQPAY, PAY_TYPE_CASHIER})
+            .collect(Collectors.toSet());
 
     @Autowired
     private CreditPackageService creditPackageService;
@@ -56,10 +69,11 @@ public class CreditRechargeOrderService {
         if (creditPackage == null || !Boolean.TRUE.equals(creditPackage.getIsActive())) {
             throw new RuntimeException("充值套餐不可用");
         }
-
-        String normalizedPayType = normalizePayType(payType);
-        if (normalizedPayType == null) {
-            throw new RuntimeException("支付方式不支持");
+        if (creditPackage.getPrice() == null || creditPackage.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("充值套餐金额配置异常，请联系管理员");
+        }
+        if (creditPackage.getCredits() == null || creditPackage.getCredits() <= 0) {
+            throw new RuntimeException("充值套餐字数配置异常，请联系管理员");
         }
 
         YiPayConfig yiPayConfig = loadYiPayConfig();
@@ -67,6 +81,11 @@ public class CreditRechargeOrderService {
             throw new RuntimeException("充值功能暂未开放");
         }
         validateYiPayConfig(yiPayConfig);
+
+        String normalizedPayType = normalizePayType(payType, yiPayConfig.supportedTypes);
+        if (normalizedPayType == null) {
+            throw new RuntimeException("支付方式不支持");
+        }
 
         String orderNo = generateOrderNo();
         int expireMinutes = yiPayConfig.orderExpireMinutes;
@@ -79,7 +98,16 @@ public class CreditRechargeOrderService {
                 : buildDefaultReturnUrl(request, baseUrl);
 
         BigDecimal amount = creditPackage.getPrice().setScale(2, RoundingMode.HALF_UP);
-        String payUrl = buildYiPayUrl(yiPayConfig, orderNo, normalizedPayType, amount, creditPackage.getName(), notifyUrl, returnUrl, userId);
+        String payUrl = buildYiPayUrl(
+                yiPayConfig,
+                orderNo,
+                normalizedPayType,
+                amount,
+                creditPackage.getName(),
+                notifyUrl,
+                returnUrl,
+                userId
+        );
 
         CreditRechargeOrder order = new CreditRechargeOrder();
         order.setOrderNo(orderNo);
@@ -89,7 +117,7 @@ public class CreditRechargeOrderService {
         order.setPackagePrice(amount);
         order.setPackageCredits(creditPackage.getCredits());
         order.setPaymentProvider(PROVIDER_YIPAY);
-        order.setPaymentType(normalizedPayType);
+        order.setPaymentType(hasText(normalizedPayType) ? normalizedPayType : PAY_TYPE_CASHIER);
         order.setStatus(STATUS_PENDING);
         order.setPaymentUrl(payUrl);
         order.setClientIp(resolveClientIp(request));
@@ -107,6 +135,29 @@ public class CreditRechargeOrderService {
         closeIfExpired(order);
         CreditRechargeOrder latest = orderRepository.findByOrderNo(orderNo);
         return buildOrderResponse(latest == null ? order : latest);
+    }
+
+    public Map<String, Object> getRechargeConfigForUser() {
+        YiPayConfig config = loadYiPayConfig();
+
+        boolean configured = hasText(config.gatewayUrl) && hasText(config.pid) && hasText(config.key);
+        boolean enabled = config.enabled && configured;
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("enabled", enabled);
+        result.put("provider", PROVIDER_YIPAY);
+        result.put("supportedPayTypes", config.supportedTypes);
+        result.put("defaultPayType", config.supportedTypes.isEmpty() ? PAY_TYPE_ALIPAY : config.supportedTypes.get(0));
+        result.put("orderExpireMinutes", config.orderExpireMinutes);
+
+        if (!enabled) {
+            if (!config.enabled) {
+                result.put("reason", "充值功能未启用");
+            } else {
+                result.put("reason", "支付参数配置不完整，请联系管理员");
+            }
+        }
+        return result;
     }
 
     @Transactional
@@ -128,11 +179,6 @@ public class CreditRechargeOrderService {
         YiPayConfig yiPayConfig = loadYiPayConfig();
         validateYiPayConfig(yiPayConfig);
 
-        if (hasText(params.get("pid")) && !yiPayConfig.pid.equals(trimToEmpty(params.get("pid")))) {
-            logger.warn("易支付pid不匹配, orderNo={}, pid={}", orderNo, params.get("pid"));
-            return false;
-        }
-
         if (!verifySign(params, yiPayConfig.key)) {
             logger.warn("易支付回调签名校验失败, orderNo={}", orderNo);
             return false;
@@ -148,9 +194,53 @@ public class CreditRechargeOrderService {
             return true;
         }
 
-        if (!STATUS_PENDING.equals(order.getStatus())) {
+        if (!STATUS_PENDING.equals(order.getStatus()) && !STATUS_CLOSED.equals(order.getStatus())) {
             logger.warn("订单状态不可支付, orderNo={}, status={}", orderNo, order.getStatus());
             return false;
+        }
+
+        String callbackPid = trimToEmpty(params.get("pid"));
+        if (!hasText(callbackPid) || !yiPayConfig.pid.equals(callbackPid)) {
+            logger.warn("易支付回调商户PID不匹配, orderNo={}, pid={}", orderNo, callbackPid);
+            return false;
+        }
+
+        String signType = trimToEmpty(params.get("sign_type"));
+        if (hasText(signType) && !"MD5".equalsIgnoreCase(signType)) {
+            logger.warn("易支付回调签名类型不支持, orderNo={}, signType={}", orderNo, signType);
+            return false;
+        }
+
+        String tradeNo = trimToEmpty(params.get("trade_no"));
+        if (!hasText(tradeNo)) {
+            logger.warn("易支付回调交易号缺失, orderNo={}", orderNo);
+            return false;
+        }
+
+        String callbackType = trimToEmpty(params.get("type")).toLowerCase(Locale.ROOT);
+        if (!hasText(callbackType)) {
+            logger.warn("易支付回调支付方式缺失, orderNo={}", orderNo);
+            return false;
+        }
+
+        String orderType = trimToEmpty(order.getPaymentType()).toLowerCase(Locale.ROOT);
+        if (hasText(callbackType) && hasText(orderType) && !PAY_TYPE_CASHIER.equals(orderType) && !orderType.equals(callbackType)) {
+            logger.warn("易支付回调支付方式不匹配, orderNo={}, callbackType={}, orderType={}", orderNo, callbackType, orderType);
+            return false;
+        }
+
+        String callbackParam = trimToEmpty(params.get("param"));
+        if (hasText(callbackParam)) {
+            try {
+                Long callbackUserId = Long.parseLong(callbackParam);
+                if (order.getUserId() != null && !order.getUserId().equals(callbackUserId)) {
+                    logger.warn("易支付回调业务参数用户不匹配, orderNo={}, callbackUserId={}, orderUserId={}", orderNo, callbackUserId, order.getUserId());
+                    return false;
+                }
+            } catch (NumberFormatException ex) {
+                logger.warn("易支付回调业务参数格式异常, orderNo={}, param={}", orderNo, callbackParam);
+                return false;
+            }
         }
 
         String money = trimToEmpty(params.get("money"));
@@ -173,15 +263,18 @@ public class CreditRechargeOrderService {
             return false;
         }
 
-        String tradeNo = trimToEmpty(params.get("trade_no"));
         String notifyRaw = toJson(params);
-        int updatedRows = orderRepository.markPaidIfPending(orderNo, tradeNo, notifyRaw);
+        int updatedRows = orderRepository.markPaidIfUnpaid(orderNo, tradeNo, notifyRaw);
         if (updatedRows <= 0) {
             CreditRechargeOrder latest = orderRepository.findByOrderNo(orderNo);
             return latest != null && STATUS_PAID.equals(latest.getStatus());
         }
 
         BigDecimal credits = BigDecimal.valueOf(order.getPackageCredits() == null ? 0L : order.getPackageCredits());
+        if (credits.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("充值到账失败，套餐字数异常");
+        }
+
         String description = String.format("在线充值字数包[%s] 订单:%s", order.getPackageName(), orderNo);
         boolean recharged = creditService.recharge(order.getUserId(), credits, description, null);
         if (!recharged) {
@@ -216,9 +309,15 @@ public class CreditRechargeOrderService {
         orderRepository.closeExpiredOrder(order.getId());
     }
 
-    private String normalizePayType(String payType) {
+    private String normalizePayType(String payType, List<String> allowedTypes) {
+        if (allowedTypes == null || allowedTypes.isEmpty()) {
+            return null;
+        }
         String type = trimToEmpty(payType).toLowerCase(Locale.ROOT);
-        if ("alipay".equals(type) || "wxpay".equals(type)) {
+        if (!hasText(type)) {
+            return allowedTypes.get(0);
+        }
+        if (allowedTypes.contains(type)) {
             return type;
         }
         return null;
@@ -239,13 +338,15 @@ public class CreditRechargeOrderService {
                                  Long userId) {
         Map<String, String> params = new LinkedHashMap<>();
         params.put("pid", config.pid);
-        params.put("type", payType);
+        if (hasText(payType) && !PAY_TYPE_CASHIER.equals(payType)) {
+            params.put("type", payType);
+        }
         params.put("out_trade_no", orderNo);
         params.put("notify_url", notifyUrl);
         params.put("return_url", returnUrl);
-        params.put("name", "字数包-" + packageName);
+        params.put("name", "字数包-" + trimToEmpty(packageName));
         params.put("money", amount.toPlainString());
-        params.put("param", String.valueOf(userId));
+        params.put("param", userId == null ? "" : String.valueOf(userId));
         params.put("sign_type", "MD5");
         params.put("sign", generateSign(params, config.key));
 
@@ -302,18 +403,24 @@ public class CreditRechargeOrderService {
     private YiPayConfig loadYiPayConfig() {
         YiPayConfig config = new YiPayConfig();
         config.enabled = Boolean.parseBoolean(configService.getConfig("payment_yipay_enabled", "false"));
-        config.gatewayUrl = trimToEmpty(configService.getConfig("payment_yipay_gateway_url", ""));
+        config.gatewayUrl = normalizeGatewayUrl(configService.getConfig("payment_yipay_gateway_url", ""));
         config.pid = trimToEmpty(configService.getConfig("payment_yipay_pid", ""));
         config.key = trimToEmpty(configService.getConfig("payment_yipay_key", ""));
         config.notifyUrl = trimToEmpty(configService.getConfig("payment_yipay_notify_url", ""));
         config.returnUrl = trimToEmpty(configService.getConfig("payment_yipay_return_url", ""));
         config.orderExpireMinutes = parseInt(configService.getConfig("payment_order_expire_minutes", "30"), 30);
+        config.supportedTypes = parseSupportedTypes(configService.getConfig("payment_yipay_supported_types", "alipay,wxpay"));
+
         if (config.orderExpireMinutes < 5) {
             config.orderExpireMinutes = 5;
         }
         if (config.orderExpireMinutes > 180) {
             config.orderExpireMinutes = 180;
         }
+        if (config.supportedTypes.isEmpty()) {
+            config.supportedTypes = new ArrayList<>(Arrays.asList(PAY_TYPE_ALIPAY, PAY_TYPE_WXPAY));
+        }
+
         return config;
     }
 
@@ -321,9 +428,24 @@ public class CreditRechargeOrderService {
         if (!hasText(config.gatewayUrl) || !hasText(config.pid) || !hasText(config.key)) {
             throw new RuntimeException("支付参数未配置完整，请联系管理员");
         }
+        if (!config.gatewayUrl.startsWith("http://") && !config.gatewayUrl.startsWith("https://")) {
+            throw new RuntimeException("支付网关地址格式错误");
+        }
+        if (config.supportedTypes == null || config.supportedTypes.isEmpty()) {
+            throw new RuntimeException("支付方式未配置，请联系管理员");
+        }
     }
 
     private String buildBaseUrl(HttpServletRequest request) {
+        String forwardedProto = trimToEmpty(request.getHeader("X-Forwarded-Proto"));
+        String forwardedHost = trimToEmpty(request.getHeader("X-Forwarded-Host"));
+
+        if (hasText(forwardedProto) && hasText(forwardedHost)) {
+            String proto = forwardedProto.split(",")[0].trim();
+            String host = forwardedHost.split(",")[0].trim();
+            return proto + "://" + host + request.getContextPath();
+        }
+
         String scheme = request.getScheme();
         String serverName = request.getServerName();
         int serverPort = request.getServerPort();
@@ -377,8 +499,43 @@ public class CreditRechargeOrderService {
         return value == null ? "" : value.trim();
     }
 
+    private String trimToEmpty(Object value) {
+        return value == null ? "" : String.valueOf(value).trim();
+    }
+
     private boolean hasText(String value) {
         return value != null && !value.trim().isEmpty();
+    }
+
+    private String normalizeGatewayUrl(String url) {
+        String value = trimToEmpty(url);
+        if (!hasText(value)) {
+            return "";
+        }
+        if (value.endsWith("/")) {
+            return value.substring(0, value.length() - 1);
+        }
+        return value;
+    }
+
+    private List<String> parseSupportedTypes(String value) {
+        if (!hasText(value)) {
+            return Collections.emptyList();
+        }
+        List<String> result = new ArrayList<>();
+        for (String raw : value.split(",")) {
+            String item = trimToEmpty(raw).toLowerCase(Locale.ROOT);
+            if (!hasText(item)) {
+                continue;
+            }
+            if (!ALL_PAY_TYPES.contains(item)) {
+                continue;
+            }
+            if (!result.contains(item)) {
+                result.add(item);
+            }
+        }
+        return result;
     }
 
     private static class YiPayConfig {
@@ -389,5 +546,6 @@ public class CreditRechargeOrderService {
         private String notifyUrl;
         private String returnUrl;
         private int orderExpireMinutes;
+        private List<String> supportedTypes = new ArrayList<>();
     }
 }

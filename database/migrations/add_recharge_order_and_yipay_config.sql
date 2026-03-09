@@ -1,5 +1,4 @@
 -- 充值订单表 + 易支付配置
-
 CREATE TABLE IF NOT EXISTS `credit_recharge_orders` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `order_no` varchar(64) NOT NULL COMMENT '业务订单号',
@@ -7,9 +6,9 @@ CREATE TABLE IF NOT EXISTS `credit_recharge_orders` (
   `package_id` bigint NOT NULL COMMENT '套餐ID',
   `package_name` varchar(100) NOT NULL COMMENT '套餐名称快照',
   `package_price` decimal(10,2) NOT NULL COMMENT '支付金额',
-  `package_credits` bigint NOT NULL COMMENT '到账字数包',
+  `package_credits` bigint NOT NULL COMMENT '到账字数点',
   `payment_provider` varchar(32) NOT NULL DEFAULT 'YIPAY' COMMENT '支付渠道',
-  `payment_type` varchar(16) NOT NULL COMMENT '支付类型: alipay/wxpay',
+  `payment_type` varchar(16) NOT NULL COMMENT '支付类型: alipay/wxpay/qqpay/cashier',
   `status` varchar(20) NOT NULL DEFAULT 'PENDING' COMMENT '状态: PENDING/PAID/CLOSED/FAILED',
   `third_party_order_no` varchar(128) DEFAULT NULL COMMENT '第三方交易号',
   `payment_url` varchar(2000) DEFAULT NULL COMMENT '支付跳转链接',
@@ -33,6 +32,7 @@ VALUES
 ('payment_yipay_key', '', '易支付商户密钥', 1, NOW(), NOW()),
 ('payment_yipay_notify_url', '', '易支付异步回调地址, 留空则自动拼接', 0, NOW(), NOW()),
 ('payment_yipay_return_url', '', '易支付同步跳转地址, 留空则默认返回前端设置页', 0, NOW(), NOW()),
+('payment_yipay_supported_types', 'alipay,wxpay', '易支付可用支付方式', 0, NOW(), NOW()),
 ('payment_order_expire_minutes', '30', '充值订单过期时间(分钟)', 0, NOW(), NOW())
 ON DUPLICATE KEY UPDATE
 `description` = VALUES(`description`),

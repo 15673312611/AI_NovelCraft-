@@ -1,4 +1,6 @@
-﻿import api from './api'
+import api from './api'
+
+export type RechargePayType = 'alipay' | 'wxpay' | 'qqpay' | 'cashier'
 
 export interface UserCreditInfo {
   balance: number
@@ -72,12 +74,21 @@ export interface RechargeOrder {
   packageName: string
   packagePrice: number
   packageCredits: number
-  paymentType: 'alipay' | 'wxpay'
+  paymentType: RechargePayType
   status: 'PENDING' | 'PAID' | 'CLOSED' | 'FAILED'
   payUrl: string
   paidAt?: string | null
   expiredAt?: string | null
   createdAt?: string | null
+}
+
+export interface RechargeConfig {
+  enabled: boolean
+  provider: string
+  supportedPayTypes: RechargePayType[]
+  defaultPayType: RechargePayType
+  orderExpireMinutes: number
+  reason?: string
 }
 
 export const creditService = {
@@ -120,7 +131,12 @@ export const creditService = {
     return response.data
   },
 
-  createRechargeOrder: async (packageId: number, payType: 'alipay' | 'wxpay'): Promise<RechargeOrder> => {
+  getRechargeConfig: async (): Promise<RechargeConfig> => {
+    const response: any = await api.get('/credits/recharge/config')
+    return response.data
+  },
+
+  createRechargeOrder: async (packageId: number, payType?: RechargePayType): Promise<RechargeOrder> => {
     const response: any = await api.post('/credits/recharge/orders', { packageId, payType })
     return response.data
   },

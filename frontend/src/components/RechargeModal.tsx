@@ -1,7 +1,7 @@
-﻿import React, { useEffect, useRef, useState } from 'react'
-import { Modal, Button, Tag, message, Spin } from 'antd'
+import React, { useEffect, useRef, useState } from 'react'
+import { Modal, Button, Tag, message, Spin, Alert } from 'antd'
 import { CheckCircleOutlined } from '@ant-design/icons'
-import { creditService, CreditPackage, RechargeOrder } from '@/services/creditService'
+import { creditService, CreditPackage, RechargeConfig, RechargeOrder, RechargePayType } from '@/services/creditService'
 import './RechargeModal.css'
 
 interface RechargeModalProps {
@@ -10,19 +10,27 @@ interface RechargeModalProps {
   onSuccess?: () => void
 }
 
+const payTypeLabel: Record<RechargePayType, string> = {
+  alipay: '支付宝',
+  wxpay: '微信支付',
+  qqpay: 'QQ钱包',
+  cashier: '收银台',
+}
+
 const RechargeModal: React.FC<RechargeModalProps> = ({ visible, onCancel, onSuccess }) => {
   const [packages, setPackages] = useState<CreditPackage[]>([])
+  const [config, setConfig] = useState<RechargeConfig | null>(null)
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [checking, setChecking] = useState(false)
   const [selectedPackageId, setSelectedPackageId] = useState<number | null>(null)
-  const [payType, setPayType] = useState<'alipay' | 'wxpay'>('alipay')
+  const [payType, setPayType] = useState<RechargePayType>('alipay')
   const [currentOrder, setCurrentOrder] = useState<RechargeOrder | null>(null)
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     if (visible) {
-      loadPackages()
+      loadData()
     } else {
       clearPolling()
       setCurrentOrder(null)
@@ -39,16 +47,28 @@ const RechargeModal: React.FC<RechargeModalProps> = ({ visible, onCancel, onSucc
     }
   }
 
-  const loadPackages = async () => {
+  const loadData = async () => {
     setLoading(true)
     try {
-      const list = await creditService.getPackages()
+      const [list, rechargeConfig] = await Promise.all([
+        creditService.getPackages(),
+        creditService.getRechargeConfig(),
+      ])
       setPackages(list)
+      setConfig(rechargeConfig)
+
       if (list.length > 0) {
         setSelectedPackageId(prev => prev ?? list[0].id)
       }
+
+      const availableTypes = rechargeConfig?.supportedPayTypes || []
+      if (availableTypes.length > 0) {
+        if (!availableTypes.includes(payType)) {
+          setPayType(rechargeConfig.defaultPayType || availableTypes[0])
+        }
+      }
     } catch (error: any) {
-      message.error(error?.message || '加载充值套餐失败')
+      message.error(error?.message || '加载充值信息失败')
     } finally {
       setLoading(false)
     }
@@ -96,8 +116,24 @@ const RechargeModal: React.FC<RechargeModalProps> = ({ visible, onCancel, onSucc
   }
 
   const handleRecharge = async () => {
+    if (!config?.enabled) {
+      message.warning(config?.reason || '充值功能未开启')
+      return
+    }
+
     if (!selectedPackageId) {
       message.warning('请选择套餐')
+      return
+    }
+
+    const availableTypes = config.supportedPayTypes || []
+    if (availableTypes.length === 0) {
+      message.warning('当前暂无可用支付方式，请联系管理员')
+      return
+    }
+
+    if (!availableTypes.includes(payType)) {
+      message.warning('请选择可用支付方式')
       return
     }
 
@@ -121,6 +157,8 @@ const RechargeModal: React.FC<RechargeModalProps> = ({ visible, onCancel, onSucc
     }
   }
 
+  const availablePayTypes = config?.supportedPayTypes || []
+
   return (
     <Modal
       title={null}
@@ -143,6 +181,15 @@ const RechargeModal: React.FC<RechargeModalProps> = ({ visible, onCancel, onSucc
           </div>
         ) : (
           <>
+            {!config?.enabled && (
+              <Alert
+                type="warning"
+                showIcon
+                message={config?.reason || '在线充值未开启'}
+                style={{ marginBottom: 16 }}
+              />
+            )}
+
             <div className="packages-grid">
               {packages.map(pkg => (
                 <div
@@ -175,20 +222,16 @@ const RechargeModal: React.FC<RechargeModalProps> = ({ visible, onCancel, onSucc
             <div className="pay-type-row">
               <span className="pay-type-label">支付方式</span>
               <div className="pay-type-actions">
-                <button
-                  type="button"
-                  className={`pay-type-btn ${payType === 'alipay' ? 'active' : ''}`}
-                  onClick={() => setPayType('alipay')}
-                >
-                  支付宝
-                </button>
-                <button
-                  type="button"
-                  className={`pay-type-btn ${payType === 'wxpay' ? 'active' : ''}`}
-                  onClick={() => setPayType('wxpay')}
-                >
-                  微信支付
-                </button>
+                {availablePayTypes.map(type => (
+                  <button
+                    key={type}
+                    type="button"
+                    className={`pay-type-btn ${payType === type ? 'active' : ''}`}
+                    onClick={() => setPayType(type)}
+                  >
+                    {payTypeLabel[type] || type}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -213,7 +256,7 @@ const RechargeModal: React.FC<RechargeModalProps> = ({ visible, onCancel, onSucc
                 size="large"
                 className="recharge-btn"
                 onClick={handleRecharge}
-                disabled={!selectedPackageId}
+                disabled={!selectedPackageId || !config?.enabled}
                 loading={submitting}
               >
                 立即充值

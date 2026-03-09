@@ -18,10 +18,10 @@ public interface CreditRechargeOrderRepository extends BaseMapper<CreditRecharge
 
     @Update("UPDATE credit_recharge_orders " +
             "SET status = 'PAID', third_party_order_no = #{tradeNo}, notify_raw = #{notifyRaw}, paid_at = NOW(), updated_at = NOW() " +
-            "WHERE order_no = #{orderNo} AND status = 'PENDING'")
-    int markPaidIfPending(@Param("orderNo") String orderNo,
-                          @Param("tradeNo") String tradeNo,
-                          @Param("notifyRaw") String notifyRaw);
+            "WHERE order_no = #{orderNo} AND status IN ('PENDING','CLOSED')")
+    int markPaidIfUnpaid(@Param("orderNo") String orderNo,
+                         @Param("tradeNo") String tradeNo,
+                         @Param("notifyRaw") String notifyRaw);
 
     @Update("UPDATE credit_recharge_orders " +
             "SET status = 'CLOSED', updated_at = NOW() " +

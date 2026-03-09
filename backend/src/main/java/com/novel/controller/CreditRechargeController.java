@@ -29,12 +29,20 @@ public class CreditRechargeController {
         if (userId == null) {
             return Result.error("请先登录");
         }
+
         Object packageIdValue = body.get("packageId");
         if (packageIdValue == null) {
             return Result.error("请选择充值套餐");
         }
-        Long packageId = Long.valueOf(String.valueOf(packageIdValue));
-        String payType = String.valueOf(body.getOrDefault("payType", "alipay"));
+
+        Long packageId;
+        try {
+            packageId = Long.valueOf(String.valueOf(packageIdValue));
+        } catch (Exception ex) {
+            return Result.error("充值套餐参数错误");
+        }
+
+        String payType = String.valueOf(body.getOrDefault("payType", ""));
         Map<String, Object> data = rechargeOrderService.createOrder(userId, packageId, payType, request);
         return Result.success(data);
     }
@@ -46,6 +54,12 @@ public class CreditRechargeController {
             return Result.error("请先登录");
         }
         Map<String, Object> data = rechargeOrderService.getOrderForUser(userId, orderNo);
+        return Result.success(data);
+    }
+
+    @GetMapping("/config")
+    public Result<Map<String, Object>> getRechargeConfig() {
+        Map<String, Object> data = rechargeOrderService.getRechargeConfigForUser();
         return Result.success(data);
     }
 }
