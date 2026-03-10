@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Card, Button, Form, Input, InputNumber, Select, Typography, Space,
-  Modal, Tag, Progress, Divider,
+  Card, Button, Form, Input, InputNumber, Typography, Space,
+  Modal, Tag, Progress,
   Alert, Row, Col,
   FloatButton, notification, App as AntdApp, Tooltip
 } from 'antd';
@@ -10,7 +10,7 @@ import {
   BookOutlined, PlusOutlined, EditOutlined,
   RobotOutlined,
   BarChartOutlined, BulbOutlined, SettingOutlined, ArrowRightOutlined,
-  CheckCircleOutlined, ClockCircleOutlined, ExclamationCircleOutlined,
+  CheckCircleOutlined, ClockCircleOutlined,
   ReloadOutlined, PlayCircleOutlined, EyeOutlined, InfoCircleOutlined, DownOutlined, StarFilled
 } from '@ant-design/icons';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
@@ -19,6 +19,7 @@ import novelService, { Novel as NovelModel } from '../services/novelService';
 import novelOutlineService, { NovelOutline as OutlineModel } from '../services/novelOutlineService';
 import { aiTaskService } from '../services/aiTaskService';
 import api from '../services/api';
+import { getWritingStyleTemplates } from '../services/promptTemplateService';
 import { checkAIConfig, withAIConfig, AI_CONFIG_ERROR_MESSAGE } from '../utils/aiRequest';
 import { formatAIErrorMessage } from '../utils/errorHandler';
 import './VolumeManagementPage.css';
@@ -164,7 +165,6 @@ const VolumeManagementPage: React.FC = () => {
   const [volumes, setVolumes] = useState<NovelVolume[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
-  const [volumeStats, setVolumeStats] = useState<any>(null);
 
   // 大纲状态
   const [confirmedSuperOutline, setConfirmedSuperOutline] = useState<OutlineModel | null>(null);
@@ -179,19 +179,13 @@ const VolumeManagementPage: React.FC = () => {
 
   // 大纲操作状态
   const [outlineForm] = Form.useForm();
-  const [outlineUserAdvice, setOutlineUserAdvice] = useState('');
   const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
   const [isConfirmingOutline, setIsConfirmingOutline] = useState(false);
   const [isEditingOutline, setIsEditingOutline] = useState(false);
   const [editedOutlineContent, setEditedOutlineContent] = useState('');
 
   // 卷操作状态
-  const [volumeAdvices, setVolumeAdvices] = useState<Record<string, string>>({});
-  const [isGeneratingVolumeOutlines, setIsGeneratingVolumeOutlines] = useState(false);
-  const [generatingVolumeIds, setGeneratingVolumeIds] = useState<Set<string>>(new Set());
-  // 批量异步任务：每卷任务进度
-  const [volumeTasks, setVolumeTasks] = useState<Record<string, { taskId: number, progress: number, status: string, message?: string }>>({});
-  const [taskStops, setTaskStops] = useState<Record<string, () => void>>({});
+  const [taskStops] = useState<Record<string, () => void>>({});
   
   // 重新生成卷状态
   const [isRegeneratingVolumes, setIsRegeneratingVolumes] = useState(false);
@@ -235,7 +229,6 @@ const VolumeManagementPage: React.FC = () => {
         await Promise.all([
           loadNovelInfo(),
           loadVolumes(),
-          loadVolumeStats(),
           checkSuperOutline(),
           loadSuperOutlines()
         ]);
@@ -379,7 +372,6 @@ const VolumeManagementPage: React.FC = () => {
       const hasVolumes = volumesList.length > 0;
       const anyPlanned = volumesList.some(v => v.status === 'PLANNED');
       const anyInProgress = volumesList.some(v => v.status === 'IN_PROGRESS');
-      const allCompleted = hasVolumes && volumesList.every(v => v.status === 'COMPLETED');
       const anyCompleted = volumesList.some(v => v.status === 'COMPLETED');
       const anyHasDetailedOutline = volumesList.some(v => v.contentOutline && v.contentOutline.length > 100);
 
@@ -405,19 +397,7 @@ const VolumeManagementPage: React.FC = () => {
     }
   };
 
-  const loadVolumeStats = async () => {
-    if (!novelId) return;
-
-    try {
-      const stats = await novelVolumeService.getVolumeStats(novelId);
-      setVolumeStats(stats);
-    } catch (error: any) {
-      console.warn('加载统计信息失败');
-    }
-  };
-
-  // 检查大纲状态
-  const checkSuperOutline = async () => {
+const checkSuperOutline = async () => {
     if (!novelId) return;
 
     console.log('checkSuperOutline 被调用，novelId:', novelId);
@@ -878,7 +858,6 @@ const VolumeManagementPage: React.FC = () => {
               setVolumes(list);
               setCurrentStep(2); // 直接进入步骤2
               saveCreationState(2);
-              loadVolumeStats();
 
               // 延迟清除进度条
               setTimeout(() => setTaskProgress(null), 2000);
@@ -945,20 +924,8 @@ const VolumeManagementPage: React.FC = () => {
   const loadOutlineTemplates = async () => {
     setLoadingTemplates(true);
     try {
-      const response = await api.get('/prompt-templates/category/outline');
-      console.log('大纲模板响应:', response);
-
-      // 兼容两种返回格式：
-      // 1. Result格式: { code: 200, message: 'success', data: [...] }
-      // 2. ApiResponse格式: { success: true, data: [...] }
-      let templates = [];
-      if (response && response.data) {
-        // Result格式或ApiResponse格式
-        templates = response.data;
-      } else if (Array.isArray(response)) {
-        // 直接返回数组
-        templates = response;
-      }
+      const templates = await getWritingStyleTemplates('outline');
+      console.log('大纲模板响应:', templates);
 
       console.log('解析后的模板列表:', templates);
       setOutlineTemplates(templates);
@@ -1105,7 +1072,6 @@ const VolumeManagementPage: React.FC = () => {
       let buffer = '';
       let outlineIdFromSSE: number | null = null;
       let streamedText = '';
-      setOutlineUserAdvice('');
 
       while (true) {
         const { value, done } = await reader.read();
@@ -1193,73 +1159,7 @@ const VolumeManagementPage: React.FC = () => {
     }
   };
 
-  const setAdviceForVolume = (volumeId: string, value: string) => {
-    setVolumeAdvices(prev => ({ ...prev, [volumeId]: value }));
-  };
-
-  // 提取卷规范中的关键要点，便于卡片快速扫读
-  const getOutlineHighlights = (outline?: string): string[] => {
-    if (!outline || typeof outline !== 'string') return []
-    try {
-      // 优先尝试JSON解析，提取结构化要点
-      const json = JSON.parse(outline)
-      const highlights: string[] = []
-      if (json.goals && Array.isArray(json.goals)) {
-        highlights.push(`目标：${json.goals.slice(0, 1)[0]}`)
-      }
-      if (json.keyEvents && Array.isArray(json.keyEvents)) {
-        highlights.push(`关键事件：${json.keyEvents.slice(0, 1)[0]}`)
-      }
-      if (json.characterArcs && Array.isArray(json.characterArcs)) {
-        highlights.push(`角色弧线：${json.characterArcs.slice(0, 1)[0]}`)
-      }
-      if (json.foreshadowingPlan && Array.isArray(json.foreshadowingPlan)) {
-        highlights.push(`伏笔：${json.foreshadowingPlan.slice(0, 1)[0]}`)
-      }
-      if (highlights.length > 0) {
-        return highlights.slice(0, 3)
-      }
-    } catch {}
-    try {
-      const lines = outline.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
-      const keywords = ['关键', '目标', '转折', '角色', '伏笔', '高潮', '节奏']
-      const bulletLike = lines.filter(l => /^[-*•·]/.test(l) || keywords.some(k => l.includes(k)))
-      const unique: string[] = []
-      for (const l of bulletLike) {
-        const cleaned = l.replace(/^[-*•·]\s*/, '')
-        if (cleaned && !unique.includes(cleaned)) unique.push(cleaned)
-        if (unique.length >= 3) break
-      }
-      if (unique.length > 0) return unique
-      // 兜底：取前3行
-      return lines.slice(0, 3)
-    } catch {
-      return []
-    }
-  }
-
-  // 开始写作（跳转到新的写作工作室）
-  const handleStartWriting = async (volumeId: string) => {
-    setLoading(true);
-    try {
-      const sessionData = await novelVolumeService.startVolumeWriting(volumeId);
-
-      // 跳转到新的writing-studio页面，传递会话数据
-      navigate(`/novels/${novelId}/writing-studio`, {
-        state: {
-          initialVolumeId: volumeId,
-          sessionData: sessionData
-        }
-      });
-    } catch (error: any) {
-      message.error(error.response?.data?.message || '启动写作会话失败');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 查看卷详情（打开时尝试获取最新数据，避免缓存未更新）
-  const handleViewDetails = async (volume: NovelVolume) => {
+const handleViewDetails = async (volume: NovelVolume) => {
     setSelectedVolume(volume);
 
     try {
@@ -1276,65 +1176,8 @@ const VolumeManagementPage: React.FC = () => {
   };
 
   // 删除卷
-  const handleDeleteVolume = async (volumeId: string) => {
-    try {
-      await novelVolumeService.deleteVolume(volumeId);
-      message.success('删除成功');
-      loadVolumes();
-      loadVolumeStats();
-    } catch (error: any) {
-      message.error(error.response?.data?.message || '删除失败');
-    }
-  };
 
-  // 获取步骤状态
-  const getStepStatus = (step: number) => {
-    // 修复后的步骤状态逻辑
-    if (step < currentStep) return 'finish';  // 已完成的步骤
-    if (step === currentStep) return 'process';  // 当前进行的步骤
-    return 'wait';  // 等待中的步骤
-  };
-
-  // 获取步骤的详细状态信息
-  const getStepInfo = (step: number) => {
-    const hasConfirmedOutline = !!confirmedSuperOutline;
-    const hasVolumes = volumes.length > 0;
-    const allHaveDetailedOutline = volumes.length > 0 && volumes.every(v => v.contentOutline && v.contentOutline.length > 100);
-
-    switch (step) {
-      case 0: // 生成大纲
-        return {
-          title: '生成大纲',
-          description: hasConfirmedOutline ? '大纲已生成' : 'AI生成整体故事大纲',
-          icon: <BulbOutlined />,
-          status: hasConfirmedOutline ? 'finish' as const : (currentStep === 0 ? 'process' as const : 'wait' as const)
-        };
-      case 1: // 卷规划 + 详细大纲
-        return {
-          title: '卷规划 + 详细大纲',
-          description: allHaveDetailedOutline ? '详细大纲已生成' : '生成卷规划并扩展详细大纲',
-          icon: <RobotOutlined />,
-          status: allHaveDetailedOutline ? 'finish' as const : (currentStep === 1 ? 'process' as const : 'wait' as const)
-        };
-      case 2: // 开始写作
-        return {
-          title: '开始写作',
-          description: '基于详细大纲进行创作',
-          icon: <EditOutlined />,
-          status: (currentStep === 2 ? 'process' as const : 'wait' as const)
-        };
-      default:
-        return {
-          title: '未知步骤',
-          description: '未知状态',
-          icon: <BookOutlined />,
-          status: 'wait' as const
-        };
-    }
-  };
-
-  // 保存创作状态到本地存储
-  const saveCreationState = (step: number) => {
+const saveCreationState = (step: number) => {
     try {
       const stateData = {
         currentStep: step,
@@ -1474,25 +1317,7 @@ const VolumeManagementPage: React.FC = () => {
     }
   }, [confirmedSuperOutline, volumes, novel]);
 
-  const getVolumeIcon = (volume: NovelVolume) => {
-    switch (volume.status) {
-      case 'COMPLETED':
-        return <CheckCircleOutlined style={{ color: '#52c41a' }} />;
-      case 'IN_PROGRESS':
-        return <ClockCircleOutlined style={{ color: '#1890ff' }} />;
-      case 'PLANNED':
-        return <ExclamationCircleOutlined style={{ color: '#faad14' }} />;
-      default:
-        return <BookOutlined />;
-    }
-  };
-
-  const showQuickStart = () => {
-    setQuickStartVisible(true);
-  };
-
-  // 重新生成大纲（流式）- 直接使用之前的构思重新生成
-  const regenerateSuperOutline = async () => {
+const regenerateSuperOutline = async () => {
     if (!currentSuperOutline) {
       message.warning('未找到大纲信息');
       return;
@@ -1557,7 +1382,6 @@ const VolumeManagementPage: React.FC = () => {
 
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
-      let outlineIdFromSSE: number | null = null;
       let streamedText = '';
 
       while (true) {
@@ -1578,13 +1402,11 @@ const VolumeManagementPage: React.FC = () => {
           }
           if (eventName === 'meta') {
             try {
-              const meta = JSON.parse(data);
-              outlineIdFromSSE = meta.outlineId;
+              JSON.parse(data);
             } catch {}
           } else if (eventName === 'done') {
             setIsGeneratingOutline(false);
             message.success('大纲重新生成完成！');
-            setOutlineUserAdvice('');
             
             // 重新加载数据
             setTimeout(() => {
@@ -1610,272 +1432,8 @@ const VolumeManagementPage: React.FC = () => {
   };
 
   // 生成单个卷的详细大纲
-  const generateVolumeDetailedOutline = async (volumeId: string) => {
-    const volume = volumes.find(v => v.id === volumeId);
-    if (!volume) {
-      message.error('找不到指定的卷');
-      return;
-    }
 
-    const advice = volumeAdvices[volumeId] || '';
-
-    // 计算卷的章节数和字数信息
-    const chapterCount = volume.chapterEnd - volume.chapterStart + 1;
-    const estimatedWords = volume.estimatedWordCount || 0;
-    const avgWordsPerChapter = chapterCount > 0 ? Math.round(estimatedWords / chapterCount) : 3000;
-
-    // 构建增强的建议，包含章节和字数信息
-    const enhancedAdvice = `
-【卷基本信息】
-- 卷标题：${volume.title}
-- 章节范围：第${volume.chapterStart}章-第${volume.chapterEnd}章（共${chapterCount}章）
-- 预估总字数：${estimatedWords}字
-- 平均每章字数：${avgWordsPerChapter}字
-
-【用户建议】
-${advice || '请按照标准网文节奏生成详细大纲，确保每章都有明确的目标和钩子。'}
-
-【生成要求】
-请根据以上信息生成${chapterCount}章的详细大纲，每章控制在${avgWordsPerChapter}字左右，确保：
-1. 每章都有明确的剧情推进和情感钩子
-2. 每3-5章设计一个小高潮
-3. 本卷的最终高潮安排在倒数第2-3章
-4. 章节功能多样化：冲突爆发/成长展示/情感互动/智谋布局等
-`.trim();
-
-    setGeneratingVolumeIds(prev => new Set(prev).add(volumeId));
-    try {
-      const result = await novelVolumeService.generateVolumeOutline(volumeId, enhancedAdvice);
-
-      message.success('卷详细大纲生成成功！');
-
-      // 清理建议输入
-      setVolumeAdvices(prev => {
-        const next = { ...prev };
-        delete next[volumeId];
-        return next;
-      });
-
-      // 重新加载卷信息
-      loadVolumes();
-    } catch (error: any) {
-      message.error(formatAIErrorMessage(error));
-    } finally {
-      setGeneratingVolumeIds(prev => {
-        const next = new Set(prev);
-        next.delete(volumeId);
-        return next;
-      });
-    }
-  };
-
-  // 统一建议文本（来自顶部输入框已同步到每卷）
-  const getUnifiedAdvice = (): string => {
-    const advs = Object.values(volumeAdvices).filter(Boolean);
-    // 去重合并
-    const unique = Array.from(new Set(advs.map(a => a.trim())));
-    return unique.join('; ');
-  };
-
-  // 批量生成（可选统一建议）
-  const batchGenerateVolumeOutlines = async (withAdvice: boolean) => {
-    if (volumes.length === 0) {
-      message.warning('没有可生成的卷');
-      return;
-    }
-
-    // 检查AI配置
-    if (!checkAIConfig()) {
-      message.error(AI_CONFIG_ERROR_MESSAGE);
-      return;
-    }
-
-    setIsGeneratingVolumeOutlines(true);
-    try {
-      // 为每个卷构建增强的信息
-      const enhancedVolumeData = volumes.map((volume, index) => {
-        const chapterCount = volume.chapterEnd - volume.chapterStart + 1;
-        const estimatedWords = volume.estimatedWordCount || 0;
-        const avgWordsPerChapter = chapterCount > 0 ? Math.round(estimatedWords / chapterCount) : 3000;
-        const userAdvice = volumeAdvices[volume.id] || '';
-
-        return {
-          volumeId: volume.id,
-          volumeTitle: volume.title,
-          volumeIndex: index + 1,
-          chapterStart: volume.chapterStart,
-          chapterEnd: volume.chapterEnd,
-          chapterCount: chapterCount,
-          estimatedWordCount: estimatedWords,
-          avgWordsPerChapter: avgWordsPerChapter,
-          userAdvice: withAdvice ? userAdvice : '',
-          enhancedPrompt: `
-【卷基本信息】
-- 卷标题：${volume.title}
-- 卷序号：第${index + 1}卷
-- 章节范围：第${volume.chapterStart}章-第${volume.chapterEnd}章（共${chapterCount}章）
-- 预估总字数：${estimatedWords}字
-- 平均每章字数：${avgWordsPerChapter}字
-
-【用户建议】
-${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详细大纲，确保每章都有明确的目标和钩子。'}
-
-【生成要求】
-请根据以上信息生成${chapterCount}章的详细大纲，每章控制在${avgWordsPerChapter}字左右，确保：
-1. 每章都有明确的剧情推进和情感钩子
-2. 每3-5章设计一个小高潮
-3. 本卷的最终高潮安排在倒数第2-3章
-4. 章节功能多样化：冲突爆发/成长展示/情感互动/智谋布局等
-5. 与前后卷保持良好的承接关系
-`.trim()
-        };
-      });
-
-      const requestBody = withAIConfig({
-        novelId: parseInt(novelId!),
-        volumeIds: volumes.map(v => Number(v.id)),
-        userAdvice: withAdvice ? getUnifiedAdvice() : ''
-      });
-
-      const response = await fetch(`/api/volumes/batch-generate-outlines`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
-        },
-        body: JSON.stringify(requestBody)
-      });
-
-      const result = await response.json();
-      // 后端返回 { novelId, volumeCount, tasks: [{taskId, volumeId, volumeTitle}], mode }
-      const tasks: any[] = result?.tasks || result?.data?.tasks || [];
-      if (Array.isArray(tasks) && tasks.length > 0) {
-        // 初始化任务状态
-        const init: Record<string, { taskId: number, progress: number, status: string, message?: string }> = {};
-        tasks.forEach(task => {
-          const volumeId = String(task.volumeId);
-          init[volumeId] = { 
-            taskId: task.taskId, 
-            progress: 0, 
-            status: 'PENDING', 
-            message: '任务已创建，等待开始...' 
-          };
-        });
-        setVolumeTasks(prev => ({ ...prev, ...init }));
-
-        message.success('批量大纲任务已创建，正在生成中...');
-
-        // 启动批量轮询（一次请求查询所有任务）
-        const taskIds = tasks.map(t => t.taskId);
-        const taskIdToVolumeId: Record<number, string> = {};
-        tasks.forEach(task => {
-          taskIdToVolumeId[task.taskId] = String(task.volumeId);
-          try {
-            aiTaskService.storeTask(task.taskId, 'VOLUME_OUTLINE', parseInt(novelId!));
-          } catch {}
-        });
-
-        let completedCount = 0;
-        let failedCount = 0;
-        const allCompleted = () => completedCount + failedCount >= tasks.length;
-
-        const batchPollingInterval = setInterval(async () => {
-          try {
-            // 一次请求查询所有任务状态
-            const response = await fetch('/api/ai-tasks/batch-status', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
-              },
-              body: JSON.stringify({ taskIds })
-            });
-
-            if (!response.ok) {
-              throw new Error('批量查询任务状态失败');
-            }
-
-            const statusMap = await response.json();
-
-            // 更新所有任务的状态
-            setVolumeTasks(prev => {
-              const next = { ...prev };
-              let newCompletedCount = 0;
-              let newFailedCount = 0;
-
-              Object.entries(statusMap).forEach(([taskIdStr, taskData]: [string, any]) => {
-                const taskId = Number(taskIdStr);
-                const volumeId = taskIdToVolumeId[taskId];
-                
-                if (volumeId && next[volumeId]) {
-                  const status = taskData.status || 'RUNNING';
-                  const progress = taskData.progressPercentage || taskData.percentage || 0;
-                  
-                  next[volumeId] = {
-                    taskId: taskId,
-                    progress: progress,
-                    status: status,
-                    message: taskData.message || (status === 'COMPLETED' ? '生成完成' : '生成中...')
-                  };
-
-                  if (status === 'COMPLETED') newCompletedCount++;
-                  if (status === 'FAILED' || status === 'CANCELLED') newFailedCount++;
-                }
-              });
-
-              // 更新完成计数
-              if (newCompletedCount > completedCount) {
-                completedCount = newCompletedCount;
-              }
-              if (newFailedCount > failedCount) {
-                failedCount = newFailedCount;
-              }
-
-              return next;
-            });
-
-            // 检查是否全部完成
-            if (allCompleted()) {
-              clearInterval(batchPollingInterval);
-              
-              // 刷新卷列表
-              loadVolumes();
-              
-              // 清理任务
-              taskIds.forEach(taskId => {
-                try { aiTaskService.removeStoredTask(taskId); } catch {}
-              });
-
-              if (failedCount > 0) {
-                message.warning(`批量生成完成，${completedCount}个成功，${failedCount}个失败`);
-              } else {
-                message.success('所有卷大纲生成完成！');
-              }
-            }
-          } catch (error) {
-            console.warn('批量轮询失败:', error);
-          }
-        }, 3000); // 3秒轮询一次
-
-        // 保存停止函数
-        setTaskStops(prev => ({ ...prev, 'batch': () => clearInterval(batchPollingInterval) }));
-
-      } else {
-        throw new Error(result?.message || '批量生成卷详细大纲失败');
-      }
-    } catch (error: any) {
-      message.error(formatAIErrorMessage(error));
-    } finally {
-      setIsGeneratingVolumeOutlines(false);
-    }
-  };
-
-  // 分别提供两个入口
-  const generateAllVolumeOutlinesWithAdvice = () => batchGenerateVolumeOutlines(true);
-  const generateAllVolumeOutlinesWithoutAdvice = () => batchGenerateVolumeOutlines(false);
-
-  // 进入写作页面（跳转到新的写作工作室）
-  const enterWriting = (volume: NovelVolume) => {
+const enterWriting = (volume: NovelVolume) => {
     navigate(`/novels/${novelId}/writing-studio`, {
       state: {
         initialVolumeId: volume.id,
@@ -3912,7 +3470,6 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
           <FloatButton
             icon={<BarChartOutlined />}
             tooltip="统计报告"
-            onClick={loadVolumeStats}
           />
           <FloatButton
             type="primary"
@@ -4067,6 +3624,13 @@ ${withAdvice && userAdvice ? userAdvice : '请按照标准网文节奏生成详�
 };
 
 export default VolumeManagementPage;
+
+
+
+
+
+
+
 
 
 

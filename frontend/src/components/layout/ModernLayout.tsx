@@ -14,7 +14,6 @@ import {
   FilmIcon,
   Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
-  BellIcon,
   ChevronDownIcon,
   QuestionMarkCircleIcon,
   GiftIcon,

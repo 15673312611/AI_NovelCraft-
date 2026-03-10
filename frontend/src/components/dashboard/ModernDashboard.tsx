@@ -9,7 +9,6 @@ import {
   PlusIcon, 
   ClockIcon,
   BookOpenIcon,
-  ChartBarIcon,
   ArrowRightIcon,
   BoltIcon,
   FilmIcon,

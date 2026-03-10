@@ -65,18 +65,3 @@ export const unfavoriteTemplate = async (id: number): Promise<void> => {
   await api.delete(`/prompt-templates/${id}/favorite`)
 }
 
-/**
- * 获取模板详情
- */
-export const getTemplateById = async (id: number): Promise<PromptTemplate> => {
-  const response = await api.get(`/prompt-templates/${id}`)
-  return response.data
-}
-
-/**
- * 增加模板使用次数
- */
-export const incrementTemplateUsage = async (id: number): Promise<void> => {
-  await api.post(`/prompt-templates/${id}/usage`)
-}
-

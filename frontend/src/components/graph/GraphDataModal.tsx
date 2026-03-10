@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Modal, Tabs, Table, Tag, Spin, message, Empty, Form, Input, InputNumber, Select, Button } from 'antd'
-import { NodeIndexOutlined, LinkOutlined, AimOutlined, GlobalOutlined, ThunderboltOutlined, UserOutlined, PlusOutlined, HistoryOutlined } from '@ant-design/icons'
+import { LinkOutlined, AimOutlined, UserOutlined, PlusOutlined, HistoryOutlined } from '@ant-design/icons'
 import api from '@/services/api'
 import './GraphDataModal.css'
 

@@ -53,69 +53,7 @@ public class VolumeChapterOutlineController {
         return ResponseEntity.ok(result);
     }
 
-    /**
-     * 获取小说的所有章纲
-     * GET /volumes/chapter-outlines/by-novel/{novelId}
-     */
-    @GetMapping("/chapter-outlines/by-novel/{novelId}")
-    public ResponseEntity<?> getAllChapterOutlinesByNovel(@PathVariable("novelId") Long novelId) {
-        try {
-            java.util.List<VolumeChapterOutline> outlines = outlineRepository.findByNovelId(novelId);
-            return ResponseEntity.ok(outlines);
-        } catch (Exception e) {
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("error", "获取章纲列表失败");
-            errorResponse.put("message", e.getMessage());
-            return ResponseEntity.status(500).body(errorResponse);
-        }
-    }
 
-    /**
-     * 为指定卷增量生成章节大纲：只为【尚未写正文】的章节生成或补充章纲
-     * - 保留已写正文章节对应的章纲，不会清空整卷旧数据
-     * - 自动判断当前写到本卷第几章，按需生成后续若干章纲
-     * - 支持额外的作者需求/偏好（userRequirements），仅影响后续未写正文的部分
-     *
-     * POST /volumes/{volumeId}/chapter-outlines/generate-remaining
-     * 请求体示例：
-     * {
-     *   "count": 10,                    // 可选，生成后续多少章，不传则自动等于剩余未写正文章数
-     *   "userRequirements": "……",     // 可选，作者本次对后续剧情的特别需求（爽点、情绪走向等）
-     *   "provider": "deepseek",       // 以下为扁平化 AI 配置，可选
-     *   "apiKey": "xxx",
-     *   "model": "deepseek-chat",
-     *   "baseUrl": "https://api.xxx.com"
-     * }
-     */
-    @PostMapping("/{volumeId}/chapter-outlines/generate-remaining")
-    public ResponseEntity<?> generateRemainingChapterOutlines(
-            @PathVariable("volumeId") Long volumeId,
-            @RequestBody(required = false) Map<String, Object> request
-    ) {
-        // 解析参数
-        Integer count = null;
-        String userRequirements = null;
-
-        if (request != null) {
-            if (request.containsKey("count") && request.get("count") != null) {
-                count = ((Number) request.get("count")).intValue();
-            }
-            if (request.containsKey("userRequirements") && request.get("userRequirements") != null) {
-                Object ur = request.get("userRequirements");
-                if (ur instanceof String) {
-                    userRequirements = ((String) ur).trim();
-                }
-            }
-        }
-
-        // 提取 AI 配置（扁平化参数）
-        AIConfigRequest aiConfig = extractAIConfig(request);
-
-        // 调用服务生成章纲（仅未写正文部分）
-        Map<String, Object> result = service.generateOutlinesForRemainingChapters(volumeId, count, aiConfig, userRequirements);
-
-        return ResponseEntity.ok(result);
-    }
 
     /**
      * 获取指定卷的所有章纲
@@ -285,30 +223,6 @@ public class VolumeChapterOutlineController {
         }
     }
 
-    /**
-     * 删除指定卷的所有章纲
-     * DELETE /volumes/{volumeId}/chapter-outlines
-     */
-    @DeleteMapping("/{volumeId}/chapter-outlines")
-    public ResponseEntity<?> deleteChapterOutlinesByVolume(@PathVariable("volumeId") Long volumeId) {
-        try {
-            int deletedCount = outlineRepository.deleteByVolumeId(volumeId);
-            logger.info("✅ 已删除卷 {} 的所有章纲，共 {} 条", volumeId, deletedCount);
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("status", "success");
-            response.put("message", "章纲删除成功");
-            response.put("volumeId", volumeId);
-            response.put("deletedCount", deletedCount);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            logger.error("删除章纲失败: volumeId={}", volumeId, e);
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("status", "error");
-            errorResponse.put("message", "删除章纲失败: " + e.getMessage());
-            return ResponseEntity.status(500).body(errorResponse);
-        }
-    }
 
     /**
      * 辅助方法：如果请求中包含指定字段，则更新（普通字段）

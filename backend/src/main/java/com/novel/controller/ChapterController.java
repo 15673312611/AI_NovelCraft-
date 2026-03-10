@@ -177,23 +177,6 @@ public class ChapterController {
         }
     }
 
-    /**
-     * 获取章节统计信息
-     */
-    @GetMapping("/{id}/statistics")
-    public ResponseEntity<Map<String, Object>> getChapterStatistics(@PathVariable Long id) {
-        try {
-            Map<String, Object> stats = chapterService.getChapterStatistics(id);
-            return ResponseEntity.ok(stats);
-        } catch (Exception e) {
-            // 返回默认统计信息
-            Map<String, Object> defaultStats = new HashMap<>();
-            defaultStats.put("wordCount", 0);
-            defaultStats.put("readingTime", 0);
-            defaultStats.put("lastModified", "");
-            return ResponseEntity.ok(defaultStats);
-        }
-    }
 
     /**
      * 发布章节（支持前端传递AI配置）
@@ -235,19 +218,6 @@ public class ChapterController {
             return ResponseEntity.ok(publishedChapter);
         } catch (Exception e) {
             logger.error("发布章节失败: chapterId={}", id, e);
-            return ResponseEntity.notFound().build();
-        }
-    }
-
-    /**
-     * 取消发布章节
-     */
-    @PostMapping("/{id}/unpublish")
-    public ResponseEntity<Chapter> unpublishChapter(@PathVariable Long id) {
-        try {
-            Chapter unpublishedChapter = chapterService.unpublishChapter(id);
-            return ResponseEntity.ok(unpublishedChapter);
-        } catch (Exception e) {
             return ResponseEntity.notFound().build();
         }
     }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Layout, Button, Input, Select, Tooltip, message as antMessage, Popconfirm, Empty, Spin } from 'antd';
+import { Button, Input, Select, Tooltip, message as antMessage, Popconfirm } from 'antd';
 import { 
   PlusOutlined, 
   DeleteOutlined, 
@@ -9,8 +9,7 @@ import {
   StopOutlined, 
   SettingOutlined,
   ThunderboltFilled,
-  MessageOutlined,
-  ClockCircleOutlined
+  MessageOutlined
 } from '@ant-design/icons';
 import { useSearchParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';

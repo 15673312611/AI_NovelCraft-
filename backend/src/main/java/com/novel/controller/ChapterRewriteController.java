@@ -1,15 +1,11 @@
 package com.novel.controller;
 
-import com.novel.common.ApiResponse;
 import com.novel.dto.AIConfigRequest;
 import com.novel.service.AIWritingService;
 import com.novel.service.NovelService;
 import com.novel.service.ChapterService;
 import com.novel.service.ContextManagementService;
 import com.novel.domain.entity.Novel;
-import com.novel.agentic.service.PromptAssembler;
-import com.novel.agentic.service.StructuredMessageBuilder;
-import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -42,25 +38,6 @@ public class ChapterRewriteController {
 
     @Autowired
     private ContextManagementService contextManagementService;
-
-    @Autowired
-    private PromptAssembler promptAssembler;
-
-    @Autowired
-    private StructuredMessageBuilder messageBuilder;
-
-    @Data
-    public static class RewriteRequest {
-        private String content;          // 原文
-        private String requirements;     // 用户要求（可选）
-        private Boolean concise;         // 精炼模式（可选）
-        private Integer chapterNumber;   // 章节号（用于获取上下文）
-    }
-
-    @Data
-    public static class RewriteResponse {
-        private String rewrittenContent;
-    }
 
     /**
      * 章节重写接口（流式）
@@ -189,183 +166,6 @@ public class ChapterRewriteController {
         }
 
         return emitter;
-    }
-
-    @PostMapping(value = "/concise-stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
-    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter conciseStream(
-            @PathVariable("novelId") Long novelId,
-            @RequestBody Map<String, Object> requestMap
-    ) {
-        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter =
-            new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(300000L);
-
-        try {
-            String content = (String) requestMap.get("content");
-
-            if (content == null || content.trim().isEmpty()) {
-                emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
-                    .name("error").data("正文不能为空"));
-                emitter.completeWithError(new Exception("正文不能为空"));
-                return emitter;
-            }
-
-            AIConfigRequest aiConfig = new AIConfigRequest();
-            if (requestMap.containsKey("provider")) {
-                aiConfig.setProvider((String) requestMap.get("provider"));
-                aiConfig.setApiKey((String) requestMap.get("apiKey"));
-                aiConfig.setModel((String) requestMap.get("model"));
-                aiConfig.setBaseUrl((String) requestMap.get("baseUrl"));
-
-                log.info("✅ 章节精炼流式 - 收到AI配置: provider={}, model={}",
-                    aiConfig.getProvider(), aiConfig.getModel());
-            } else if (requestMap.get("aiConfig") instanceof Map) {
-                @SuppressWarnings("unchecked")
-                Map<String, String> aiConfigMap = (Map<String, String>) requestMap.get("aiConfig");
-                aiConfig.setProvider(aiConfigMap.get("provider"));
-                aiConfig.setApiKey(aiConfigMap.get("apiKey"));
-                aiConfig.setModel(aiConfigMap.get("model"));
-                aiConfig.setBaseUrl(aiConfigMap.get("baseUrl"));
-            }
-
-            if (!aiConfig.isValid()) {
-                log.error("❌ 章节精炼流式 - AI配置无效: requestMap={}", requestMap);
-                emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
-                    .name("error").data("AI配置无效，请先在设置页面配置AI服务"));
-                emitter.completeWithError(new Exception("AI配置无效"));
-                return emitter;
-            }
-
-            Integer chapterNumber = null;
-            if (requestMap.containsKey("chapterNumber")) {
-                Object chapterNumObj = requestMap.get("chapterNumber");
-                if (chapterNumObj instanceof Integer) {
-                    chapterNumber = (Integer) chapterNumObj;
-                } else if (chapterNumObj instanceof String) {
-                    try {
-                        chapterNumber = Integer.parseInt((String) chapterNumObj);
-                    } catch (NumberFormatException e) {
-                        log.warn("无法解析章节号: {}", chapterNumObj);
-                    }
-                }
-            }
-
-            String prompt;
-            if (chapterNumber != null && chapterNumber > 0) {
-                prompt = buildConcisePromptWithContext(novelId, chapterNumber, content);
-                log.info("🔄 开始章节精炼流式处理（带上下文），章节号: {}, 内容长度: {}, 使用模型: {}",
-                    chapterNumber, content.length(), aiConfig.getModel());
-            } else {
-                prompt = buildConcisePrompt(content);
-                log.info("🔄 开始章节精炼流式处理（无上下文），内容长度: {}, 使用模型: {}",
-                    content.length(), aiConfig.getModel());
-            }
-
-            java.util.concurrent.CompletableFuture.runAsync(() -> {
-                try {
-                    aiWritingService.streamGenerateContent(
-                        prompt,
-                        "chapter_concise",
-                        aiConfig,
-                        chunk -> {
-                            try {
-                                java.util.Map<String, String> eventData = new java.util.HashMap<>();
-                                eventData.put("content", chunk);
-                                emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
-                                    .data(eventData));
-                            } catch (Exception e) {
-                                log.error("发送流式数据失败", e);
-                            }
-                        }
-                    );
-                    emitter.complete();
-                    log.info("✅ 章节精炼流式处理完成");
-                } catch (Exception e) {
-                    log.error("章节精炼流式处理失败", e);
-                    try {
-                        emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
-                            .name("error").data("精炼失败: " + e.getMessage()));
-                        emitter.completeWithError(e);
-                    } catch (Exception ex) {
-                        log.error("发送错误事件失败", ex);
-                    }
-                }
-            });
-
-        } catch (Exception e) {
-            log.error("章节精炼初始化失败", e);
-            try {
-                emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
-                    .name("error").data("初始化失败: " + e.getMessage()));
-                emitter.completeWithError(e);
-            } catch (Exception ex) {
-                log.error("发送错误事件失败", ex);
-            }
-        }
-
-        return emitter;
-    }
-
-    /**
-     * 章节重写接口（非流式，保留作为备用）
-     */
-    @PostMapping
-    public ApiResponse<RewriteResponse> rewrite(
-            @PathVariable("novelId") Long novelId,
-            @RequestBody Map<String, Object> requestMap
-    ) {
-        // 提取基本请求参数
-        String content = (String) requestMap.get("content");
-        String requirements = (String) requestMap.get("requirements");
-        Boolean concise = (Boolean) requestMap.get("concise");
-
-        if (content == null || content.trim().isEmpty()) {
-            return ApiResponse.error("正文不能为空");
-        }
-
-        // 解析AI配置（前端withAIConfig是扁平化的，直接从根级别读取）
-        AIConfigRequest aiConfig = new AIConfigRequest();
-        if (requestMap.containsKey("provider")) {
-            aiConfig.setProvider((String) requestMap.get("provider"));
-            aiConfig.setApiKey((String) requestMap.get("apiKey"));
-            aiConfig.setModel((String) requestMap.get("model"));
-            aiConfig.setBaseUrl((String) requestMap.get("baseUrl"));
-
-            log.info("✅ 章节重写 - 收到AI配置: provider={}, model={}",
-                aiConfig.getProvider(), aiConfig.getModel());
-        } else if (requestMap.get("aiConfig") instanceof Map) {
-            // 兼容旧的嵌套格式
-            @SuppressWarnings("unchecked")
-            Map<String, String> aiConfigMap = (Map<String, String>) requestMap.get("aiConfig");
-            aiConfig.setProvider(aiConfigMap.get("provider"));
-            aiConfig.setApiKey(aiConfigMap.get("apiKey"));
-            aiConfig.setModel(aiConfigMap.get("model"));
-            aiConfig.setBaseUrl(aiConfigMap.get("baseUrl"));
-        }
-
-        if (!aiConfig.isValid()) {
-            log.error("❌ 章节重写 - AI配置无效: requestMap={}", requestMap);
-            return ApiResponse.error("AI配置无效，请先在设置页面配置AI服务");
-        }
-
-        try {
-            boolean isConcise = Boolean.TRUE.equals(concise);
-            String prompt = isConcise
-                    ? buildConcisePrompt(content)
-                    : buildRewritePrompt(content, requirements);
-
-            String output = aiWritingService.generateContent(
-                prompt,
-                isConcise ? "chapter_concise" : "chapter_rewrite",
-                aiConfig
-            );
-
-            RewriteResponse resp = new RewriteResponse();
-            resp.setRewrittenContent(output != null ? output.trim() : "");
-            return ApiResponse.success(resp);
-        } catch (Exception e) {
-            log.error("章节重写失败", e);
-            return ApiResponse.error("重写失败: " + e.getMessage());
-        }
     }
 
     private String buildRewritePrompt(String content, String userReq) {

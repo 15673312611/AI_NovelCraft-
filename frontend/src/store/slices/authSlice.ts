@@ -1,7 +1,7 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
 import { authService } from '@/services/authService'
 
-export interface User {
+interface User {
   id: number
   username: string
   email: string
@@ -16,7 +16,7 @@ export interface User {
   updatedAt: string
 }
 
-export interface AuthState {
+interface AuthState {
   user: User | null
   token: string | null
   isAuthenticated: boolean

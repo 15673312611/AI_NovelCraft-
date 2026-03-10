@@ -13,11 +13,8 @@ public interface VideoScriptService {
     VideoScript createScript(VideoScript script);
     VideoScript getScript(Long id);
     List<VideoScript> getUserScripts(Long userId);
-    void deleteScript(Long id);
-
     // Episodes
     List<VideoScriptEpisode> getEpisodes(Long scriptId);
-    VideoScriptEpisode getEpisode(Long scriptId, Integer episodeNumber);
     VideoScriptEpisode updateEpisodeContent(Long scriptId, Integer episodeNumber, String content);
 
     // 工作流控制

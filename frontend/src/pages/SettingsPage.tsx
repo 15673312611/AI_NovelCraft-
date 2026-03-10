@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Typography, Space, Divider, Table, Tag, Statistic, Row, Col, Spin, Empty, message } from 'antd'
-import { ThunderboltOutlined, HistoryOutlined, RobotOutlined, InfoCircleOutlined } from '@ant-design/icons'
+import { ThunderboltOutlined, HistoryOutlined } from '@ant-design/icons'
 import { creditService, UserCreditInfo, CreditTransaction } from '../services/creditService'
 import './SettingsPage.css'
 

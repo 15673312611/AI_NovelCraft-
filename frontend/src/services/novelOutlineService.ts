@@ -15,35 +15,7 @@ export interface NovelOutline {
   keyElements?: string;
   conflictTypes?: string;
 }
-
-export interface OutlineGenerationRequest {
-  novelId: string;
-  basicIdea: string;
-  targetWordCount: number;
-  targetChapterCount: number;
-}
-
-export interface OutlineRevisionRequest {
-  feedback: string;
-}
-
 class NovelOutlineService {
-  
-  /**
-   * 生成大纲
-   */
-  async generateOutline(request: OutlineGenerationRequest): Promise<NovelOutline> {
-    try {
-      const response = await api.post('/outline/generate-stream', request) as any;
-      // 根据后端 API 返回的数据结构调整
-      return {
-        novelId: request.novelId,
-        outline: response.plotStructure || response.outline || ''
-      };
-    } catch (error: any) {
-      throw new Error(error.response?.data?.message || error.message || '生成大纲失败');
-    }
-  }
 
   /**
    * 更新大纲
@@ -55,22 +27,6 @@ class NovelOutlineService {
     } catch (error: any) {
       throw new Error(error.response?.data?.message || error.message || '更新大纲失败');
     }
-  }
-
-  /**
-   * 修改大纲
-   */
-  async reviseOutline(outlineId: number, request: OutlineRevisionRequest): Promise<NovelOutline> {
-    const response = await api.put(`/outline/${outlineId}/revise`, request);
-    return response as unknown as NovelOutline;
-  }
-
-  /**
-   * 确认大纲
-   */
-  async confirmOutline(outlineId: number): Promise<NovelOutline> {
-    // 新流程不再使用 outlineId 确认，前端应直接读取 novels.outline
-    throw new Error('confirmOutline 已废弃，请使用 novels.outline');
   }
 
   /**
@@ -139,13 +95,6 @@ class NovelOutlineService {
       }
       throw error;
     }
-  }
-
-  /**
-   * 根据ID获取大纲详情
-   */
-  async getOutlineById(outlineId: number): Promise<NovelOutline | null> {
-    throw new Error('getOutlineById 已废弃，请使用 getOutlineByNovelId');
   }
 }
 

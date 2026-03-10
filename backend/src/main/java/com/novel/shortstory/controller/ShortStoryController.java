@@ -55,25 +55,13 @@ public class ShortStoryController {
         return shortStoryService.getNovel(id);
     }
     
-    @DeleteMapping("/{id}")
-    public void delete(@PathVariable Long id) {
-        shortStoryService.deleteNovel(id);
-    }
     
     @GetMapping("/{id}/chapters")
     public List<ShortChapter> getChapters(@PathVariable Long id) {
         return shortStoryService.getChapters(id);
     }
     
-    @GetMapping("/{id}/chapters/{chapterNumber}")
-    public ShortChapter getChapter(@PathVariable Long id, @PathVariable Integer chapterNumber) {
-        return shortStoryService.getChapter(id, chapterNumber);
-    }
     
-    @PutMapping("/chapters/{chapterId}")
-    public ShortChapter updateChapter(@PathVariable Long chapterId, @RequestBody Map<String, String> body) {
-        return shortStoryService.updateChapter(chapterId, body.get("content"));
-    }
 
     /**
      * 前端编辑器保存接口：按 novelId + chapterNumber 更新正文

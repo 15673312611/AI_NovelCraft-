@@ -1,24 +1,17 @@
 package com.novel.controller;
 
-import com.novel.common.ApiResponse;
 import com.novel.common.Result;
-import com.novel.config.GlobalExceptionHandler.BusinessException;
-import com.novel.domain.entity.Novel;
 import com.novel.domain.entity.NovelVolume;
 import com.novel.dto.AIConfigRequest;
 import com.novel.service.VolumeService;
-import com.novel.service.NovelService;
-import com.novel.service.NovelVolumeService;
 // import com.novel.service.NovelOutlineService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,25 +32,12 @@ public class VolumeController {
     @Autowired
     private VolumeService volumeService;
     
-    @Autowired
-    private NovelService novelService;
-
     // 保留注入占位，暂未在本控制器使用，后续可能扩展
     // @Autowired
     // private NovelOutlineService novelOutlineService;
 
 
 
-    /**
-     * 基于超级大纲生成卷规划（推荐方式）
-     * POST /volumes/{novelId}/generate-from-super-outline
-     */
-    @PostMapping("/{novelId}/generate-from-super-outline")
-    public Result<List<NovelVolume>> generateVolumesFromSuperOutline(
-            @PathVariable Long novelId,
-            @RequestBody Map<String, Object> request) {
-        return Result.error("该接口已停用，请改用 /volumes/{novelId}/generate-from-outline");
-    }
 
 
     /**
@@ -125,156 +105,8 @@ public class VolumeController {
     // 注意：获取小说的所有卷在 NovelVolumeController 暴露为 /volumes/novel/{novelId}
     // 这里移除 /volumes/{novelId} 以避免与 /volumes/{volumeId} 冲突
 
-    /**
-     * 为指定卷生成详细大纲（异步任务模式）
-     * POST /volumes/{volumeId}/generate-outline-async
-     */
-    @PostMapping("/{volumeId}/generate-outline-async")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> generateVolumeOutlineAsync(
-            @PathVariable Long volumeId,
-            @RequestBody(required = false) Map<String, Object> request) {
-
-        logger.info("📋 接收卷大纲异步生成请求: volumeId={}", volumeId);
-
-        try {
-            String userAdvice = null;
-            AIConfigRequest aiConfig = new AIConfigRequest();
-
-            if (request != null) {
-                Object adviceObj = request.get("userAdvice");
-                if (adviceObj instanceof String) {
-                    userAdvice = (String) adviceObj;
-                }
-                
-                // 解析AI配置（前端withAIConfig是扁平化的，直接从根级别读取）
-                if (request.containsKey("provider")) {
-                    aiConfig.setProvider((String) request.get("provider"));
-                    aiConfig.setApiKey((String) request.get("apiKey"));
-                    aiConfig.setModel((String) request.get("model"));
-                    aiConfig.setBaseUrl((String) request.get("baseUrl"));
-                    
-                    logger.info("✅ 卷大纲异步生成 - 收到AI配置: provider={}, model={}", 
-                        aiConfig.getProvider(), aiConfig.getModel());
-                } else if (request.get("aiConfig") instanceof Map) {
-                    // 兼容旧的嵌套格式
-                    @SuppressWarnings("unchecked")
-                    Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
-                    aiConfig.setProvider(aiConfigMap.get("provider"));
-                    aiConfig.setApiKey(aiConfigMap.get("apiKey"));
-                    aiConfig.setModel(aiConfigMap.get("model"));
-                    aiConfig.setBaseUrl(aiConfigMap.get("baseUrl"));
-                }
-            }
-            
-            if (!aiConfig.isValid()) {
-                logger.error("❌ 卷大纲异步生成 - AI配置无效: volumeId={}, request={}", volumeId, request);
-                return ResponseEntity.badRequest().body(
-                    ApiResponse.error("AI配置无效，请先在设置页面配置AI服务")
-                );
-            }
-
-            // 创建异步任务
-            Map<String, Object> result = volumeService.generateVolumeOutlineAsync(volumeId, userAdvice, aiConfig);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("asyncTask", true);
-            response.put("taskId", result.get("taskId"));
-            response.put("volumeId", volumeId);
-            response.put("message", "卷大纲生成任务已创建");
-
-            logger.info("✅ 卷 {} 异步大纲生成任务创建成功，任务ID: {}", volumeId, result.get("taskId"));
-            return ResponseEntity.ok(ApiResponse.success("卷大纲生成任务已创建", response));
-
-        } catch (Exception e) {
-            logger.error("❌ 创建卷大纲异步任务失败: volumeId={}", volumeId, e);
-
-            // 异步任务创建失败，直接返回错误
-            logger.warn("⚠️ 异步任务创建失败: {}", e.getMessage());
-            return ResponseEntity.ok(ApiResponse.error("创建异步任务失败: " + e.getMessage()));
-        }
-    }
 
 
-    /**
-     * 流式生成单个卷的详细大纲（SSE）
-     * POST /volumes/{volumeId}/generate-outline-stream
-     * 请求体: { userAdvice?: string }
-     * 返回: SSE流
-     */
-    @PostMapping(value = "/{volumeId}/generate-outline-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter generateVolumeOutlineStream(
-            @PathVariable Long volumeId,
-            @RequestBody(required = false) Map<String, Object> request) {
-        
-        logger.info("📋 接收卷大纲流式生成请求: volumeId={}", volumeId);
-        
-        SseEmitter emitter = new SseEmitter(0L); // 不超时
-        
-        new Thread(() -> {
-            try {
-                String userAdvice = null;
-                AIConfigRequest aiConfig = new AIConfigRequest();
-                
-                if (request != null) {
-                    if (request.get("userAdvice") instanceof String) {
-                        userAdvice = (String) request.get("userAdvice");
-                    }
-                    
-                    // 解析AI配置（前端withAIConfig是扁平化的，直接从根级别读取）
-                    if (request.containsKey("provider")) {
-                        aiConfig.setProvider((String) request.get("provider"));
-                        aiConfig.setApiKey((String) request.get("apiKey"));
-                        aiConfig.setModel((String) request.get("model"));
-                        aiConfig.setBaseUrl((String) request.get("baseUrl"));
-                        
-                        logger.info("✅ 卷大纲流式生成 - 收到AI配置: provider={}, model={}", 
-                            aiConfig.getProvider(), aiConfig.getModel());
-                    } else if (request.get("aiConfig") instanceof Map) {
-                        // 兼容旧的嵌套格式
-                        @SuppressWarnings("unchecked")
-                        Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
-                        aiConfig.setProvider(aiConfigMap.get("provider"));
-                        aiConfig.setApiKey(aiConfigMap.get("apiKey"));
-                        aiConfig.setModel(aiConfigMap.get("model"));
-                        aiConfig.setBaseUrl(aiConfigMap.get("baseUrl"));
-                    }
-                }
-                
-                // 验证AI配置
-                if (!aiConfig.isValid()) {
-                    logger.error("❌ 卷大纲流式生成 - AI配置无效: volumeId={}, request={}", volumeId, request);
-                    emitter.send(SseEmitter.event().name("error").data("AI配置无效，请先在设置页面配置AI服务"));
-                    emitter.completeWithError(new RuntimeException("AI配置无效"));
-                    return;
-                }
-                
-                // 调用VolumeService的流式生成方法
-                volumeService.streamGenerateVolumeOutline(volumeId, userAdvice, aiConfig, chunk -> {
-                    try {
-                        // 直接发送纯文本数据，不带event名称
-                        emitter.send(chunk);
-                    } catch (Exception e) {
-                        logger.error("发送SSE chunk失败", e);
-                        throw new RuntimeException(e);
-                    }
-                });
-                
-                // 完成
-                emitter.send(SseEmitter.event().name("done").data("completed"));
-                emitter.complete();
-                logger.info("✅ 卷 {} 流式大纲生成完成", volumeId);
-                
-            } catch (Exception e) {
-                logger.error("❌ 流式生成卷大纲失败: volumeId={}", volumeId, e);
-                try {
-                    emitter.send(SseEmitter.event().name("error").data(e.getMessage()));
-                } catch (Exception ignored) {}
-                emitter.completeWithError(e);
-            }
-        }).start();
-        
-        return emitter;
-    }
 
     /**
      * 批量为多个卷生成详细大纲（按需求定制的新接口）
@@ -287,44 +119,6 @@ public class VolumeController {
      * 查询批量任务进度
      */
 
-    /**
-     * 获取卷大纲（不生成，仅获取已有的）
-     * GET /volumes/{volumeId}/outline
-     */
-    @GetMapping("/{volumeId}/outline")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getVolumeOutline(@PathVariable Long volumeId) {
-
-        logger.info("📋 获取卷大纲: volumeId={}", volumeId);
-
-        try {
-            // 从VolumeService获取卷详情
-            Map<String, Object> detail = volumeService.getVolumeDetail(volumeId);
-            NovelVolume volume = (NovelVolume) detail.get("volume");
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("volumeId", volumeId);
-            response.put("hasOutline", volume.getContentOutline() != null && !volume.getContentOutline().trim().isEmpty());
-
-            if (response.get("hasOutline").equals(true)) {
-                // 解析现有大纲
-                Map<String, Object> parsedOutline = parseExistingOutlineForResponse(volume.getContentOutline());
-                response.put("outline", parsedOutline);
-                response.put("outlineText", volume.getContentOutline());
-            } else {
-                response.put("outline", null);
-                response.put("outlineText", "");
-            }
-
-            response.put("volume", volume);
-            response.put("lastModified", volume.getLastModifiedByAi());
-
-            return ResponseEntity.ok(ApiResponse.success("获取卷大纲成功", response));
-
-        } catch (Exception e) {
-            logger.error("❌ 获取卷大纲失败: volumeId={}", volumeId, e);
-            throw new BusinessException("获取卷大纲失败: " + e.getMessage());
-        }
-    }
 
 //    /**
 //     * 开始卷写作会话
@@ -434,86 +228,6 @@ public class VolumeController {
         return emitter;
     }
 
-    /**
-     * 根据用户需求修改卷蓝图（流式，考虑前后卷上下文）
-     * POST /volumes/{volumeId}/modify-blueprint-stream
-     * 请求体: { userRequirement: string, provider: string, apiKey: string, model: string, baseUrl?: string }
-     * 返回: SSE流
-     */
-    @PostMapping(value = "/{volumeId}/modify-blueprint-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter modifyVolumeBlueprintStream(
-            @PathVariable Long volumeId,
-            @RequestBody Map<String, Object> request) {
-        
-        logger.info("🔧 接收卷蓝图修改请求: volumeId={}", volumeId);
-        
-        SseEmitter emitter = new SseEmitter(0L); // 不超时
-        
-        new Thread(() -> {
-            try {
-                // 解析用户需求
-                String userRequirement = (String) request.get("userRequirement");
-                if (userRequirement == null || userRequirement.trim().isEmpty()) {
-                    emitter.send(SseEmitter.event().name("error").data("用户修改需求不能为空"));
-                    emitter.completeWithError(new RuntimeException("用户修改需求不能为空"));
-                    return;
-                }
-                
-                // 解析AI配置
-                AIConfigRequest aiConfig = new AIConfigRequest();
-                if (request.containsKey("provider")) {
-                    aiConfig.setProvider((String) request.get("provider"));
-                    aiConfig.setApiKey((String) request.get("apiKey"));
-                    aiConfig.setModel((String) request.get("model"));
-                    aiConfig.setBaseUrl((String) request.get("baseUrl"));
-                    
-                    logger.info("✅ 卷蓝图修改 - 收到AI配置: provider={}, model={}", 
-                        aiConfig.getProvider(), aiConfig.getModel());
-                } else if (request.get("aiConfig") instanceof Map) {
-                    // 兼容嵌套格式
-                    @SuppressWarnings("unchecked")
-                    Map<String, String> aiConfigMap = (Map<String, String>) request.get("aiConfig");
-                    aiConfig.setProvider(aiConfigMap.get("provider"));
-                    aiConfig.setApiKey(aiConfigMap.get("apiKey"));
-                    aiConfig.setModel(aiConfigMap.get("model"));
-                    aiConfig.setBaseUrl(aiConfigMap.get("baseUrl"));
-                }
-                
-                // 验证AI配置
-                if (!aiConfig.isValid()) {
-                    logger.error("❌ 卷蓝图修改 - AI配置无效: volumeId={}, request={}", volumeId, request);
-                    emitter.send(SseEmitter.event().name("error").data("AI配置无效，请先在设置页面配置AI服务"));
-                    emitter.completeWithError(new RuntimeException("AI配置无效"));
-                    return;
-                }
-                
-                // 调用VolumeService的修改方法
-                volumeService.modifyVolumeBlueprintWithContext(volumeId, userRequirement, aiConfig, chunk -> {
-                    try {
-                        // 直接发送纯文本数据，不带event名称
-                        emitter.send(chunk);
-                    } catch (Exception e) {
-                        logger.error("发送SSE chunk失败", e);
-                        throw new RuntimeException(e);
-                    }
-                });
-                
-                // 完成
-                emitter.send(SseEmitter.event().name("done").data("completed"));
-                emitter.complete();
-                logger.info("✅ 卷 {} 蓝图修改完成", volumeId);
-                
-            } catch (Exception e) {
-                logger.error("❌ 修改卷蓝图失败: volumeId={}", volumeId, e);
-                try {
-                    emitter.send(SseEmitter.event().name("error").data(e.getMessage()));
-                } catch (Exception ignored) {}
-                emitter.completeWithError(e);
-            }
-        }).start();
-        
-        return emitter;
-    }
 
     /**
      * 更新卷信息
@@ -558,59 +272,6 @@ public class VolumeController {
         }
     }
 
-    /**
-     * 更新卷的实际字数
-     * PUT /volumes/{volumeId}/word-count
-     */
-    @PutMapping("/{volumeId}/word-count")
-    public Result<String> updateActualWordCount(
-            @PathVariable Long volumeId,
-            @RequestBody Map<String, Object> request) {
-
-        try {
-            Integer actualWordCount = (Integer) request.get("actualWordCount");
-
-            if (actualWordCount == null || actualWordCount < 0) {
-                return Result.error("字数必须为非负整数");
-            }
-
-            volumeService.updateActualWordCount(volumeId, actualWordCount);
-
-            return Result.success("字数更新成功");
-
-        } catch (Exception e) {
-            logger.error("更新字数失败", e);
-            return Result.error("更新失败: " + e.getMessage());
-        }
-    }
-
-    /**
-     * 删除卷
-     * DELETE /volumes/{volumeId}
-     */
-    @DeleteMapping("/{volumeId}")
-    public Result<String> deleteVolume(@PathVariable Long volumeId) {
-        try {
-            Long userId = com.novel.common.security.AuthUtils.getCurrentUserId();
-            NovelVolume volume = volumeService.getVolumeById(volumeId);
-            if (volume == null) {
-                return Result.error("卷不存在");
-            }
-            // 通过小说验证权限
-            Novel novel = novelService.getNovel(volume.getNovelId());
-            if (novel == null || novel.getAuthorId() == null || !novel.getAuthorId().equals(userId)) {
-                logger.warn("用户{}尝试删除不属于自己的卷{}", userId, volumeId);
-                return Result.error("无权删除此卷");
-            }
-            
-            volumeService.deleteVolume(volumeId);
-            return Result.success("删除成功");
-        } catch (Exception e) {
-            logger.error("删除卷失败", e);
-            return Result.error("删除失败: " + e.getMessage());
-        }
-    }
-
 
     /**
      * 获取卷详情
@@ -628,66 +289,4 @@ public class VolumeController {
         }
     }
 
-    /**
-     * 获取小说卷统计信息
-     * GET /volumes/{novelId}/stats
-     */
-    @GetMapping("/{novelId}/stats")
-    public Result<Map<String, Object>> getVolumeStats(@PathVariable Long novelId) {
-        try {
-            List<NovelVolume> volumes = volumeService.getVolumesByNovelId(novelId);
-
-            Map<String, Object> stats = new HashMap<>();
-            stats.put("totalVolumes", volumes.size());
-            stats.put("completedVolumes", volumes.stream().mapToInt(v -> v.isCompleted() ? 1 : 0).sum());
-            stats.put("inProgressVolumes", volumes.stream().mapToInt(v -> v.isInProgress() ? 1 : 0).sum());
-            stats.put("totalEstimatedWords", volumes.stream().mapToInt(v -> v.getEstimatedWordCount() != null ? v.getEstimatedWordCount() : 0).sum());
-            stats.put("totalActualWords", volumes.stream().mapToInt(v -> v.getActualWordCount() != null ? v.getActualWordCount() : 0).sum());
-
-            double avgProgress = volumes.stream().mapToDouble(NovelVolume::getProgress).average().orElse(0.0);
-            stats.put("averageProgress", Math.round(avgProgress * 100.0) / 100.0);
-
-            return Result.success(stats);
-
-        } catch (Exception e) {
-            logger.error("获取统计信息失败", e);
-            return Result.error("获取失败: " + e.getMessage());
-        }
-    }
-
-    /**
-     * 为响应解析现有大纲文本
-     */
-    private Map<String, Object> parseExistingOutlineForResponse(String outlineText) {
-        Map<String, Object> outline = new HashMap<>();
-
-        if (outlineText == null || outlineText.trim().isEmpty()) {
-            return outline;
-        }
-
-        outline.put("rawOutline", outlineText);
-        outline.put("isExisting", true);
-        outline.put("summary", extractSummaryFromOutline(outlineText));
-
-        return outline;
-    }
-
-    /**
-     * 从大纲文本中提取摘要信息
-     */
-    private String extractSummaryFromOutline(String outlineText) {
-        if (outlineText == null || outlineText.trim().isEmpty()) {
-            return "暂无大纲内容";
-        }
-
-        // 提取前200个字符作为摘要
-        String summary = outlineText.length() > 200 ?
-            outlineText.substring(0, 200) + "..." :
-            outlineText;
-
-        // 移除过多的换行符
-        summary = summary.replaceAll("\n{3,}", "\n\n");
-
-        return summary;
-    }
 }

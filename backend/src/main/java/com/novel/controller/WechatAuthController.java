@@ -1,7 +1,6 @@
 package com.novel.controller;
 
 import com.novel.common.Result;
-import com.novel.common.security.AuthUtils;
 import com.novel.dto.AuthResponse;
 import com.novel.dto.WechatLoginRequest;
 import com.novel.service.WechatAuthService;
@@ -85,40 +84,4 @@ public class WechatAuthController {
         }
     }
 
-    /**
-     * Bind wechat to current account
-     */
-    @PostMapping("/bind")
-    public Result<String> bindWechat(@RequestBody WechatLoginRequest request) {
-        try {
-            Long userId = AuthUtils.getCurrentUserId();
-            if (userId == null) {
-                return Result.error("Please login first");
-            }
-            
-            String type = request.getType() != null ? request.getType() : "open";
-            wechatAuthService.bindWechat(userId, type, request.getCode());
-            return Result.success("bindSuccess");
-        } catch (Exception e) {
-            return Result.error(e.getMessage());
-        }
-    }
-
-    /**
-     * Unbind wechat
-     */
-    @PostMapping("/unbind")
-    public Result<String> unbindWechat() {
-        try {
-            Long userId = AuthUtils.getCurrentUserId();
-            if (userId == null) {
-                return Result.error("Please login first");
-            }
-            
-            wechatAuthService.unbindWechat(userId);
-            return Result.success("Unbind success");
-        } catch (Exception e) {
-            return Result.error(e.getMessage());
-        }
-    }
 }

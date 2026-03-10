@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Button, Input, Spin, Tabs, Tag, Tooltip, message } from 'antd';
+import { Button, Spin, Tag, Tooltip, message } from 'antd';
 import {
   AimOutlined,
   ArrowLeftOutlined,
@@ -121,7 +121,7 @@ const ShortStoryWorkflowPage: React.FC = () => {
 
   const [view, setView] = useState<ViewMode>({ type: 'workflow' });
   const [selectedNodeKey, setSelectedNodeKey] = useState<string | null>(null);
-  const [logSearch, setLogSearch] = useState('');
+  const [logSearch] = useState('');
   const [rightPanelTab, setRightPanelTab] = useState<'output' | 'logs'>('output');
   
   // 章节内容编辑状态
@@ -192,7 +192,6 @@ const ShortStoryWorkflowPage: React.FC = () => {
     return m;
   }, [workflow?.steps]);
 
-  const chapterCount = novel?.chapterCount || workflow?.chapterCount || 0;
   const currentChapterNum = novel?.currentChapter || 1;
 
   // 计算当前应该高亮的节点（映射到 Loop 节点）
@@ -935,13 +934,10 @@ const ShortStoryWorkflowPage: React.FC = () => {
   const makeEdgePath = (from: CanvasNode, to: CanvasNode, edge: CanvasEdge) => {
     const fromRight = { x: from.x + NODE_W, y: from.y + NODE_H / 2 };
     const fromLeft = { x: from.x, y: from.y + NODE_H / 2 };
-    const fromTop = { x: from.x + NODE_W / 2, y: from.y };
     const fromBottom = { x: from.x + NODE_W / 2, y: from.y + NODE_H };
     
     const toLeft = { x: to.x, y: to.y + NODE_H / 2 };
-    const toRight = { x: to.x + NODE_W, y: to.y + NODE_H / 2 };
     const toTop = { x: to.x + NODE_W / 2, y: to.y };
-    const toBottom = { x: to.x + NODE_W / 2, y: to.y + NODE_H };
 
     // 循环边：COMMIT -> GENERATE
     if (edge.type === 'loop') {

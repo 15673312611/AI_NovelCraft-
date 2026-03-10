@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,24 +72,6 @@ public class AgenticWritingController {
         executeChapterGenerationAsync(request, emitter, heartbeat, authentication);
         
         return emitter;
-    }
-    
-    /**
-     * 获取系统状态
-     */
-    @GetMapping("/status")
-    public Map<String, Object> getStatus() {
-        Map<String, Object> status = new HashMap<>();
-        status.put("version", "1.0.0-agentic");
-        status.put("status", "running");
-        status.put("description", "代理式AI写作系统（测试版）");
-        List<String> features = new java.util.ArrayList<>();
-        features.add("ReAct决策循环");
-        features.add("智能工具选择");
-        features.add("图谱上下文检索");
-        features.add("批量章节生成");
-        status.put("features", features);
-        return status;
     }
     
     /**

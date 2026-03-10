@@ -15,7 +15,7 @@ import type { NovelDocument } from '@/services/documentService'
 import type { Chapter } from '@/services/chapterServiceForStudio'
 import './FileTree.css'
 
-export interface FileTreeNode {
+interface FileTreeNode {
   key: string
   title: React.ReactNode
   isLeaf?: boolean
@@ -29,7 +29,7 @@ export interface FileTreeNode {
   }
 }
 
-export interface FileTreeProps {
+interface FileTreeProps {
   novelTitle?: string
   folders: NovelFolder[]
   chapters: Chapter[]
@@ -52,7 +52,6 @@ export interface FileTreeProps {
   onRenameFolder?: (folder: NovelFolder, newName: string) => void
   onRenameDocument?: (document: NovelDocument, newName: string) => void
   onRenameChapter?: (chapter: Chapter, newName: string) => void
-  onChapterAnalysis?: () => void
   analysisMode?: boolean
   onAnalysisModeClose?: () => void
   onAnalysisTypeSelect?: (analysisType: string) => void
@@ -94,7 +93,6 @@ const FileTree: React.FC<FileTreeProps> = ({
   onRenameFolder,
   onRenameDocument,
   onRenameChapter,
-  onChapterAnalysis,
   analysisMode = false,
   onAnalysisModeClose,
   onAnalysisTypeSelect,

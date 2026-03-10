@@ -28,7 +28,7 @@ export interface AITask {
   novelTitle: string
 }
 
-export interface CreateAITaskRequest {
+interface CreateAITaskRequest {
   type: string
   title: string
   description: string
@@ -41,19 +41,7 @@ export interface CreateAITaskRequest {
   maxRetries: number
   timeout: number
 }
-
-export interface UpdateAITaskRequest {
-  title?: string
-  description?: string
-  prompt?: string
-  model?: string
-  maxTokens?: number
-  temperature?: number
-  maxRetries?: number
-  timeout?: number
-}
-
-export interface AITaskListResponse {
+interface AITaskListResponse {
   content: AITask[]
   totalElements: number
   totalPages: number
@@ -120,11 +108,6 @@ class AITaskService {
     return response as unknown as AITask
   }
 
-  async updateAITask(id: number, taskData: UpdateAITaskRequest): Promise<AITask> {
-    const response = await api.put(`/ai-tasks/${id}`, taskData)
-    return response as unknown as AITask
-  }
-
   async deleteAITask(id: number): Promise<void> {
     await api.delete(`/ai-tasks/${id}`)
   }
@@ -148,11 +131,6 @@ class AITaskService {
     return response as unknown as AIModel[]
   }
 
-  async validateApiKey(): Promise<{ valid: boolean; message?: string }> {
-    const response = await api.post('/ai-tasks/validate-api-key')
-    return response as unknown as { valid: boolean; message?: string }
-  }
-
   async estimateCost(
     prompt: string,
     model: string,
@@ -164,31 +142,6 @@ class AITaskService {
       maxTokens
     })
     return response as unknown as CostEstimate
-  }
-
-  async getTaskTypes(): Promise<string[]> {
-    const response = await api.get('/ai-tasks/types')
-    return response as unknown as string[]
-  }
-
-  async getTaskStatuses(): Promise<string[]> {
-    const response = await api.get('/ai-tasks/statuses')
-    return response as unknown as string[]
-  }
-
-  async searchAITasks(query: string): Promise<AITask[]> {
-    const response = await api.get(`/ai-tasks/search?query=${encodeURIComponent(query)}`)
-    return response as unknown as AITask[]
-  }
-
-  async getTasksByNovel(novelId: number): Promise<AITask[]> {
-    const response = await api.get(`/novels/${novelId}/ai-tasks`)
-    return response as unknown as AITask[]
-  }
-
-  async getTasksByChapter(chapterId: number): Promise<AITask[]> {
-    const response = await api.get(`/chapters/${chapterId}/ai-tasks`)
-    return response as unknown as AITask[]
   }
 
   /**
@@ -305,27 +258,6 @@ class AITaskService {
     } catch (error) {
       console.warn('移除任务信息失败:', error);
     }
-  }
-
-  /**
-   * 清理已完成或失败的任务
-   */
-  async cleanupStoredTasks(): Promise<void> {
-    const tasks = this.getStoredTasks();
-    const activeTasks: Array<{taskId: number, type: string, novelId: number}> = [];
-
-    for (const task of tasks) {
-      try {
-        const taskDetail = await this.getAITaskById(task.taskId);
-        if (taskDetail.status === 'RUNNING' || taskDetail.status === 'PENDING') {
-          activeTasks.push(task);
-        }
-      } catch {
-        // 任务可能已删除，忽略错误
-      }
-    }
-
-    localStorage.setItem('aiTasks', JSON.stringify(activeTasks));
   }
 }
 

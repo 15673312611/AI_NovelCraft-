@@ -9,8 +9,7 @@ import {
   Tag,
   Alert,
   Row,
-  Col,
-  Divider
+  Col
 } from 'antd'
 import { 
   RobotOutlined,
@@ -19,7 +18,6 @@ import {
   PlayCircleOutlined,
   CheckCircleOutlined,
   ArrowRightOutlined,
-  UserOutlined,
   FileTextOutlined
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'

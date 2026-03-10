@@ -1,6 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
-export interface UIState {
+interface UIState {
   sidebarCollapsed: boolean
   theme: 'light' | 'dark'
   loading: boolean

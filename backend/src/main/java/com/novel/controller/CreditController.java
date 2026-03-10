@@ -114,55 +114,6 @@ public class CreditController {
         return Result.success(data);
     }
 
-    /**
-     * 预估消费
-     */
-    @PostMapping("/estimate")
-    public Result<Map<String, Object>> estimateCost(@RequestBody Map<String, Object> request) {
-        String modelId = (String) request.get("modelId");
-        String inputText = (String) request.get("inputText");
-        Integer estimatedOutputTokens = (Integer) request.getOrDefault("estimatedOutputTokens", 2000);
-
-        if (modelId == null) {
-            AIModel defaultModel = systemAIConfigService.getDefaultModel();
-            modelId = defaultModel != null ? defaultModel.getModelId() : "deepseek-chat";
-        }
-
-        BigDecimal estimatedCost = systemAIConfigService.estimateCost(modelId, inputText != null ? inputText : "", estimatedOutputTokens);
-        AIModel model = systemAIConfigService.getModel(modelId);
-
-        Map<String, Object> data = new HashMap<>();
-        data.put("estimatedCost", estimatedCost);
-        data.put("modelId", modelId);
-        data.put("modelName", model != null ? model.getDisplayName() : modelId);
-        data.put("inputPricePer1k", model != null ? model.getInputPricePer1k() : BigDecimal.ZERO);
-        data.put("outputPricePer1k", model != null ? model.getOutputPricePer1k() : BigDecimal.ZERO);
-
-        return Result.success(data);
-    }
-
-    /**
-     * 检查余额是否足够
-     */
-    @PostMapping("/check")
-    public Result<Map<String, Object>> checkBalance(@RequestBody Map<String, Object> request) {
-        Long userId = AuthUtils.getCurrentUserId();
-        if (userId == null) {
-            return Result.error("请先登录");
-        }
-
-        BigDecimal requiredAmount = new BigDecimal(request.get("amount").toString());
-        BigDecimal availableBalance = creditService.getAvailableBalance(userId);
-        boolean sufficient = availableBalance.compareTo(requiredAmount) >= 0;
-
-        Map<String, Object> data = new HashMap<>();
-        data.put("sufficient", sufficient);
-        data.put("availableBalance", availableBalance);
-        data.put("requiredAmount", requiredAmount);
-        data.put("shortfall", sufficient ? BigDecimal.ZERO : requiredAmount.subtract(availableBalance));
-
-        return Result.success(data);
-    }
 
     /**
      * 获取可用模型列表
@@ -173,15 +124,4 @@ public class CreditController {
         return Result.success(models);
     }
 
-    /**
-     * 获取默认模型
-     */
-    @GetMapping("/models/default")
-    public Result<AIModel> getDefaultModel() {
-        AIModel model = systemAIConfigService.getDefaultModel();
-        if (model == null) {
-            return Result.error("未配置默认模型");
-        }
-        return Result.success(model);
-    }
 }

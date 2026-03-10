@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Button, List, Tag, Progress, Typography, Space } from 'antd';
+import { Card, Button, List, Tag, Progress, Typography } from 'antd';
 import { PlusOutlined, RocketOutlined, RightOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { shortStoryService, ShortNovel } from '../../services/shortStoryService';
 import dayjs from 'dayjs';
 
-const { Title, Text } = Typography;
+const { Title } = Typography;
 
 const ShortStoryListPage: React.FC = () => {
   const navigate = useNavigate();

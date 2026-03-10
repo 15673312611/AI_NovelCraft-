@@ -1,7 +1,7 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
 import { novelService } from '@/services/novelService'
 
-export interface Novel {
+interface Novel {
   id: number
   title: string
   description: string
@@ -14,7 +14,7 @@ export interface Novel {
   updatedAt: string
 }
 
-export interface NovelState {
+interface NovelState {
   novels: Novel[]
   currentNovel: Novel | null
   loading: boolean

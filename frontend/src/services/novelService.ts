@@ -19,7 +19,7 @@ export interface Novel {
   totalWordTarget?: number
 }
 
-export interface CreateNovelRequest {
+interface CreateNovelRequest {
   title: string
   description: string
   // 新增创作配置字段
@@ -29,7 +29,7 @@ export interface CreateNovelRequest {
   totalWordTarget?: number
 }
 
-export interface UpdateNovelRequest {
+interface UpdateNovelRequest {
   title?: string
   description?: string
   genre?: string
@@ -40,24 +40,11 @@ export interface UpdateNovelRequest {
   plannedVolumeCount?: number
   totalWordTarget?: number
 }
-
-export interface NovelListResponse {
-  content: Novel[]
-  totalElements: number
-  totalPages: number
-  currentPage: number
-  size: number
-}
-
 class NovelService {
   // 兼容方法：部分页面使用 getById，这里提供别名以保持兼容
   async getById(id: number | string): Promise<Novel> {
     const numericId = typeof id === 'string' ? parseInt(id, 10) : id
     return this.getNovelById(numericId)
-  }
-
-  async getAll(): Promise<Novel[]> {
-    return this.getNovels(0, 1000)
   }
 
   async getNovels(page: number = 0, size: number = 10): Promise<Novel[]> {
@@ -103,37 +90,6 @@ class NovelService {
 
   async deleteNovel(id: number): Promise<void> {
     await api.delete(`/novels/${id}`)
-  }
-
-  async getNovelsByUser(userId: number): Promise<Novel[]> {
-    const response = await api.get(`/users/${userId}/novels`)
-    return response as unknown as Novel[]
-  }
-
-  async searchNovels(query: string, genre?: string, status?: string): Promise<Novel[]> {
-    const params = new URLSearchParams({ query })
-    if (genre) params.append('genre', genre)
-    if (status) params.append('status', status)
-
-    const response = await api.get(`/novels/search?${params.toString()}`)
-    return response as unknown as Novel[]
-  }
-
-  async getNovelStatistics(id: number): Promise<{
-    totalChapters: number
-    totalWords: number
-    averageWordsPerChapter: number
-    lastUpdated: string
-    completionRate: number
-  }> {
-    const response = await api.get(`/novels/${id}/statistics`)
-    return response as unknown as {
-      totalChapters: number
-      totalWords: number
-      averageWordsPerChapter: number
-      lastUpdated: string
-      completionRate: number
-    }
   }
 }
 

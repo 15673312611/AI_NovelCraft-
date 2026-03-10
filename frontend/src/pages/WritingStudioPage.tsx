@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
+﻿import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { Layout, Spin, message, Modal, List, Button, Tag, Drawer, Progress } from 'antd'
 import {
@@ -6,12 +6,10 @@ import {
   FileTextOutlined,
   RocketOutlined,
   CompassOutlined,
-  ThunderboltOutlined,
   BookOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   SaveOutlined,
-  EnvironmentOutlined,
   AimOutlined
 } from '@ant-design/icons'
 import FileTree from '@/components/writing/FileTree'
@@ -197,242 +195,6 @@ const formatChineseSentences = (input: string): string => {
 /**
  * 修复常见标点错误
  */
-function fixPunctuation(text: string): string {
-  let result = text;
-  
-  // 修复中英文标点混用
-  result = result.replace(/,(?=[^a-zA-Z0-9])/g, '，'); // 逗号
-  result = result.replace(/\.(?=[^a-zA-Z0-9\s])/g, '。'); // 句号（但保留英文句号）
-  result = result.replace(/\?(?=[^a-zA-Z0-9])/g, '？'); // 问号
-  result = result.replace(/!(?=[^a-zA-Z0-9])/g, '！'); // 感叹号
-  result = result.replace(/;(?=[^a-zA-Z0-9])/g, '；'); // 分号
-  result = result.replace(/:(?=[^a-zA-Z0-9])/g, '：'); // 冒号
-  
-  // 修复引号（统一使用中文引号）
-  result = result.replace(/"/g, '\u201c').replace(/"/g, '\u201d'); // 英文双引号 -> 中文双引号
-  result = result.replace(/'/g, '\u2018').replace(/'/g, '\u2019'); // 英文单引号 -> 中文单引号
-  
-  // 修复省略号
-  result = result.replace(/\.{3,}/g, '……'); // ... -> ……
-  result = result.replace(/。{3,}/g, '……'); // 。。。 -> ……
-  
-  // 修复破折号
-  result = result.replace(/--+/g, '——'); // -- -> ——
-  
-  // 移除标点前的空格
-  result = result.replace(/\s+([，。？！；：、])/g, '$1');
-  
-  // 移除标点后的多余空格（但保留一个空格用于英文）
-  result = result.replace(/([，。？！；：、])\s{2,}/g, '$1 ');
-  
-  return result;
-}
-
-/**
- * 判断是否是句子结尾
- */
-function isSentenceEnd(text: string, index: number): boolean {
-  const char = text[index];
-  
-  // 句子结尾标点
-  const endMarks = '。？！…';
-  if (!endMarks.includes(char)) {
-    return false;
-  }
-  
-  // 省略号需要连续
-  if (char === '…') {
-    return text[index + 1] !== '…';
-  }
-  
-  return true;
-}
-
-/**
- * 判断是否是结束标记（引号、括号等）
- */
-function isClosingMark(char: string): boolean {
-  const closingMarks = '\u201d\u2019\u300d\u300f\u3011)\uff09';
-  return closingMarks.includes(char) || char === ' ';
-}
-
-/**
- * 检测行类型
- */
-function detectLineType(line: string): string {
-  if (!line || !line.trim()) return 'empty';
-  
-  const trimmed = line.trim();
-  
-  // 章节标题（第X章、第X节等）
-  if (/^第[一二三四五六七八九十百千万\d]+[章节回]/i.test(trimmed)) {
-    return 'chapter_title';
-  }
-  
-  // 分隔线
-  if (/^[=\-*]{3,}$/.test(trimmed)) {
-    return 'separator';
-  }
-  
-  // 对话（以引号开头）
-  if (/^["'"'「『]/.test(trimmed)) {
-    return 'dialogue';
-  }
-  
-  // 对话（包含引号）
-  if (/["'"'「『].*["'"'」』]/.test(trimmed)) {
-    return 'dialogue';
-  }
-  
-  // 心理描写（常见模式）
-  if (/[想道]：/.test(trimmed) || /心[中里想]/.test(trimmed)) {
-    return 'thought';
-  }
-  
-  // 叙述
-  return 'narrative';
-}
-
-/**
- * 判断是否应该分段
- */
-function shouldParagraphBreak(currentType: string, lastType: string, currentLine: string, lastLine: string): boolean {
-  // 第一行不分段
-  if (!lastType) return false;
-  
-  // 章节标题前后必须分段
-  if (currentType === 'chapter_title' || lastType === 'chapter_title') {
-    return true;
-  }
-  
-  // 分隔线前后必须分段
-  if (currentType === 'separator' || lastType === 'separator') {
-    return true;
-  }
-  
-  // 对话之间不分段（连续对话）
-  if (currentType === 'dialogue' && lastType === 'dialogue') {
-    // 但如果是不同人的对话，可能需要分段
-    // 这里简化处理：如果上一句以引号结尾，下一句以引号开头，不分段
-    return false;
-  }
-  
-  // 对话和叙述之间分段
-  if ((currentType === 'dialogue' && lastType === 'narrative') ||
-      (currentType === 'narrative' && lastType === 'dialogue')) {
-    return true;
-  }
-  
-  // 叙述之间：如果上一句很长（超过50字），可能是新段落
-  if (currentType === 'narrative' && lastType === 'narrative') {
-    if (lastLine.length > 50) {
-      return true;
-    }
-  }
-  
-  return false;
-}
-
-/**
- * 判断段落之间是否需要空行
- */
-function shouldAddEmptyLine(currentType: string, nextType: string): boolean {
-  // 章节标题后空行
-  if (currentType === 'chapter_title') {
-    return true;
-  }
-  
-  // 分隔线前后空行
-  if (currentType === 'separator' || nextType === 'separator') {
-    return true;
-  }
-  
-  // 对话段落和叙述段落之间空行
-  if ((currentType === 'dialogue' && nextType === 'narrative') ||
-      (currentType === 'narrative' && nextType === 'dialogue')) {
-    return true;
-  }
-  
-  // 连续对话之间不空行
-  if (currentType === 'dialogue' && nextType === 'dialogue') {
-    return false;
-  }
-  
-  // 连续叙述之间不空行
-  if (currentType === 'narrative' && nextType === 'narrative') {
-    return false;
-  }
-  
-  return false;
-}
-
-/**
- * 轻量级实时换行函数（用于流式输出）
- * 
- * 规则：
- * 1. 引号内不换行：引号内的句号（。？！）不换行
- * 2. 引号结束后换行：遇到右引号（"」』）后换行
- * 3. 引号外换行：引号外的句号直接换行
- * 
- * 示例：
- * "夫人，我是周毅。今天负责您母亲遗产交接的团队已经全部到齐。" -> 不换行，等右引号
- * "夫人，我是周毅。" -> "夫人，我是周毅。"\n
- * 他说完就走了。 -> 他说完就走了。\n
- */
-const applyRealtimeLineBreaks = (input: string): string => {
-  if (!input) return '';
-  
-  let result = '';
-  let inQuote = false; // 是否在引号内
-  
-  // 左引号字符集（只包括双引号和书名号）
-  const leftQuotes = '\u201c\u2018\u300c\u300e';  // "'「『
-  // 右引号字符集  
-  const rightQuotes = '\u201d\u2019\u300d\u300f'; // "'」』
-  // 句子结尾标点
-  const endMarks = '。？！';
-  
-  for (let i = 0; i < input.length; i++) {
-    const char = input[i];
-    result += char;
-    
-    // 检测左引号（进入引号）
-    if (leftQuotes.includes(char)) {
-      inQuote = true;
-    }
-    // 检测右引号（离开引号）
-    else if (rightQuotes.includes(char)) {
-      inQuote = false;
-      // 右引号后换行
-      result += '\n';
-    }
-    // 检测句子结尾标点
-    else if (endMarks.includes(char)) {
-      // 只有在引号外才换行
-      if (!inQuote) {
-        result += '\n';
-      }
-      // 引号内不换行，继续累积
-    }
-    // 检测省略号
-    else if (char === '…') {
-      // 检查是否是连续的省略号
-      if (i + 1 < input.length && input[i + 1] === '…') {
-        // 跳过，等待第二个省略号
-        continue;
-      }
-      // 只有在引号外才换行
-      if (!inQuote) {
-        result += '\n';
-      }
-    }
-  }
-  
-  // 清理：移除多余的连续换行（超过2个）
-  result = result.replace(/\n{3,}/g, '\n\n');
-  
-  return result;
-};
 
 const WritingStudioPage: React.FC = () => {
   const { novelId } = useParams<{ novelId: string }>()
@@ -440,7 +202,6 @@ const WritingStudioPage: React.FC = () => {
 
   const [loading, setLoading] = useState(true)
   const [novelTitle, setNovelTitle] = useState('')
-  const [novelInfo, setNovelInfo] = useState<any>(null) // 小说完整信息，用于获取wordsPerChapter等配置
   
   // 章节相关状态
   const [chapters, setChapters] = useState<Chapter[]>([])
@@ -563,7 +324,6 @@ const WritingStudioPage: React.FC = () => {
         try {
           const novel = await novelService.getNovelById(novelIdNumber)
           setNovelTitle(novel.title)
-          setNovelInfo(novel) // 保存完整的小说信息
         } catch (e) {
           console.warn('获取小说信息失败', e)
         }
@@ -930,21 +690,6 @@ const WritingStudioPage: React.FC = () => {
     return mapped
   }
 
-  const getOutlineStatusText = (status?: string) => {
-    if (!status) return '未设置'
-    switch (status) {
-      case 'PENDING':
-        return '待写'
-      case 'WRITTEN':
-        return '已写'
-      case 'REVISED':
-        return '已修订'
-      default:
-        return status
-    }
-  }
-
-  // 打开章纲弹窗（当前选中章节）
   const handleShowChapterOutline = async () => {
     if (!novelIdNumber) return
     if (editingType !== 'chapter' || !selectedChapter || selectedChapter.chapterNumber == null) {
@@ -4549,3 +4294,5 @@ const WritingStudioPage: React.FC = () => {
 }
 
 export default WritingStudioPage
+
+

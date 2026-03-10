@@ -99,10 +99,6 @@ export const videoScriptService = {
     return api.get<VideoScript>(`/video-scripts/${id}`);
   },
 
-  delete: async (id: number) => {
-    return api.delete(`/video-scripts/${id}`);
-  },
-
   start: async (id: number) => {
     return api.post(`/video-scripts/${id}/start`);
   },
@@ -121,10 +117,6 @@ export const videoScriptService = {
 
   getEpisodes: async (id: number) => {
     return api.get<VideoScriptEpisode[]>(`/video-scripts/${id}/episodes`);
-  },
-
-  getEpisode: async (id: number, episodeNumber: number) => {
-    return api.get<VideoScriptEpisode>(`/video-scripts/${id}/episodes/${episodeNumber}`);
   },
 
   updateEpisodeContent: async (id: number, episodeNumber: number, content: string) => {

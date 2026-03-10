@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react'
-import { Button, Checkbox, Input, Modal, Radio, Space, message, Slider, Tabs, Tag, Dropdown, type MenuProps } from 'antd'
+import { Button, Checkbox, Input, Modal, message, Slider } from 'antd'
 import type { ReferenceFile } from '@/services/referenceFileService'
 import type { NovelDocument } from '@/services/documentService'
 import type { NovelFolder } from '@/services/folderService'
@@ -20,28 +20,24 @@ import {
   FileTextOutlined,
   SearchOutlined,
   FolderOpenOutlined,
-  BgColorsOutlined,
-  ExperimentOutlined,
   CheckOutlined,
   SettingOutlined,
   StarOutlined,
   StarFilled,
   AppstoreOutlined,
   UserOutlined,
-  HeartOutlined,
-  EyeOutlined,
   SendOutlined,
   ThunderboltFilled,
 } from '@ant-design/icons'
 import './ToolPanel.css'
 
-export interface SimpleAIHistoryItem {
+interface SimpleAIHistoryItem {
   id: number
   content: string
   createdAt: string
 }
 
-export interface ToolPanelProps {
+interface ToolPanelProps {
   // 基本状态
   isGenerating: boolean
   thinkingDots?: number
@@ -109,14 +105,12 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
   isGenerating,
   writingStyleId,
   onWritingStyleChange,
-  linkedDocuments,
   onSelectLinkedDocuments,
   selectedLinkedDocumentIds,
   aiInputValue,
   onChangeAIInput,
   onSendAIRequest,
   aiOutput,
-  generationPhases = [],
   hasContentStarted = false,
   onCopyAIOutput,
   onReplaceWithAIOutput,
@@ -145,7 +139,7 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
   const [activeTemplateTab, setActiveTemplateTab] = useState<'public' | 'custom' | 'favorites'>('public')
   const [templateSearchKeyword, setTemplateSearchKeyword] = useState('')
   // 强制过滤分类为'chapter'(写作正文)
-  const [templateCategory, setTemplateCategory] = useState<string>('chapter')
+  const [templateCategory] = useState<string>('chapter')
   
   const [availableModels, setAvailableModels] = useState<AIModel[]>([])
   const [loadingModels, setLoadingModels] = useState(false)

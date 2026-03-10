@@ -1,6 +1,6 @@
 import api from './api'
 
-export type WritingHistorySourceType = 'AUTO_SAVE' | 'MANUAL_SAVE' | 'AI_REPLACE' | string
+type WritingHistorySourceType = 'AUTO_SAVE' | 'MANUAL_SAVE' | 'AI_REPLACE' | string
 
 export interface WritingVersionHistory {
   id: number

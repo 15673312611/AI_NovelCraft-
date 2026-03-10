@@ -13,12 +13,9 @@ public interface ShortStoryService {
     ShortNovel createNovel(ShortNovel novel);
     ShortNovel getNovel(Long id);
     List<ShortNovel> getUserNovels(Long userId);
-    void deleteNovel(Long id);
     
     // 章节管理
     List<ShortChapter> getChapters(Long novelId);
-    ShortChapter getChapter(Long novelId, Integer chapterNumber);
-    ShortChapter updateChapter(Long chapterId, String content);
     ShortChapter updateChapterContent(Long novelId, Integer chapterNumber, String content);
     
     // 工作流控制

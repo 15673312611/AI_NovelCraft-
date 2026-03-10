@@ -7,7 +7,7 @@ import {
   BookOutlined, RobotOutlined, 
   FileTextOutlined, HistoryOutlined, ArrowLeftOutlined, 
   CheckOutlined, ThunderboltOutlined, PlusOutlined, SaveOutlined,
-  GlobalOutlined, HeartOutlined, EyeOutlined, CheckCircleFilled
+  GlobalOutlined, HeartOutlined, EyeOutlined
 } from '@ant-design/icons';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import api from '@/services/api';
@@ -956,7 +956,7 @@ const VolumeWritingStudio: React.FC = () => {
         throw new Error('概要章节失败');
       }
 
-      const result = await response.json();
+      await response.json();
       
       message.destroy('summarizing');
       
@@ -2492,7 +2492,6 @@ const VolumeWritingStudio: React.FC = () => {
 
                       // 读取流式响应
                       let buffer = '';
-                      let updatedMemoryBankData = null; // 前端不再持久化/回传给后端，仅用于兼容后端事件
                       let accumulatedContent = ''; // 用于累积内容
                       let currentEventType = ''; // 当前事件类型
 
@@ -2589,17 +2588,11 @@ const VolumeWritingStudio: React.FC = () => {
                                     shouldAddContent = true;
                                     contentToAdd = parsed.content || '';
                                   } else if (parsed.type === 'complete') {
-                                    if (parsed.updatedMemoryBank) {
-                                      updatedMemoryBankData = parsed.updatedMemoryBank;
-                                    }
                                     if (parsed.generatedContent) {
                                       shouldAddContent = true;
                                       contentToAdd = parsed.generatedContent || '';
                                     }
                                   } else {
-                                    if (parsed.updatedMemoryBank) {
-                                      updatedMemoryBankData = parsed.updatedMemoryBank;
-                                    }
                                     if (parsed.generatedContent) {
                                       shouldAddContent = true;
                                       contentToAdd = parsed.generatedContent || '';

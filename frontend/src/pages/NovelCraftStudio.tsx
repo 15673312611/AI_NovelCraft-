@@ -15,18 +15,13 @@ import {
   List,
   Divider,
   Alert,
-  Steps,
-  Tree,
   Table,
   Tag,
   Avatar,
-  Tooltip,
-  Drawer,
   Collapse,
   Statistic,
   Affix,
   BackTop,
-  notification,
   App
 } from 'antd'
 import { 
@@ -34,22 +29,16 @@ import {
   EditOutlined,
   BulbOutlined,
   BookOutlined,
-  PlayCircleOutlined,
   FileTextOutlined,
   SettingOutlined,
   MessageOutlined,
   CheckCircleOutlined,
-  ClockCircleOutlined,
   ExclamationCircleOutlined,
   EyeOutlined,
   SaveOutlined,
   ReloadOutlined,
   PlusOutlined,
-  DeleteOutlined,
-  ExpandOutlined,
-  ShrinkOutlined,
-  ThunderboltOutlined,
-  HeartOutlined
+  ThunderboltOutlined
 } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Descriptions, InputNumber, Slider } from 'antd'
@@ -61,8 +50,6 @@ import novelOutlineService from '@/services/novelOutlineService'
 const { Title, Text, Paragraph } = Typography
 const { TextArea } = Input
 const { Panel } = Collapse
-const { Step } = Steps
-
 // 工作流状态
 interface WorkflowState {
   outline?: any
@@ -97,8 +84,6 @@ const NovelCraftStudio: React.FC<NovelCraftStudioProps> = () => {
   // UI状态
   const [activeTab, setActiveTab] = useState('outline')
   const [sidePanel, setSidePanel] = useState('memory')
-  const [expandedOutline, setExpandedOutline] = useState(true)
-  const [aiChatOpen, setAiChatOpen] = useState(false)
   const [taskModalOpen, setTaskModalOpen] = useState(false)
   const [currentTaskId, setCurrentTaskId] = useState('')
   const [taskProgress, setTaskProgress] = useState(0)

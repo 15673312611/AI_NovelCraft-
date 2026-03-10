@@ -56,21 +56,11 @@ public class VideoScriptServiceImpl implements VideoScriptService {
     }
 
     @Override
-    @Transactional
-    public void deleteScript(Long id) {
-        pauseWorkflow(id);
-        episodeRepository.deleteByScriptId(id);
-        logRepository.deleteByScriptId(id);
-        scriptRepository.deleteById(id);
-    }
-
-    @Override
     public List<VideoScriptEpisode> getEpisodes(Long scriptId) {
         return episodeRepository.findByScriptIdOrderByEpisodeNumberAsc(scriptId);
     }
 
-    @Override
-    public VideoScriptEpisode getEpisode(Long scriptId, Integer episodeNumber) {
+    private VideoScriptEpisode getEpisode(Long scriptId, Integer episodeNumber) {
         return episodeRepository.findByScriptIdAndEpisodeNumber(scriptId, episodeNumber)
                 .orElseThrow(() -> new RuntimeException("剧集不存在"));
     }

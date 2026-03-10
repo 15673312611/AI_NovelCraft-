@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 提示词模板Controller
+ * 闂備礁婀辩划顖炲礉濡ゅ懎桅婵椴哥€氭氨鈧箍鍎遍弸鐑樼瑹閳ь剙顕ｉ崜浣诡偨缂佽泛顩眛roller
  */
 @RestController
 @RequestMapping("/prompt-templates")
@@ -25,25 +25,9 @@ public class PromptTemplateController {
     @Autowired
     private PromptTemplateService promptTemplateService;
 
-    /**
-     * 获取所有可用的模板
-     */
-    @GetMapping
-    public Result<List<PromptTemplate>> getAvailableTemplates(
-            @RequestParam(required = false) String type,
-            @RequestParam(required = false) String category) {
-        try {
-            Long userId = AuthUtils.getCurrentUserId();
-            List<PromptTemplate> templates = promptTemplateService.getAvailableTemplates(userId, type, category);
-            return Result.success(templates);
-        } catch (Exception e) {
-            logger.error("获取模板列表失败", e);
-            return Result.error("获取模板列表失败: " + e.getMessage());
-        }
-    }
 
     /**
-     * 根据ID获取模板详情
+     * 闂備礁鎼粔鐑斤綖婢跺﹦鏆ゅ☉鎿冩惓闂備礁鍚嬮崕鎶藉床閼艰翰浜归柛銉仜閻旂厧鐒洪柛鎰ㄦ櫇閸戯繝鏌ｉ悩鍙夌カ闂傚嫬瀚板畷?
      */
     @GetMapping("/{id}")
     public Result<PromptTemplate> getTemplateById(@PathVariable Long id) {
@@ -54,15 +38,15 @@ public class PromptTemplateController {
                 return Result.error("模板不存在");
             }
             
-            // 验证权限：只能查看公开模板、官方模板或自己的模板
+            // 濠德板€楁慨鎾儗娓氣偓閹焦寰勯幇顒傞獓闂佸憡鍔﹂崰妤咁敁濞嗘挻鐓ユ繛鎴炵懆婢规鎲搁幎濠傛处閸ゅ嫰鏌ら幁鎺戝姢闁告瑢鍋撻梻浣规た娴滄粓顢栭崨鏉戠煑闁哄洨鍎愰崵鏇㈡煃瑜滈崜娆掔亽闂佹枼鏅涢崯顖滄閺屻儲鐓忛柛鈩冩礈椤︼箓鏌ｉ敐鍛仮鐎殿噮鍓涢幉鎾礋閳ь剚绗熼埀顒€顕ｉ崼鏇炵閹艰揪绱曟禒鎰版⒑閻撳寒娈犲ù婊勭矌閹广垺绗熼埀顒勫箚閸愵喖绀嬫い鎴犲枍缁舵艾顕?
             String type = template.getType();
             if (!"official".equals(type) && 
                 !"public".equals(type) && 
                 (template.getUserId() == null || !template.getUserId().equals(userId))) {
-                return Result.error("无权查看此模板");
+                return Result.error("无权查看该模板");
             }
 
-            // 仅自定义模板允许返回内容，官方/公开模板不返回
+            // 濠电偛顕慨鎾箠閹捐鍚规繝濠傛噳閸嬫挾鎲撮崟顓犲彎缂備胶濮烽崰搴ょ亽闂佹枼鏅涢崯顖滄閺屻儲鐓曢煫鍥у缁佺増銇勯弬璺ㄧ婵炵厧顭峰顒勫箰鎼达綆妲梻浣告啞閸旀洟骞婃惔顭戞晩闁规壆澧楅弲顒勬倶閻愬灚娅曢柡鍡╁弮閺?闂備胶顭堝ù姘跺礈濞嗘垶顫曢柟瀛樻儕閻旂厧鐒洪柛鎰ㄦ櫇閸戔剝绻涢幋鐐村碍缂佸顥撻幑銏ゅ箣閿曗偓閻?
             if (!"custom".equals(type)) {
                 template.setContent(null);
             }
@@ -75,7 +59,7 @@ public class PromptTemplateController {
     }
 
     /**
-     * 创建用户自定义模板
+     * 闂備礁鎲＄敮妤冪矙閹寸姷纾介柟鍓х帛閸嬨劑鏌曟繝蹇曠暠闁绘挻娲熼弻銈嗙附婢跺鐩庨梺浼欑悼閸嬫挾绮欐繝鍐ㄧ窞閻庯絽妫旂欢姘嚕?
      */
     @PostMapping
     public Result<PromptTemplate> createTemplate(@RequestBody Map<String, Object> request) {
@@ -96,7 +80,7 @@ public class PromptTemplateController {
             PromptTemplate template = promptTemplateService.createCustomTemplate(
                 userId, name, content, "chapter", description
             );
-            // 不对前端返回提示词内容
+            // 濠电偞鍨堕幐鍝ョ矓閹绢噮鏁嬫い鏇楀亾鐎规洘绮岄濂稿炊閺堢數纾介梺鍝勵槴閺呮粓寮婚妸銉冩椽寮介鐐殿唽闂佸綊鍋婇崰鎾寸濞戙垺鍋ｉ柛銉戝憛銏ゆ煕閻愬樊鍤熼柍?
             template.setContent(null);
             
             return Result.success(template);
@@ -107,7 +91,7 @@ public class PromptTemplateController {
     }
 
     /**
-     * 更新用户自定义模板
+     * 闂備礁鎼ú銈夋偤閵娾晛钃熷┑鐘叉处閸嬨劑鏌曟繝蹇曠暠闁绘挻娲熼弻銈嗙附婢跺鐩庨梺浼欑悼閸嬫挾绮欐繝鍐ㄧ窞閻庯絽妫旂欢姘嚕?
      */
     @PutMapping("/{id}")
     public Result<String> updateTemplate(
@@ -137,7 +121,7 @@ public class PromptTemplateController {
     }
 
     /**
-     * 删除用户自定义模板
+     * 闂備礁鎲＄敮鐐寸箾閳ь剚绻涢崨顓㈠弰闁诡喕绮欐俊鎼佹晝閳ь剟鎮￠弴銏＄厾濠靛倸顦花濠氭煟閿濆洤浜剧紒瀣攻瀵板嫮鈧絽妫旂欢姘嚕?
      */
     @DeleteMapping("/{id}")
     public Result<String> deleteTemplate(@PathVariable Long id) {
@@ -157,39 +141,26 @@ public class PromptTemplateController {
         }
     }
 
-    /**
-     * 获取默认模板ID
-     */
-    @GetMapping("/default")
-    public Result<Long> getDefaultTemplateId() {
-        try {
-            Long templateId = promptTemplateService.getDefaultTemplateId();
-            return Result.success(templateId);
-        } catch (Exception e) {
-            logger.error("获取默认模板失败", e);
-            return Result.error("获取默认模板失败: " + e.getMessage());
-        }
-    }
 
     /**
-     * 获取公开模板列表
+     * 闂備礁鍚嬮崕鎶藉床閼艰翰浜归柛銉墮缁€鍌涖亜閹哄棗浜剧紓浣介哺閸ㄤ絻鐏掗梺鏂ユ櫅閸燁垳娆㈤弻銉︾厱闁圭儤鎼╁▓娆撴煏?
      */
     @GetMapping("/public")
     public Result<List<PromptTemplate>> getPublicTemplates(@RequestParam(required = false) String category) {
         try {
             Long userId = AuthUtils.getCurrentUserId();
-            logger.info("🔍 获取公开模板列表: userId={}, category={}", userId, category);
+            logger.info("获取公开模板列表: userId={}, category={}", userId, category);
             List<PromptTemplate> templates = promptTemplateService.getPublicTemplates(userId, category);
-            logger.info("✅ 获取公开模板成功: 数量={}", templates.size());
+            logger.info("获取公开模板成功: 数量={}", templates.size());
             return Result.success(templates);
         } catch (Exception e) {
-            logger.error("❌ 获取公开模板列表失败", e);
+            logger.error("获取公开模板列表失败", e);
             return Result.error("获取公开模板列表失败: " + e.getMessage());
         }
     }
 
     /**
-     * 获取用户自定义模板列表
+     * 闂備礁鍚嬮崕鎶藉床閼艰翰浜归柛銉墯閸嬨劑鏌曟繝蹇曠暠闁绘挻娲熼弻銈嗙附婢跺鐩庨梺浼欑悼閸嬫挾绮欐繝鍐ㄧ窞閻庯絽妫旂欢姘嚕閸洖鍨傛い鏃囧亹娴犳岸鏌?
      */
     @GetMapping("/custom")
     public Result<List<PromptTemplate>> getUserCustomTemplates(@RequestParam(required = false) String category) {
@@ -204,7 +175,7 @@ public class PromptTemplateController {
     }
 
     /**
-     * 获取用户收藏的模板列表
+     * 闂備礁鍚嬮崕鎶藉床閼艰翰浜归柛銉墯閸嬨劑鏌曟繝蹇曠暠闁绘挻娲熼弻锟犲焵椤掑嫬绠氶柣妤€鐗滃Λ蹇涙⒑濮瑰洤濡奸悗姘煎弨閸燁垶姊洪崫鍕垫Ц闁诲繑绻堝畷褰掝敂閸℃ê浠?
      */
     @GetMapping("/favorites")
     public Result<List<PromptTemplate>> getUserFavoriteTemplates(@RequestParam(required = false) String category) {
@@ -219,7 +190,7 @@ public class PromptTemplateController {
     }
 
     /**
-     * 收藏模板
+     * 闂備浇銆€閸嬫捇鏌熼婊冾暭妞ゃ儲鍨舵穱濠囶敍濡も偓婢у弶绻?
      */
     @PostMapping("/{id}/favorite")
     public Result<String> favoriteTemplate(@PathVariable Long id) {
@@ -238,7 +209,7 @@ public class PromptTemplateController {
     }
 
     /**
-     * 取消收藏模板
+     * 闂備礁鎲￠悷锕傛偋濡ゅ啰鐭撻柣鎴ｆ缂佲晠鏌熼婊冾暭妞ゃ儲鍨舵穱濠囶敍濡も偓婢у弶绻?
      */
     @DeleteMapping("/{id}/favorite")
     public Result<String> unfavoriteTemplate(@PathVariable Long id) {
@@ -256,134 +227,4 @@ public class PromptTemplateController {
         }
     }
 
-    /**
-     * 检查是否已收藏
-     */
-    @GetMapping("/{id}/is-favorited")
-    public Result<Boolean> isFavorited(@PathVariable Long id) {
-        try {
-            Long userId = AuthUtils.getCurrentUserId();
-            boolean favorited = promptTemplateService.isFavorited(userId, id);
-            return Result.success(favorited);
-        } catch (Exception e) {
-            logger.error("检查收藏状态失败", e);
-            return Result.error("检查收藏状态失败: " + e.getMessage());
-        }
-    }
-    
-    /**
-     * 根据分类获取模板列表
-     */
-    @GetMapping("/category/{category}")
-    public Result<List<PromptTemplate>> getTemplatesByCategory(@PathVariable String category) {
-        try {
-            Long userId = AuthUtils.getCurrentUserId();
-            List<PromptTemplate> templates = promptTemplateService.getTemplatesByCategory(category, userId);
-            return Result.success(templates);
-        } catch (Exception e) {
-            logger.error("根据分类获取模板列表失败", e);
-            return Result.error("获取模板列表失败: " + e.getMessage());
-        }
-    }
-
-    /**
-     * 获取支持的占位符说明
-     */
-    @GetMapping("/placeholders")
-    public Result<Map<String, String>> getPlaceholders() {
-        try {
-            Map<String, String> placeholders = promptTemplateService.getPlaceholderDescriptions();
-            return Result.success(placeholders);
-        } catch (Exception e) {
-            logger.error("获取占位符说明失败", e);
-            return Result.error("获取占位符说明失败: " + e.getMessage());
-        }
-    }
-
-    /**
-     * 校验模板内容中的占位符
-     */
-    @PostMapping("/validate")
-    public Result<Map<String, Object>> validateTemplate(@RequestBody Map<String, String> request) {
-        try {
-            String content = request.get("content");
-            if (content == null || content.trim().isEmpty()) {
-                return Result.error("模板内容不能为空");
-            }
-
-            Map<String, Object> validation = promptTemplateService.validatePlaceholders(content);
-            return Result.success(validation);
-        } catch (Exception e) {
-            logger.error("校验模板失败", e);
-            return Result.error("校验模板失败: " + e.getMessage());
-        }
-    }
-
-    /**
-     * 设置默认模板
-     */
-    @PostMapping("/{id}/set-default")
-    public Result<String> setDefaultTemplate(@PathVariable Long id) {
-        try {
-            boolean success = promptTemplateService.setDefaultTemplate(id);
-            if (success) {
-                return Result.success("设置默认模板成功");
-            } else {
-                return Result.error("设置默认模板失败");
-            }
-        } catch (Exception e) {
-            logger.error("设置默认模板失败", e);
-            return Result.error("设置默认模板失败: " + e.getMessage());
-        }
-    }
-
-    /**
-     * 批量更新模板排序
-     */
-    @PostMapping("/sort-order")
-    public Result<String> updateTemplatesSortOrder(@RequestBody Map<String, Object> request) {
-        try {
-            @SuppressWarnings("unchecked")
-            List<Long> templateIds = (List<Long>) request.get("templateIds");
-            
-            if (templateIds == null || templateIds.isEmpty()) {
-                return Result.error("模板ID列表不能为空");
-            }
-            
-            boolean success = promptTemplateService.updateTemplatesSortOrder(templateIds);
-            if (success) {
-                return Result.success("更新排序成功");
-            } else {
-                return Result.error("更新排序失败");
-            }
-        } catch (Exception e) {
-            logger.error("更新模板排序失败", e);
-            return Result.error("更新模板排序失败: " + e.getMessage());
-        }
-    }
-
-    /**
-     * 更新单个模板的排序
-     */
-    @PutMapping("/{id}/sort-order")
-    public Result<String> updateTemplateSortOrder(
-            @PathVariable Long id,
-            @RequestBody Map<String, Integer> request) {
-        try {
-            Integer sortOrder = request.get("sortOrder");
-            if (sortOrder == null) {
-                return Result.error("排序值不能为空");
-            }
-            
-            boolean success = promptTemplateService.updateTemplateSortOrder(id, sortOrder);
-            if (success) {
-                return Result.success("更新排序成功");
-            } else {
-                return Result.error("更新排序失败");
-            }
-        } catch (Exception e) {
-            logger.error("更新模板排序失败", e);
-            return Result.error("更新模板排序失败: " + e.getMessage());
-        }
-    }
 }

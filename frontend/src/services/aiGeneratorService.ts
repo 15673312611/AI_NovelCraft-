@@ -14,7 +14,7 @@ export interface AiGenerator {
 }
 
 /**
- * Lấy tất cả generator đang active
+ * Lấy tất c�?generator đang active
  */
 export const getAllGenerators = async (): Promise<AiGenerator[]> => {
   try {
@@ -25,22 +25,6 @@ export const getAllGenerators = async (): Promise<AiGenerator[]> => {
     throw new Error(response.message || 'Lỗi khi lấy danh sách generator');
   } catch (error: any) {
     console.error('Lỗi getAllGenerators:', error);
-    throw error;
-  }
-};
-
-/**
- * Lấy generator theo category
- */
-export const getGeneratorsByCategory = async (category: string): Promise<AiGenerator[]> => {
-  try {
-    const response: any = await api.get(`/ai-generator/category/${category}`);
-    if (response.success) {
-      return response.data;
-    }
-    throw new Error(response.message || 'Lỗi khi lấy generator theo category');
-  } catch (error: any) {
-    console.error('Lỗi getGeneratorsByCategory:', error);
     throw error;
   }
 };
@@ -61,50 +45,6 @@ export const getGeneratorById = async (id: number): Promise<AiGenerator> => {
   }
 };
 
-/**
- * Tạo generator mới (admin)
- */
-export const createGenerator = async (generator: Partial<AiGenerator>): Promise<AiGenerator> => {
-  try {
-    const response: any = await api.post('/ai-generator', generator);
-    if (response.success) {
-      return response.data;
-    }
-    throw new Error(response.message || 'Lỗi khi tạo generator');
-  } catch (error: any) {
-    console.error('Lỗi createGenerator:', error);
-    throw error;
-  }
-};
 
-/**
- * Cập nhật generator (admin)
- */
-export const updateGenerator = async (id: number, generator: Partial<AiGenerator>): Promise<AiGenerator> => {
-  try {
-    const response: any = await api.put(`/ai-generator/${id}`, generator);
-    if (response.success) {
-      return response.data;
-    }
-    throw new Error(response.message || 'Lỗi khi cập nhật generator');
-  } catch (error: any) {
-    console.error('Lỗi updateGenerator:', error);
-    throw error;
-  }
-};
 
-/**
- * Xóa generator (admin)
- */
-export const deleteGenerator = async (id: number): Promise<void> => {
-  try {
-    const response: any = await api.delete(`/ai-generator/${id}`);
-    if (!response.success) {
-      throw new Error(response.message || 'Lỗi khi xóa generator');
-    }
-  } catch (error: any) {
-    console.error('Lỗi deleteGenerator:', error);
-    throw error;
-  }
-};
 

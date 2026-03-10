@@ -236,34 +236,6 @@ public class NovelOutlineService {
     }
 
     /**
-     * 修改大纲
-     */
-    @Transactional
-    public NovelOutline reviseOutline(Long outlineId, String userFeedback) {
-        NovelOutline outline = outlineRepository.selectById(outlineId);
-        if (outline == null) {
-            throw new RuntimeException("大纲不存在: " + outlineId);
-        }
-
-        // 增加修订次数
-        outline.incrementRevision();
-        outline.setStatus(NovelOutline.OutlineStatus.REVISING);
-
-        // 记录反馈历史
-        String currentFeedback = outline.getFeedbackHistory();
-        String newFeedback = currentFeedback == null ? userFeedback : currentFeedback + "\n---\n" + userFeedback;
-        outline.setFeedbackHistory(newFeedback);
-
-        // 使用AI根据反馈修改大纲
-        reviseOutlineContentWithAI(outline, userFeedback);
-
-        // 保存修改
-        outlineRepository.updateById(outline);
-
-        return outline;
-    }
-
-    /**
      * 确认大纲（旧方法，保持兼容）
      * 说明：确认大纲状态，并自动触发基于大纲的卷拆分
      * @deprecated 请使用 confirmOutline(Long outlineId, AIConfigRequest aiConfig)
@@ -395,13 +367,6 @@ public class NovelOutlineService {
     }
 
     /**
-     * 根据ID获取大纲
-     */
-    public NovelOutline getById(Long id) {
-        return outlineRepository.selectById(id);
-    }
-
-    /**
      * 更新大纲内容（手动编辑）
      */
     public NovelOutline updateOutlineContent(Long novelId, String outlineContent) {
@@ -455,23 +420,6 @@ public class NovelOutlineService {
             e.printStackTrace();
             System.out.println("=== 使用默认大纲内容 ===");
             setDefaultOutlineContent(outline, novel);
-        }
-    }
-
-    /**
-     * 使用AI修订大纲内容
-     */
-    private void reviseOutlineContentWithAI(NovelOutline outline, String userFeedback) {
-        try {
-            String prompt = buildOutlineRevisionPrompt(outline, userFeedback);
-            String aiResponse = aiWritingService.generateContent(prompt, "outline_revision");
-            
-            // 解析AI响应并更新大纲内容
-            parseAndSetOutlineContent(outline, aiResponse);
-            
-        } catch (Exception e) {
-            // AI修订失败时，记录错误但不中断流程
-            System.err.println("AI大纲修订失败: " + e.getMessage());
         }
     }
 

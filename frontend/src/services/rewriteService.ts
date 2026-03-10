@@ -1,20 +1,15 @@
-import api from './api'
 import { withAIConfig } from '@/utils/aiRequest'
 
-export interface RewriteRequest {
+interface RewriteRequest {
   content: string
   requirements?: string
   concise?: boolean
   chapterNumber?: number  // 章节号（用于获取上下文）
 }
 
-export interface RewriteResponse {
-  rewrittenContent: string
-}
-
-export type StreamChunkHandler = (chunk: string) => void
-export type StreamErrorHandler = (error: string) => void
-export type StreamDoneHandler = () => void
+type StreamChunkHandler = (chunk: string) => void
+type StreamErrorHandler = (error: string) => void
+type StreamDoneHandler = () => void
 
 const rewriteService = {
   /**
@@ -140,15 +135,6 @@ const rewriteService = {
       }
     }
   },
-
-  /**
-   * 非流式重写章节（保留作为备用）
-   */
-  async rewriteChapter(novelId: number, req: RewriteRequest): Promise<RewriteResponse> {
-    const requestBody = withAIConfig(req)
-    const res = await api.post(`/novels/${novelId}/rewrite`, requestBody)
-    return res.data || res
-  }
 }
 
 export default rewriteService

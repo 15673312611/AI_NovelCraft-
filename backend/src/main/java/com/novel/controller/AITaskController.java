@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 import com.novel.domain.entity.AIModel;
@@ -65,31 +64,6 @@ public class AITaskController {
         return ResponseEntity.ok(task);
     }
 
-    /**
-     * 批量查询任务状态
-     * POST /ai-tasks/batch-status
-     * 请求体: { "taskIds": [1, 2, 3] }
-     * 返回: { "1": { "id": 1, "status": "COMPLETED", "progressPercentage": 100, ... }, "2": {...} }
-     */
-    @PostMapping("/batch-status")
-    public ResponseEntity<Map<String, AITaskDto>> getBatchTaskStatus(@RequestBody Map<String, Object> request) {
-        @SuppressWarnings("unchecked")
-        List<Number> taskIds = (List<Number>) request.get("taskIds");
-        
-        if (taskIds == null || taskIds.isEmpty()) {
-            return ResponseEntity.ok(new HashMap<>());
-        }
-        
-        // 转换为 Long 类型
-        List<Long> longTaskIds = taskIds.stream()
-                .map(Number::longValue)
-                .collect(Collectors.toList());
-        
-        // 使用 Service 层的批量查询方法（一次性查询，避免循环）
-        Map<String, AITaskDto> result = aiTaskService.getBatchTaskStatus(longTaskIds);
-        
-        return ResponseEntity.ok(result);
-    }
 
     /**
      * 创建AI任务
@@ -98,15 +72,6 @@ public class AITaskController {
     public ResponseEntity<AITaskDto> createTask(@RequestBody AITask task) {
         AITaskDto createdTask = aiTaskService.createTask(task);
         return ResponseEntity.ok(createdTask);
-    }
-
-    /**
-     * 更新AI任务
-     */
-    @PutMapping("/{id}")
-    public ResponseEntity<AITaskDto> updateTask(@PathVariable Long id, @RequestBody AITask task) {
-        AITaskDto updatedTask = aiTaskService.updateTask(id, task);
-        return ResponseEntity.ok(updatedTask);
     }
 
     /**
@@ -165,35 +130,7 @@ public class AITaskController {
         return ResponseEntity.ok(resp);
     }
 
-    /** 获取任务类型 */
-    @GetMapping("/types")
-    public ResponseEntity<List<String>> getTaskTypes() {
-        return ResponseEntity.ok(Arrays.asList(
-                "plot_generation",
-                "character_development",
-                "dialogue_generation",
-                "scene_description",
-                "story_outline",
-                "writing_assistance"
-        ));
-    }
 
-    /** 获取任务状态 */
-    @GetMapping("/statuses")
-    public ResponseEntity<List<String>> getTaskStatuses() {
-        return ResponseEntity.ok(Arrays.asList(
-                "PENDING", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"
-        ));
-    }
-
-    /**
-     * 启动任务
-     */
-    @PostMapping("/{id}/start")
-    public ResponseEntity<AITaskDto> startTask(@PathVariable Long id) {
-        AITaskDto task = aiTaskService.startTask(id);
-        return ResponseEntity.ok(task);
-    }
 
     /**
      * 停止任务

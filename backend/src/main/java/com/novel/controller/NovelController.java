@@ -69,31 +69,6 @@ public class NovelController {
         }
     }
 
-    /**
-     * 覆盖保存小说大纲（写入 novels.outline）
-     */
-    @PutMapping("/{novelId}/outline")
-    public ResponseEntity<Object> updateNovelOutline(@PathVariable Long novelId, @RequestBody Map<String, Object> request) {
-        try {
-            String outline = request != null && request.get("outline") instanceof String ? (String) request.get("outline") : null;
-            Novel novel = novelService.getById(novelId);
-            if (novel == null) {
-                Map<String, Object> err = new HashMap<>();
-                err.put("message", "小说不存在");
-                return ResponseEntity.badRequest().body(err);
-            }
-            novel.setOutline(outline);
-            novelService.update(novel);
-            Map<String, Object> resp = new HashMap<>();
-            resp.put("novelId", novelId);
-            resp.put("outline", outline);
-            return ResponseEntity.ok(resp);
-        } catch (Exception e) {
-            Map<String, Object> err = new HashMap<>();
-            err.put("message", e.getMessage());
-            return ResponseEntity.badRequest().body(err);
-        }
-    }
 
     /**
      * 获取小说列表
@@ -133,26 +108,6 @@ public class NovelController {
             response.put("empty", true);
 
             return ResponseEntity.ok(response);
-        }
-    }
-
-    /**
-     * 测试数据库连接
-     */
-    @GetMapping("/test")
-    public ResponseEntity<?> testDatabase() {
-        try {
-            // 尝试查询数据库
-            IPage<Novel> novels = novelService.getNovels(0, 1);
-            Map<String, Object> response = new HashMap<>();
-            response.put("status", "数据库连接正常");
-            response.put("totalNovels", novels.getTotal());
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("error", "数据库连接失败");
-            errorResponse.put("message", e.getMessage());
-            return ResponseEntity.status(500).body(errorResponse);
         }
     }
 
@@ -285,26 +240,6 @@ public class NovelController {
         } catch (Exception e) {
             // 临时返回空数据，避免前端报错
             return ResponseEntity.ok(new java.util.ArrayList<>());
-        }
-    }
-
-    /**
-     * 获取小说的章节统计
-     */
-    @GetMapping("/{id}/chapters/statistics")
-    public ResponseEntity<Map<String, Object>> getNovelChapterStatistics(@PathVariable Long id) {
-        try {
-            Map<String, Object> stats = chapterService.getNovelChapterStatistics(id);
-            return ResponseEntity.ok(stats);
-        } catch (Exception e) {
-            // 返回默认统计信息
-            Map<String, Object> defaultStats = new HashMap<>();
-            defaultStats.put("totalChapters", 0);
-            defaultStats.put("totalWords", 0);
-            defaultStats.put("averageWordsPerChapter", 0);
-            defaultStats.put("lastUpdated", "");
-            defaultStats.put("completionRate", 0);
-            return ResponseEntity.ok(defaultStats);
         }
     }
 
@@ -495,41 +430,6 @@ public class NovelController {
     
 
     /**
-     * 获取小说的创作状态
-     */
-    @GetMapping("/{id}/creation-stage")
-    public ResponseEntity<Object> getCreationStage(@PathVariable Long id) {
-        try {
-            Novel novel = novelService.getById(id);
-            if (novel == null) {
-                Map<String, Object> errorResponse = new HashMap<>();
-                errorResponse.put("error", "小说不存在");
-                return ResponseEntity.status(404).body(errorResponse);
-            }
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("novelId", id);
-            response.put("creationStage", novel.getCreationStage());
-            response.put("creationStageDescription", novel.getCreationStage().getDescription());
-            response.put("status", novel.getStatus());
-            response.put("statusDescription", novel.getStatus().getDescription());
-            response.put("timestamp", System.currentTimeMillis());
-
-            return ResponseEntity.ok(response);
-
-        } catch (Exception e) {
-            System.err.println("获取创作状态失败: " + e.getMessage());
-            e.printStackTrace();
-
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("error", "获取创作状态失败");
-            errorResponse.put("message", e.getMessage());
-
-            return ResponseEntity.status(500).body(errorResponse);
-        }
-    }
-
-    /**
      * 获取可用于写作的书籍列表（已生成卷大纲的书籍）
      */
     @GetMapping("/writable")
@@ -554,55 +454,4 @@ public class NovelController {
         }
     }
     
-    /**
-     * 生成小说脑洞简介
-     */
-    @PostMapping("/generate-synopsis")
-    public ResponseEntity<Object> generateSynopsis(@RequestBody Map<String, Object> request) {
-        try {
-            String novelTitle = (String) request.get("title");
-            
-            if (novelTitle == null || novelTitle.trim().isEmpty()) {
-                Map<String, Object> errorResponse = new HashMap<>();
-                errorResponse.put("error", "书名不能为空");
-                return ResponseEntity.badRequest().body(errorResponse);
-            }
-            
-            // 获取AI配置
-            @SuppressWarnings("unchecked")
-            Map<String, Object> aiConfigMap = (Map<String, Object>) request.get("aiConfig");
-            if (aiConfigMap == null) {
-                Map<String, Object> errorResponse = new HashMap<>();
-                errorResponse.put("error", "AI配置不能为空");
-                return ResponseEntity.badRequest().body(errorResponse);
-            }
-            
-            // 构建AI配置对象
-            com.novel.dto.AIConfigRequest aiConfig = new com.novel.dto.AIConfigRequest();
-            aiConfig.setProvider((String) aiConfigMap.get("provider"));
-            aiConfig.setBaseUrl((String) aiConfigMap.get("baseUrl"));
-            aiConfig.setApiKey((String) aiConfigMap.get("apiKey"));
-            aiConfig.setModel((String) aiConfigMap.get("model"));
-            
-            // 调用AI生成脑洞
-            String synopsis = aiWritingService.generateSynopsis(novelTitle, aiConfig);
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("synopsis", synopsis);
-            response.put("title", novelTitle);
-            
-            logger.info("生成脑洞成功，书名: {}", novelTitle);
-            
-            return ResponseEntity.ok(response);
-            
-        } catch (Exception e) {
-            logger.error("生成脑洞失败", e);
-            
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("error", "生成脑洞失败");
-            errorResponse.put("message", e.getMessage());
-            
-            return ResponseEntity.status(500).body(errorResponse);
-        }
-    }
 }

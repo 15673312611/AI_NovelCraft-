@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { message, Modal, Input, Button, Spin } from 'antd'
-import { SearchOutlined, EditOutlined, FormOutlined, HighlightOutlined, BarChartOutlined, BulbOutlined, FileTextOutlined, HistoryOutlined, SafetyCertificateOutlined, DeleteOutlined, FontSizeOutlined } from '@ant-design/icons'
+import { SearchOutlined, FormOutlined, HighlightOutlined, BarChartOutlined, BulbOutlined, FileTextOutlined, HistoryOutlined, SafetyCertificateOutlined, DeleteOutlined, FontSizeOutlined } from '@ant-design/icons'
 import type { NovelDocument } from '@/services/documentService'
 import rewriteService from '@/services/rewriteService'
 import aiService from '@/services/aiService'
@@ -24,7 +24,6 @@ export interface EditorPanelProps {
   onRemoveAITrace?: () => void
   lastSaveTime?: string
   isSaving?: boolean
-  onSearchReplace?: () => void
   chapterNumber?: number | null
 }
 
@@ -41,7 +40,6 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   onRemoveAITrace,
   lastSaveTime,
   isSaving = false,
-  onSearchReplace,
   chapterNumber,
 }) => {
   const [content, setContent] = useState('')
@@ -82,7 +80,6 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
     reason: string
     applied?: boolean
   }>>([])
-  const [selectedErrorIndices, setSelectedErrorIndices] = useState<Set<number>>(new Set())
 
   const [smartEditModalVisible, setSmartEditModalVisible] = useState(false)
   const [smartEditInstructions, setSmartEditInstructions] = useState('')
@@ -92,7 +89,6 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   const [suggestionModalVisible, setSuggestionModalVisible] = useState(false)
   const [isAnalyzingSuggestions, setIsAnalyzingSuggestions] = useState(false)
   const [suggestions, setSuggestions] = useState<Array<SmartSuggestion & { applied?: boolean }>>([])
-  const [selectedSuggestionIndices, setSelectedSuggestionIndices] = useState<Set<number>>(new Set())
 
   useEffect(() => {
     if (document) {
@@ -350,7 +346,6 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
       return
     }
     setProofreadErrors([])
-    setSelectedErrorIndices(new Set())
     setProofreadModalVisible(true)
   }
 
@@ -496,7 +491,6 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
       return
     }
     setSuggestions([])
-    setSelectedSuggestionIndices(new Set())
     setSuggestionModalVisible(true)
   }
 
@@ -575,7 +569,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
     const suggestion = suggestions[index]
     if (!suggestion || suggestion.applied) return
 
-    const { position, length, action, original, suggested } = suggestion
+    const { length, action, original, suggested } = suggestion
     
     // 查找准确位置
     const actualPosition = findSuggestionPosition(content, suggestion)
@@ -1152,25 +1146,6 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
     setMatches([])
     setCurrentMatchIndex(0)
     message.success(`已替换 ${matches.length} 处`)
-  }
-
-  const openSearchReplace = () => {
-    setSearchReplaceVisible(true)
-    setSearchText('')
-    setReplaceText('')
-    setMatches([])
-    setCurrentMatchIndex(0)
-
-    // 计算搜索面板位置
-    setTimeout(() => {
-      if (searchButtonRef.current) {
-        const rect = searchButtonRef.current.getBoundingClientRect()
-        setSearchPanelPosition({
-          top: rect.bottom,
-          left: rect.left
-        })
-      }
-    }, 0)
   }
 
   const closeSearchReplace = () => {

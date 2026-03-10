@@ -49,15 +49,6 @@ export interface AIModel {
   isDefault: boolean
   description?: string
 }
-
-export interface CostEstimate {
-  estimatedCost: number
-  modelId: string
-  modelName: string
-  inputPricePer1k: number
-  outputPricePer1k: number
-}
-
 export interface CreditPackage {
   id: number
   name: string
@@ -102,27 +93,8 @@ export const creditService = {
     return response.data
   },
 
-  estimateCost: async (modelId?: string, inputText?: string, estimatedOutputTokens?: number): Promise<CostEstimate> => {
-    const response: any = await api.post('/credits/estimate', {
-      modelId,
-      inputText,
-      estimatedOutputTokens,
-    })
-    return response.data
-  },
-
-  checkBalance: async (amount: number): Promise<{ sufficient: boolean; availableBalance: number; shortfall: number }> => {
-    const response: any = await api.post('/credits/check', { amount })
-    return response.data
-  },
-
   getAvailableModels: async (): Promise<AIModel[]> => {
     const response: any = await api.get('/credits/models')
-    return response.data
-  },
-
-  getDefaultModel: async (): Promise<AIModel> => {
-    const response: any = await api.get('/credits/models/default')
     return response.data
   },
 

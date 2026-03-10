@@ -76,57 +76,12 @@ public class AITaskService {
         return AITaskDto.fromEntity(task);
     }
 
-    /**
-     * 批量查询任务状态（一次性查询，避免循环）
-     */
-    public Map<String, AITaskDto> getBatchTaskStatus(List<Long> taskIds) {
-        if (taskIds == null || taskIds.isEmpty()) {
-            return new HashMap<>();
-        }
-
-        // 使用 MyBatis Plus 的 selectBatchIds 一次性查询所有任务
-        List<AITask> tasks = aiTaskRepository.selectBatchIds(taskIds);
-        
-        // 转换为 Map<taskId, AITaskDto>
-        return tasks.stream()
-                .collect(Collectors.toMap(
-                        task -> String.valueOf(task.getId()),
-                        AITaskDto::fromEntity
-                ));
-    }
 
     /**
      * 创建AI任务
      */
     public AITaskDto createTask(AITask task) {
         aiTaskRepository.insert(task);
-        return AITaskDto.fromEntity(task);
-    }
-
-    /**
-     * 更新AI任务
-     */
-    public AITaskDto updateTask(Long id, AITask taskDetails) {
-        Long currentUserId = AuthUtils.getCurrentUserId();
-        AITask task = aiTaskRepository.selectById(id);
-        
-        if (task == null) {
-            throw new RuntimeException("任务不存在");
-        }
-        
-        // 验证权限：只能更新自己的任务（系统任务userId为null，不允许更新）
-        if (task.getUserId() == null || !task.getUserId().equals(currentUserId)) {
-            throw new RuntimeException("无权更新此任务");
-        }
-        
-        task.setName(taskDetails.getName());
-        task.setType(taskDetails.getType());
-        task.setStatus(taskDetails.getStatus());
-        task.setInput(taskDetails.getInput());
-        task.setOutput(taskDetails.getOutput());
-        task.setParameters(taskDetails.getParameters());
-
-        aiTaskRepository.updateById(task);
         return AITaskDto.fromEntity(task);
     }
 
@@ -263,33 +218,6 @@ public class AITaskService {
         }
         
         return progress;
-    }
-
-    /**
-     * 搜索用户任务
-     */
-    public List<AITask> searchUserTasks(Long userId, String status, String type, Long novelId) {
-        QueryWrapper<AITask> queryWrapper = new QueryWrapper<>();
-        
-        // 根据用户ID过滤（假设AITask有userId字段，如果没有可能需要调整）
-        if (userId != null) {
-            queryWrapper.eq("user_id", userId);
-        }
-        
-        if (StringUtils.hasText(status)) {
-            queryWrapper.eq("status", status);
-        }
-        
-        if (StringUtils.hasText(type)) {
-            queryWrapper.eq("type", type);
-        }
-        
-        if (novelId != null) {
-            queryWrapper.eq("novel_id", novelId);
-        }
-        
-        queryWrapper.orderByDesc("created_at");
-        return aiTaskRepository.selectList(queryWrapper);
     }
 
     /**

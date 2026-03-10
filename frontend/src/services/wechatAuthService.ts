@@ -7,7 +7,7 @@ export interface WechatConfig {
   redirectUri?: string
 }
 
-export interface WechatAuthUrl {
+interface WechatAuthUrl {
   authUrl: string
   state: string
   type: string
@@ -37,22 +37,6 @@ export const wechatAuthService = {
     const response: any = await api.post('/auth/wechat/login', { code, state, type })
     return response.data
   },
-
-  /**
-   * 绑定微信
-   */
-  bind: async (code: string, state: string) => {
-    const response: any = await api.post('/auth/wechat/bind', { code, state, type: 'mp' })
-    return response.data
-  },
-
-  /**
-   * 解绑微信
-   */
-  unbind: async () => {
-    const response: any = await api.post('/auth/wechat/unbind')
-    return response.data
-  }
 }
 
 export default wechatAuthService

@@ -22,28 +22,10 @@ export interface NovelVolume {
   createdAt: string;
   updatedAt: string;
 }
-
-export interface VolumeGenerationRequest {
-  basicIdea: string;
-  volumeCount: number;
-}
-
-export interface VolumeUpdateRequest {
-  title: string;
-  theme: string;
-  description: string;
-  contentOutline: string;
-}
-
 export interface VolumeGuidanceRequest {
   currentContent: string;
   userInput: string;
 }
-
-export interface VolumeWordCountRequest {
-  actualWordCount: number;
-}
-
 class NovelVolumeService {
 
   private unwrapResponse<T>(res: any): T {
@@ -58,31 +40,6 @@ class NovelVolumeService {
     // 如果不是 Result 结构，直接返回
     console.log('NovelVolumeService - 未检测到 Result 结构，直接返回:', res);
     return res as T;
-  }
-
-  /**
-   * 为小说生成卷规划
-   */
-  async generateVolumePlans(novelId: string, request: VolumeGenerationRequest): Promise<NovelVolume[]> {
-    const res = await api.post(`/volumes/${novelId}/generate-plans`, request);
-    return this.unwrapResponse<NovelVolume[]>(res);
-  }
-
-  /**
-   * 为指定卷生成详细大纲
-   */
-  async generateVolumeOutline(volumeId: string, userAdvice?: string): Promise<any> {
-    const body = userAdvice && userAdvice.trim() ? { userAdvice } : {}
-    const res = await api.post(`/volumes/${volumeId}/generate-outline`, body);
-    return this.unwrapResponse<any>(res);
-  }
-
-  /**
-   * 开始卷写作会话
-   */
-  async startVolumeWriting(volumeId: string): Promise<any> {
-    const res = await api.post(`/volumes/${volumeId}/start-writing`);
-    return this.unwrapResponse<any>(res);
   }
 
   /**
@@ -115,48 +72,6 @@ class NovelVolumeService {
   async updateVolume(volumeId: string, data: Partial<NovelVolume>): Promise<NovelVolume> {
     const res = await api.put(`/volumes/${volumeId}`, data);
     return this.unwrapResponse<NovelVolume>(res);
-  }
-
-  /**
-   * 更新卷的实际字数
-   */
-  async updateActualWordCount(volumeId: string, request: VolumeWordCountRequest): Promise<void> {
-    await api.put(`/volumes/${volumeId}/word-count`, request);
-  }
-
-  /**
-   * 删除卷
-   */
-  async deleteVolume(volumeId: string): Promise<void> {
-    await api.delete(`/volumes/${volumeId}`);
-  }
-
-  /**
-   * 获取小说卷统计信息
-   */
-  async getVolumeStats(novelId: string): Promise<any> {
-    const res = await api.get(`/volumes/${novelId}/stats`);
-    return this.unwrapResponse<any>(res);
-  }
-
-  /**
-   * 计算卷的进度
-   */
-  getVolumeProgress(volume: NovelVolume): number {
-    if (!volume.estimatedWordCount || volume.estimatedWordCount === 0) {
-      return 0;
-    }
-    return Math.round((volume.actualWordCount / volume.estimatedWordCount) * 100);
-  }
-
-  /**
-   * 获取卷的章节数量
-   */
-  getChapterCount(volume: NovelVolume): number {
-    if (!volume.chapterStart || !volume.chapterEnd) {
-      return 0;
-    }
-    return volume.chapterEnd - volume.chapterStart + 1;
   }
 
   /**

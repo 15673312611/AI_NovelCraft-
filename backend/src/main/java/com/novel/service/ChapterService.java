@@ -568,28 +568,6 @@ public class ChapterService {
     }
 
     /**
-     * 获取小说的章节统计
-     */
-    public Map<String, Object> getNovelChapterStatistics(Long novelId) {
-        List<Chapter> chapters = chapterRepository.findByNovelOrderByChapterNumberAsc(novelId);
-        
-        Map<String, Object> stats = new HashMap<>();
-        stats.put("totalChapters", chapters.size());
-        stats.put("totalWords", chapters.stream().mapToInt(c -> c.getWordCount() != null ? c.getWordCount() : 0).sum());
-        stats.put("averageWordsPerChapter", chapters.isEmpty() ? 0 : 
-            chapters.stream().mapToInt(c -> c.getWordCount() != null ? c.getWordCount() : 0).average().orElse(0));
-        stats.put("lastUpdated", chapters.stream()
-            .filter(c -> c.getUpdatedAt() != null)
-            .map(Chapter::getUpdatedAt)
-            .max(LocalDateTime::compareTo)
-            .orElse(null));
-        stats.put("completionRate", chapters.isEmpty() ? 0 : 
-            (double) chapters.stream().mapToInt(c -> c.isCompleted() ? 1 : 0).sum() / chapters.size() * 100);
-        
-        return stats;
-    }
-
-    /**
      * 在小说中搜索章节
      */
     public List<Chapter> searchChaptersInNovel(Long novelId, String query) {

@@ -28,31 +28,6 @@ public class NovelOutlineController {
     @Autowired
     private NovelOutlineService outlineService;
 
-    /**
-     * 生成初始大纲
-     */
-    @PostMapping("/generate")
-    public ResponseEntity<?> generateOutline(@RequestBody @Valid OutlineGenerationRequest request) {
-        try {
-            System.out.println("Debug - Received request: " + request);
-            System.out.println("Debug - novelId: " + request.getNovelId());
-            System.out.println("Debug - basicIdea: " + request.getBasicIdea());
-            System.out.println("Debug - targetWordCount: " + request.getTargetWordCount());
-            System.out.println("Debug - targetChapterCount: " + request.getTargetChapterCount());
-
-            NovelOutline outline = outlineService.generateInitialOutline(
-                request.getNovelIdAsLong(),
-                request.getBasicIdea(),
-                request.getTargetWordCount(),
-                request.getTargetChapterCount()
-            );
-            return ResponseEntity.ok(outline);
-        } catch (Exception e) {
-            System.err.println("Debug - Error in generateOutline: " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
-        }
-    }
 
     /**
      * 流式生成大纲（SSE）
@@ -100,20 +75,6 @@ public class NovelOutlineController {
             }
         }).start();
         return emitter;
-    }
-
-    /**
-     * 修改大纲
-     */
-    @PutMapping("/{outlineId}/revise")
-    public ResponseEntity<?> reviseOutline(@PathVariable Long outlineId, 
-                                         @RequestBody @Valid OutlineRevisionRequest request) {
-        try {
-            NovelOutline outline = outlineService.reviseOutline(outlineId, request.getFeedback());
-            return ResponseEntity.ok(outline);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
-        }
     }
 
     /**
@@ -204,22 +165,6 @@ public class NovelOutlineController {
         }
     }
 
-    /**
-     * 根据ID获取大纲详情
-     */
-    @GetMapping("/{outlineId}")
-    public ResponseEntity<?> getOutlineById(@PathVariable Long outlineId) {
-        try {
-            NovelOutline outline = outlineService.getById(outlineId);
-            if (outline != null) {
-                return ResponseEntity.ok(outline);
-            } else {
-                return ResponseEntity.notFound().build();
-            }
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
-        }
-    }
 
     /**
      * AI优化小说大纲（流式）

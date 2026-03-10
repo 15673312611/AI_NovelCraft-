@@ -4,17 +4,17 @@ import { withAIConfig } from '../utils/aiRequest';
 /**
  * 智能建议类型
  */
-export type SuggestionType = 'grammar' | 'logic' | 'redundant' | 'improvement' | 'inconsistency' | 'style';
+type SuggestionType = 'grammar' | 'logic' | 'redundant' | 'improvement' | 'inconsistency' | 'style';
 
 /**
  * 操作类型
  */
-export type ActionType = 'replace' | 'delete' | 'insert';
+type ActionType = 'replace' | 'delete' | 'insert';
 
 /**
  * 严重程度
  */
-export type SeverityType = 'high' | 'medium' | 'low';
+type SeverityType = 'high' | 'medium' | 'low';
 
 /**
  * 智能建议项
@@ -34,7 +34,7 @@ export interface SmartSuggestion {
 /**
  * 智能建议响应
  */
-export interface SmartSuggestionsResponse {
+interface SmartSuggestionsResponse {
   suggestions: SmartSuggestion[];
   total: number;
 }

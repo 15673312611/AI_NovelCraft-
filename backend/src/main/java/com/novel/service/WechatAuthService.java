@@ -26,14 +26,14 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 微信公众号登录服务
+ * 鐎甸偊鍠曟穱濠囧礂椤戣法鑸归柛娆擃棑濞呫儴銇愰弴鐔哥疀闁?
  */
 @Service
 public class WechatAuthService {
 
     private static final Logger logger = LoggerFactory.getLogger(WechatAuthService.class);
 
-    // 微信公众号网页授权URL
+    // 鐎甸偊鍠曟穱濠囧礂椤戣法鑸归柛娆擃棑缂嶅銇勯崹顐㈡埧闁哄鍎濺L
     private static final String MP_AUTH_URL = "https://open.weixin.qq.com/connect/oauth2/authorize";
     private static final String MP_TOKEN_URL = "https://api.weixin.qq.com/sns/oauth2/access_token";
     private static final String MP_USER_INFO_URL = "https://api.weixin.qq.com/sns/userinfo";
@@ -56,7 +56,7 @@ public class WechatAuthService {
     private final RestTemplate restTemplate = new RestTemplate();
 
     /**
-     * 获取微信登录配置
+     * 闁兼儳鍢茶ぐ鍥ь嚗椤旇绻嗛柣褑顕х紞宥夋煀瀹ュ洨鏋?
      */
     public Map<String, Object> getWechatLoginConfig() {
         Map<String, Object> config = new HashMap<>();
@@ -75,7 +75,7 @@ public class WechatAuthService {
     }
 
     /**
-     * 生成微信授权URL
+     * 闁汇垻鍠愰崹姘嚗椤旇绻嗛柟鍝勭墛濞煎湶RL
      */
     public String generateAuthUrl(String type, String state) {
         if (!"true".equalsIgnoreCase(configService.getConfig("wechat_mp_enabled"))) {
@@ -94,18 +94,18 @@ public class WechatAuthService {
 
         try {
             String encodedRedirectUri = URLEncoder.encode(redirectUri, StandardCharsets.UTF_8.toString());
-            // 使用snsapi_userinfo获取用户信息
+            // 濞达綀娉曢弫顦檔sapi_userinfo闁兼儳鍢茶ぐ鍥偨閵婏箑鐓曞ǎ鍥ｅ墲娴?
             return String.format(
                 "%s?appid=%s&redirect_uri=%s&response_type=code&scope=snsapi_userinfo&state=%s#wechat_redirect",
                 MP_AUTH_URL, appId, encodedRedirectUri, state
             );
         } catch (Exception e) {
-            throw new RuntimeException("生成授权URL失败", e);
+            throw new RuntimeException("生成微信授权URL失败", e);
         }
     }
 
     /**
-     * 微信登录
+     * 鐎甸偊鍠曟穱濠囨儌鐠囪尙绉?
      */
     @Transactional
     public AuthResponse loginWithWechat(String type, String code, String state) {
@@ -113,31 +113,31 @@ public class WechatAuthService {
             throw new RuntimeException("微信登录未启用");
         }
 
-        // 1. 获取access_token
+        // 1. 闁兼儳鍢茶ぐ鍢篶cess_token
         WechatAccessToken tokenResponse = getAccessToken(code);
         if (!tokenResponse.isSuccess()) {
             logger.error("获取微信access_token失败: {}", tokenResponse.getErrmsg());
             throw new RuntimeException("微信授权失败: " + tokenResponse.getErrmsg());
         }
 
-        // 2. 获取用户信息
+        // 2. 闁兼儳鍢茶ぐ鍥偨閵婏箑鐓曞ǎ鍥ｅ墲娴?
         WechatUserInfo userInfo = getUserInfo(tokenResponse.getAccessToken(), tokenResponse.getOpenid());
 
-        // 3. 查找或创建用户
+        // 3. 闁哄被鍎叉竟姗€骞嬮弽褍鐏＄€点倛娅ｉ弫銈夊箣?
         User user = findOrCreateUser(userInfo, tokenResponse);
 
-        // 4. 更新登录时间
+        // 4. 闁哄洤鐡ㄩ弻濠囨儌鐠囪尙绉块柡鍐ㄧ埣濡?
         user.setLastLoginAt(LocalDateTime.now());
         userRepository.updateById(user);
 
-        // 5. 生成JWT token
+        // 5. 闁汇垻鍠愰崹娆絎T token
         String token = jwtTokenUtil.generateToken(user.getId(), user.getUsername());
 
         return new AuthResponse(user, token);
     }
 
     /**
-     * 获取微信access_token
+     * 闁兼儳鍢茶ぐ鍥ь嚗椤旇绻哸ccess_token
      */
     private WechatAccessToken getAccessToken(String code) {
         String appId = configService.getConfig("wechat_mp_app_id");
@@ -152,13 +152,13 @@ public class WechatAuthService {
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
             return objectMapper.readValue(response.getBody(), WechatAccessToken.class);
         } catch (Exception e) {
-            logger.error("获取微信access_token异常", e);
-            throw new RuntimeException("获取微信授权信息失败", e);
+            logger.error("获取微信access_token失败", e);
+            throw new RuntimeException("获取微信access_token失败", e);
         }
     }
 
     /**
-     * 获取微信用户信息
+     * 闁兼儳鍢茶ぐ鍥ь嚗椤旇绻嗛柣顫妽閸╂稒绌遍埄鍐х礀
      */
     private WechatUserInfo getUserInfo(String accessToken, String openid) {
         String url = String.format(
@@ -170,13 +170,13 @@ public class WechatAuthService {
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
             return objectMapper.readValue(response.getBody(), WechatUserInfo.class);
         } catch (Exception e) {
-            logger.error("获取微信用户信息异常", e);
+            logger.error("获取微信用户信息失败", e);
             throw new RuntimeException("获取微信用户信息失败", e);
         }
     }
 
     /**
-     * 查找或创建用户
+     * 闁哄被鍎叉竟姗€骞嬮弽褍鐏＄€点倛娅ｉ弫銈夊箣?
      */
     private User findOrCreateUser(WechatUserInfo userInfo, WechatAccessToken tokenResponse) {
         User user = userRepository.findByWechatOpenid(userInfo.getOpenid());
@@ -187,7 +187,7 @@ public class WechatAuthService {
             return user;
         }
 
-        // 创建新用户
+        // 闁告帗绋戠紓鎾诲棘閹殿喗鏆忛柟?
         user = new User();
         user.setUsername("wx_" + generateShortId());
         user.setEmail("wx_" + userInfo.getOpenid() + "@wechat.placeholder");
@@ -201,10 +201,10 @@ public class WechatAuthService {
 
         userRepository.insert(user);
 
-        // 更新微信字段
+        // 闁哄洤鐡ㄩ弻濠傤嚗椤旇绻嗛悗娑欘殕椤?
         userRepository.updateWechatInfo(user.getId(), userInfo.getOpenid(), userInfo.getUnionid(), "WECHAT");
 
-        // 初始化灵感点账户
+        // 闁告帗绻傞～鎰板礌閺嶎偂绱ラ柟鎵枔閸嬶絿鎷归敂钘夌厱
         initUserCredits(user.getId());
 
         logger.info("微信用户注册成功: userId={}, openid={}", user.getId(), userInfo.getOpenid());
@@ -212,7 +212,7 @@ public class WechatAuthService {
     }
 
     /**
-     * 更新用户微信信息
+     * 闁哄洤鐡ㄩ弻濠囨偨閵婏箑鐓曠€甸偊鍠曟穱濠冪┍閳╁啩绱?
      */
     private void updateUserFromWechat(User user, WechatUserInfo userInfo) {
         if (userInfo.getNickname() != null && !userInfo.getNickname().isEmpty()) {
@@ -225,7 +225,7 @@ public class WechatAuthService {
     }
 
     /**
-     * 初始化用户灵感点
+     * 闁告帗绻傞～鎰板礌閺嶎偅鏆忛柟鎾棑娴兼帡骞囬悢鍝勪化
      */
     private void initUserCredits(Long userId) {
         try {
@@ -244,53 +244,15 @@ public class WechatAuthService {
 
             userCreditRepository.insert(credit);
         } catch (Exception e) {
-            logger.error("初始化用户灵感点失败: userId={}", userId, e);
+            logger.error("初始化用户积分失败: userId={}", userId, e);
         }
     }
 
     /**
-     * 生成短ID
+     * 闁汇垻鍠愰崹姘舵儗閻犲
      */
     private String generateShortId() {
         return UUID.randomUUID().toString().replace("-", "").substring(0, 8);
     }
 
-    /**
-     * 绑定微信到现有账户
-     */
-    @Transactional
-    public void bindWechat(Long userId, String type, String code) {
-        WechatAccessToken tokenResponse = getAccessToken(code);
-        if (!tokenResponse.isSuccess()) {
-            throw new RuntimeException("微信授权失败: " + tokenResponse.getErrmsg());
-        }
-
-        User existingUser = userRepository.findByWechatOpenid(tokenResponse.getOpenid());
-        if (existingUser != null && existingUser.getId() != null && !existingUser.getId().equals(userId)) {
-            throw new RuntimeException("该微信已绑定其他账户");
-        }
-
-        WechatUserInfo userInfo = getUserInfo(tokenResponse.getAccessToken(), tokenResponse.getOpenid());
-        userRepository.updateWechatInfo(userId, userInfo.getOpenid(), userInfo.getUnionid(), null);
-
-        logger.info("用户绑定微信成功: userId={}, openid={}", userId, userInfo.getOpenid());
-    }
-
-    /**
-     * 解绑微信
-     */
-    @Transactional
-    public void unbindWechat(Long userId) {
-        User user = userRepository.selectById(userId);
-        if (user == null) {
-            throw new RuntimeException("用户不存在");
-        }
-
-        if (user.getPassword() == null || user.getPassword().isEmpty()) {
-            throw new RuntimeException("请先设置密码后再解绑微信");
-        }
-
-        userRepository.updateWechatInfo(userId, null, null, "PASSWORD");
-        logger.info("用户解绑微信成功: userId={}", userId);
-    }
 }

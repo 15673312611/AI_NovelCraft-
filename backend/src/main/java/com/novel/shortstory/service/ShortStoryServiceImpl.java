@@ -55,42 +55,13 @@ public class ShortStoryServiceImpl implements ShortStoryService {
         return novelRepository.findByUserIdOrderByUpdatedAtDesc(userId);
     }
     
-    @Override
-    @Transactional
-    public void deleteNovel(Long id) {
-        // 停止工作流
-        pauseWorkflow(id);
-        
-        // 删除章节和日志
-        chapterRepository.deleteByNovelId(id);
-        logRepository.deleteByNovelId(id);
-        
-        // 删除小说
-        novelRepository.deleteById(id);
-    }
     
     @Override
     public List<ShortChapter> getChapters(Long novelId) {
         return chapterRepository.findByNovelIdOrderByChapterNumberAsc(novelId);
     }
     
-    @Override
-    public ShortChapter getChapter(Long novelId, Integer chapterNumber) {
-        return chapterRepository.findByNovelIdAndChapterNumber(novelId, chapterNumber)
-            .orElseThrow(() -> new RuntimeException("章节不存在"));
-    }
     
-    @Override
-    @Transactional
-    public ShortChapter updateChapter(Long chapterId, String content) {
-        ShortChapter chapter = chapterRepository.findById(chapterId)
-            .orElseThrow(() -> new RuntimeException("章节不存在"));
-        
-        chapter.setContent(content);
-        chapter.setWordCount(content != null ? content.length() : 0);
-        
-        return chapterRepository.save(chapter);
-    }
 
     @Override
     @Transactional

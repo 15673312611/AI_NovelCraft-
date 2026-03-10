@@ -21,7 +21,7 @@ export interface VolumeChapterOutline {
 }
 
 
-export interface ChapterOutlineResponse {
+interface ChapterOutlineResponse {
   hasOutline: boolean
   outline?: VolumeChapterOutline
   message?: string

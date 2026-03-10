@@ -31,14 +31,6 @@ public class AuthController {
     private AuthService authService;
 
     /**
-     * 测试接口连通性
-     */
-    @GetMapping("/test")
-    public ResponseEntity<ApiResponse<String>> test() {
-        return ResponseEntity.ok(ApiResponse.success("认证服务正常", "OK"));
-    }
-
-    /**
      * 用户登录
      */
     @PostMapping("/login")
@@ -80,21 +72,6 @@ public class AuthController {
     }
 
     /**
-     * 更新用户资料
-     */
-    @PutMapping("/profile")
-    public ResponseEntity<ApiResponse<User>> updateProfile(@RequestBody User profileData) {
-        try {
-            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-            String username = authentication.getName();
-            User user = authService.updateProfile(username, profileData);
-            return ResponseEntity.ok(ApiResponse.success(user));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
-        }
-    }
-
-    /**
      * 修改密码
      */
     @PutMapping("/change-password")
@@ -117,33 +94,6 @@ public class AuthController {
         try {
             SecurityContextHolder.clearContext();
             return ResponseEntity.ok(ApiResponse.success("登出成功", null));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
-        }
-    }
-
-    /**
-     * 验证Token
-     */
-    @GetMapping("/validate")
-    public ResponseEntity<ApiResponse<String>> validateToken() {
-        try {
-            return ResponseEntity.ok(ApiResponse.success("Token有效", null));
-        } catch (Exception e) {
-            return ResponseEntity.status(401).body(ApiResponse.error("Token无效"));
-        }
-    }
-
-    /**
-     * 刷新Token
-     */
-    @PostMapping("/refresh")
-    public ResponseEntity<ApiResponse<AuthResponse>> refreshToken() {
-        try {
-            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-            String username = authentication.getName();
-            AuthResponse response = authService.refreshToken(username);
-            return ResponseEntity.ok(ApiResponse.success(response));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }

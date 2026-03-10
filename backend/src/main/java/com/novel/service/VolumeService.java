@@ -10,12 +10,10 @@ import com.novel.dto.AIConfigRequest;
 import com.novel.repository.NovelRepository;
 import com.novel.repository.NovelOutlineRepository;
 import com.novel.mapper.NovelVolumeMapper;
-import com.novel.common.security.AuthUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -57,12 +55,6 @@ public class VolumeService {
 
     
     @Autowired
-    @Lazy
-    private AsyncAIGenerationService asyncAIGenerationService;
-    
-
-
-    @Autowired
     private AITaskService aiTaskService;
 
     @Autowired
@@ -82,82 +74,6 @@ public class VolumeService {
     
     @Autowired
     private com.novel.repository.ForeshadowLifecycleLogRepository foreshadowLifecycleLogRepository;
-
-    /**
-     * 异步生成卷大纲（防止超时）
-     * 
-     * @param volumeId 卷ID
-     * @param userAdvice 用户建议
-     * @param aiConfig AI配置
-     * @return 包含任务ID的结果
-     */
-    public Map<String, Object> generateVolumeOutlineAsync(Long volumeId, String userAdvice, AIConfigRequest aiConfig) {
-        logger.info("📋 为卷 {} 创建异步大纲生成任务", volumeId);
-        
-        NovelVolume volume = volumeMapper.selectById(volumeId);
-        if (volume == null) {
-            throw new RuntimeException("卷不存在");
-        }
-        
-        // 并发控制：检查该卷是否正在生成卷蓝图
-        if (generatingVolumes.contains(volumeId)) {
-            logger.warn("⚠️ 卷 {} 正在生成卷蓝图，请勿重复请求", volumeId);
-            throw new RuntimeException("该卷正在生成卷蓝图，请等待当前任务完成");
-        }
-        
-        // 标记为正在生成
-        generatingVolumes.add(volumeId);
-        
-        try {
-            // 创建异步AI任务
-            com.novel.domain.entity.AITask aiTask = new com.novel.domain.entity.AITask();
-            aiTask.setName("生成第" + volume.getVolumeNumber() + "卷详细大纲");
-            aiTask.setType(com.novel.domain.entity.AITask.AITaskType.STORY_OUTLINE);
-            aiTask.setStatus(com.novel.domain.entity.AITask.AITaskStatus.PENDING);
-            aiTask.setNovelId(volume.getNovelId());
-            
-            // 构建任务参数（包含AI配置）
-            Map<String, Object> params = new HashMap<>();
-            params.put("volumeId", volumeId);
-            params.put("userAdvice", userAdvice);
-            params.put("operationType", "GENERATE_VOLUME_OUTLINE");
-            
-            // 添加AI配置到参数中
-            if (aiConfig != null && aiConfig.isValid()) {
-                Map<String, String> aiConfigMap = new HashMap<>();
-                aiConfigMap.put("provider", aiConfig.getProvider());
-                aiConfigMap.put("apiKey", aiConfig.getApiKey());
-                aiConfigMap.put("model", aiConfig.getModel());
-                aiConfigMap.put("baseUrl", aiConfig.getBaseUrl());
-                params.put("aiConfig", aiConfigMap);
-            }
-            
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
-            mapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-            aiTask.setParameters(mapper.writeValueAsString(params));
-            
-            // 设置任务参数
-            aiTask.setMaxRetries(3);
-            aiTask.setEstimatedCompletion(LocalDateTime.now().plusMinutes(5));
-            
-            // 使用异步AI生成服务提交任务
-            Long taskId = asyncAIGenerationService.submitVolumeOutlineTask(aiTask, volumeId, userAdvice);
-            
-            Map<String, Object> result = new HashMap<>();
-            result.put("taskId", taskId);
-            result.put("volumeId", volumeId);
-            result.put("status", "PENDING");
-            result.put("message", "卷大纲异步生成任务已创建");
-            
-            logger.info("✅ 卷 {} 异步大纲生成任务创建成功，任务ID: {}", volumeId, taskId);
-            return result;
-            
-        } catch (Exception e) {
-            logger.error("❌ 创建卷 {} 异步大纲生成任务失败", volumeId, e);
-            throw new RuntimeException("创建异步任务失败: " + e.getMessage());
-        }
-    }
 
     /**
      * 流式生成卷详细大纲（SSE）
@@ -434,51 +350,6 @@ public class VolumeService {
      */
     public List<NovelVolume> getVolumesByNovelId(Long novelId) {
         return volumeMapper.selectByNovelId(novelId);
-    }
-
-    /**
-     * 更新卷的实际字数
-     * 
-     * @param volumeId 卷ID
-     * @param actualWordCount 实际字数
-     */
-    public void updateActualWordCount(Long volumeId, Integer actualWordCount) {
-        NovelVolume volume = volumeMapper.selectById(volumeId);
-        if (volume != null) {
-            volume.setActualWordCount(actualWordCount);
-            
-            // 如果达到预期字数，标记为完成
-            if (actualWordCount >= volume.getEstimatedWordCount()) {
-                volume.setStatus(VolumeStatus.COMPLETED);
-            }
-            
-            volumeMapper.updateById(volume);
-        }
-    }
-
-    /**
-     * 删除卷
-     * 
-     * @param volumeId 卷ID
-     */
-    public void deleteVolume(Long volumeId) {
-        // 仅允许所属小说的作者删除该卷
-        Long currentUserId = AuthUtils.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new SecurityException("用户未登录，无法删除卷");
-        }
-
-        NovelVolume volume = volumeMapper.selectById(volumeId);
-        if (volume == null) {
-            return;
-        }
-
-        Novel novel = novelRepository.selectById(volume.getNovelId());
-        if (novel == null || novel.getAuthorId() == null || !currentUserId.equals(novel.getAuthorId())) {
-            throw new SecurityException("无权限删除该卷");
-        }
-
-        volumeMapper.deleteById(volumeId);
     }
 
     // ================================

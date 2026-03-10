@@ -24,14 +24,6 @@ public class EmailAuthController {
     private CaptchaService captchaService;
 
     /**
-     * 获取邮箱验证码配置
-     */
-    @GetMapping("/config")
-    public ResponseEntity<Map<String, Object>> getConfig() {
-        return ResponseEntity.ok(Map.of("enabled", emailAuthService.isEmailLoginEnabled()));
-    }
-
-    /**
      * 获取验证token
      */
     @PostMapping("/captcha/token")

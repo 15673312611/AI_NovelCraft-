@@ -83,10 +83,6 @@ public class VideoScriptController {
         return videoScriptService.getScript(id);
     }
 
-    @DeleteMapping("/{id}")
-    public void delete(@PathVariable Long id) {
-        videoScriptService.deleteScript(id);
-    }
 
     @PostMapping("/{id}/start")
     public void start(@PathVariable Long id) {
@@ -101,11 +97,6 @@ public class VideoScriptController {
     @GetMapping("/{id}/episodes")
     public List<VideoScriptEpisode> getEpisodes(@PathVariable Long id) {
         return videoScriptService.getEpisodes(id);
-    }
-
-    @GetMapping("/{id}/episodes/{episodeNumber}")
-    public VideoScriptEpisode getEpisode(@PathVariable Long id, @PathVariable Integer episodeNumber) {
-        return videoScriptService.getEpisode(id, episodeNumber);
     }
 
     @PutMapping("/{id}/episodes/{episodeNumber}/content")
