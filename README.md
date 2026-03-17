@@ -58,8 +58,6 @@
 - **润色与去 AI 味（消痕）**：降低模板化与“机械味”，更接近网文表达。
 - **多模型接入**：DeepSeek / 通义千问 / Kimi / OpenAI Compatible 等，支持按任务切换与成本控制。
 
-### 🔎 GitHub 关键词（AI 小说相关）
-`ai-novel` `ai-novel-writing` `novel-writing` `webnovel` `llm` `large-language-model` `story-generation` `plot-generation` `outline-generation` `worldbuilding` `character-profile` `chapter-generation` `style-polish` `rewrite` `sse-streaming` `prompt-engineering` `rag` `spring-boot` `react` `typescript`
 
 ### 🏆 为什么选择我们？
 
