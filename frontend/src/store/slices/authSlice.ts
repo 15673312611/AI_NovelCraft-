@@ -24,6 +24,11 @@ interface AuthState {
   error: string | null
 }
 
+interface AuthErrorPayload {
+  status?: number
+  message: string
+}
+
 const initialState: AuthState = {
   user: null,
   token: localStorage.getItem('token'),
@@ -42,16 +47,26 @@ export const login = createAsyncThunk(
 
 export const register = createAsyncThunk(
   'auth/register',
-  async (userData: { username: string; email: string; password: string }) => {
+  async (userData: { username: string; email: string; code: string; password: string }) => {
     const response = await authService.register(userData)
     return response
   }
 )
 
-export const getProfile = createAsyncThunk('auth/getProfile', async () => {
-  const response = await authService.getProfile()
-  return response
-})
+export const getProfile = createAsyncThunk<User, void, { rejectValue: AuthErrorPayload }>(
+  'auth/getProfile',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await authService.getProfile()
+      return response
+    } catch (error: any) {
+      return rejectWithValue({
+        status: error?.status ?? error?.response?.status,
+        message: error?.message || '获取用户信息失败',
+      })
+    }
+  }
+)
 
 export const logout = createAsyncThunk('auth/logout', async () => {
   await authService.logout()
@@ -127,12 +142,16 @@ const authSlice = createSlice({
         state.loading = false
         state.user = action.payload
       })
-      .addCase(getProfile.rejected, (state) => {
+      .addCase(getProfile.rejected, (state, action) => {
         state.loading = false
-        state.isAuthenticated = false
-        state.token = null
-        state.user = null
-        localStorage.removeItem('token')
+        state.error = action.payload?.message || action.error.message || '获取用户信息失败'
+
+        if (action.payload?.status === 401) {
+          state.isAuthenticated = false
+          state.token = null
+          state.user = null
+          localStorage.removeItem('token')
+        }
       })
       // Logout
       .addCase(logout.fulfilled, (state) => {

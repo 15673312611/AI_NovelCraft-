@@ -1,7 +1,10 @@
 package com.novel.mapper;
 
 import com.novel.entity.AiGenerator;
-import org.apache.ibatis.annotations.*;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+
 import java.util.List;
 
 /**
@@ -11,15 +14,22 @@ import java.util.List;
 public interface AiGeneratorMapper {
 
     /**
-     * Lấy tất cả generator đang active
+     * List active generators with public fields only.
      */
-    @Select("SELECT * FROM ai_generator WHERE status = 1 ORDER BY sort_order ASC, id ASC")
+    @Select("SELECT id, name, description, icon, category, sort_order, status, created_at, updated_at " +
+            "FROM ai_generator WHERE status = 1 ORDER BY sort_order ASC, id ASC")
     List<AiGenerator> findAllActive();
 
     /**
-     * Lấy generator theo ID
+     * Get generator public info by id.
+     */
+    @Select("SELECT id, name, description, icon, category, sort_order, status, created_at, updated_at " +
+            "FROM ai_generator WHERE id = #{id}")
+    AiGenerator findPublicById(@Param("id") Long id);
+
+    /**
+     * Get generator with internal prompt content.
      */
     @Select("SELECT * FROM ai_generator WHERE id = #{id}")
     AiGenerator findById(@Param("id") Long id);
 }
-

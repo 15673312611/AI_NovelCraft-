@@ -374,7 +374,17 @@ public class MySQLGraphService implements IGraphService {
                 .characterB(b)
                 .type(properties != null ? getStringProp(properties, "type", "") : "")
                 .strength(properties != null ? getDoubleProp(properties, "strength", 0.5) : 0.5)
-                .description(properties != null ? getStringProp(properties, "description", "") : "")
+                .description(resolveRelationshipDescription(
+                    properties != null ? getStringProp(properties, "description", "") : "",
+                    properties != null ? getStringProp(properties, "type", "") : "",
+                    existing != null ? existing.getDescription() : ""
+                ))
+                .publicStatus(properties != null
+                    ? getStringProp(properties, "publicStatus", existing != null ? existing.getPublicStatus() : "")
+                    : (existing != null ? existing.getPublicStatus() : ""))
+                .lastUpdatedChapter(properties != null
+                    ? getIntProp(properties, "lastUpdatedChapter", existing != null ? existing.getLastUpdatedChapter() : 0)
+                    : (existing != null ? existing.getLastUpdatedChapter() : 0))
                 .build();
             
             if (existing != null) {
@@ -488,6 +498,12 @@ public class MySQLGraphService implements IGraphService {
             .characterB(b)
             .type(type != null ? type : (existing != null ? existing.getType() : ""))
             .strength(strength != null ? strength : (existing != null ? existing.getStrength() : 0.5))
+            .description(resolveRelationshipDescription(
+                existing != null ? existing.getDescription() : "",
+                type,
+                existing != null ? existing.getType() : ""
+            ))
+            .publicStatus(existing != null ? existing.getPublicStatus() : "")
             .lastUpdatedChapter(chapterNumber)
             .build();
         
@@ -515,7 +531,11 @@ public class MySQLGraphService implements IGraphService {
             .characterB(b)
             .type(getStringProp(relationData, "type", existing != null ? existing.getType() : ""))
             .strength(getDoubleProp(relationData, "strength", existing != null ? existing.getStrength() : 0.5))
-            .description(getStringProp(relationData, "description", existing != null ? existing.getDescription() : ""))
+            .description(resolveRelationshipDescription(
+                getStringProp(relationData, "description", ""),
+                getStringProp(relationData, "type", ""),
+                existing != null ? existing.getDescription() : ""
+            ))
             .publicStatus(getStringProp(relationData, "publicStatus", existing != null ? existing.getPublicStatus() : ""))
             .lastUpdatedChapter(chapterNumber)
             .build();
@@ -632,10 +652,15 @@ public class MySQLGraphService implements IGraphService {
         
         return relationships.stream().map(rel -> {
             Map<String, Object> map = new HashMap<>();
+            String description = resolveRelationshipDescription(rel.getDescription(), rel.getType(), "");
             map.put("a", rel.getCharacterA());
             map.put("b", rel.getCharacterB());
             map.put("type", rel.getType() != null ? rel.getType() : "");
+            map.put("description", description);
+            map.put("status", description);
             map.put("strength", rel.getStrength() != null ? rel.getStrength() : 0.5);
+            map.put("publicStatus", rel.getPublicStatus() != null ? rel.getPublicStatus() : "");
+            map.put("chapter", rel.getLastUpdatedChapter() != null ? rel.getLastUpdatedChapter() : 0);
             map.put("lastChapter", rel.getLastUpdatedChapter() != null ? rel.getLastUpdatedChapter() : 0);
             return map;
         }).collect(Collectors.toList());
@@ -820,6 +845,20 @@ public class MySQLGraphService implements IGraphService {
         } catch (NumberFormatException e) {
             return defaultValue;
         }
+    }
+
+    private String resolveRelationshipDescription(String description, String type, String fallback) {
+        if (!isBlank(description)) {
+            return description.trim();
+        }
+        if (!isBlank(type)) {
+            return type.trim();
+        }
+        return fallback == null ? "" : fallback.trim();
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
     
     private String toJsonArray(Object obj) {

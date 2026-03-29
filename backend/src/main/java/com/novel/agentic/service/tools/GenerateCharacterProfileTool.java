@@ -4,9 +4,11 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.novel.agentic.model.GraphEntity;
 import com.novel.agentic.model.ToolDefinition;
-import com.novel.agentic.service.PromptTemplateService;
 import com.novel.agentic.service.graph.IGraphService;
+import com.novel.dto.AIConfigRequest;
 import com.novel.service.AIWritingService;
+import com.novel.service.prompt.ManagedPromptService;
+import com.novel.service.prompt.SystemPromptDescriptor;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,13 +23,72 @@ import java.util.Map;
 public class GenerateCharacterProfileTool implements Tool {
 
     private static final Logger logger = LoggerFactory.getLogger(GenerateCharacterProfileTool.class);
-    private static final String PROMPT_FILE = "character_profile.txt";
+    private static final String PROMPT_KEY = "agentic.tool.character_profile";
+    private static final String DEFAULT_PROMPT = """
+        你是一名长篇网文角色设计助手。
+        请基于角色姓名、定位和剧情背景，输出可直接用于后续创作的十维角色档案。
+
+        输出要求：
+        1. 只输出合法 JSON 对象，不要输出解释、标题或 Markdown。
+        2. 字段名必须使用英文 snake_case。
+        3. 所有核心字段都必须填写；如信息不足，请给出克制且符合剧情逻辑的补全。
+        4. 档案必须服务剧情推进，避免空泛套话。
+
+        必须包含以下结构：
+        {
+          "character_name": "",
+          "role_position": "",
+          "core_profile": {
+            "sex": "",
+            "age": 0,
+            "identity": "",
+            "background": "",
+            "core_tags": []
+          },
+          "memory_hooks": {
+            "appearance": "",
+            "signature_quote": "",
+            "signature_action": ""
+          },
+          "contrast_points": {
+            "before": "",
+            "after": ""
+          },
+          "extreme_trait": "",
+          "spiritual_core": "",
+          "ultimate_goals": [
+            {
+              "stage": "",
+              "goal": "",
+              "related_conflict": ""
+            }
+          ],
+          "relationships": [
+            {
+              "target": "",
+              "surface_relation": "",
+              "real_attitude": "",
+              "evolution_hint": ""
+            }
+          ],
+          "scene_guidance": {
+            "daily": "",
+            "conflict": "",
+            "growth": ""
+          }
+        }
+
+        额外要求：
+        - ultimate_goals 至少 2 项。
+        - relationships 至少 2 项。
+        - 输出内容要与人物定位、上下文冲突和后续成长空间一致。
+        """;
 
     @Autowired
     private ToolRegistry registry;
 
     @Autowired
-    private PromptTemplateService promptTemplateService;
+    private ManagedPromptService managedPromptService;
 
     @Autowired
     private AIWritingService aiWritingService;
@@ -38,12 +99,9 @@ public class GenerateCharacterProfileTool implements Tool {
     @Autowired
     private ObjectMapper objectMapper;
 
-    private String basePrompt;
-
     @PostConstruct
     public void init() {
         registry.register(this);
-        basePrompt = promptTemplateService.loadTemplate(PROMPT_FILE);
     }
 
     @Override
@@ -62,7 +120,7 @@ public class GenerateCharacterProfileTool implements Tool {
 
         Map<String, Object> chapterNumber = new HashMap<>();
         chapterNumber.put("type", "integer");
-        chapterNumber.put("description", "当前章节号（可选）");
+        chapterNumber.put("description", "当前章节号，可选");
 
         Map<String, Object> characterName = new HashMap<>();
         characterName.put("type", "string");
@@ -70,11 +128,11 @@ public class GenerateCharacterProfileTool implements Tool {
 
         Map<String, Object> roleHint = new HashMap<>();
         roleHint.put("type", "string");
-        roleHint.put("description", "角色定位/剧情作用（可选）");
+        roleHint.put("description", "角色定位或剧情作用，可选");
 
         Map<String, Object> contextHint = new HashMap<>();
         contextHint.put("type", "string");
-        contextHint.put("description", "最新剧情背景，帮助生成具体档案（可选）");
+        contextHint.put("description", "最新剧情背景，帮助生成更具体的人设档案，可选");
 
         Map<String, Object> properties = new HashMap<>();
         properties.put("novelId", novelId);
@@ -88,7 +146,7 @@ public class GenerateCharacterProfileTool implements Tool {
 
         return ToolDefinition.builder()
             .name(getName())
-            .description("生成或更新角色档案（十维档案），帮助AI掌握角色设定、目标、关系。返回JSON并自动写入图谱，供后续章节复用。")
+            .description("生成或更新角色十维档案，返回 JSON 并自动写入图谱供后续复用。")
             .parameters(params)
             .returnExample("{\"character_name\":\"林默\",\"role_position\":\"潜伏线核心\"}")
             .costEstimate(1200)
@@ -109,32 +167,48 @@ public class GenerateCharacterProfileTool implements Tool {
         String context = args.get("context") instanceof String ? (String) args.get("context") : null;
 
         String prompt = buildPrompt(characterName, role, context);
-        String response = aiWritingService.generateContent(prompt, "character_profile");
+        AIConfigRequest aiConfig = args.get("__aiConfig") instanceof AIConfigRequest
+            ? (AIConfigRequest) args.get("__aiConfig") : null;
+        String response = aiWritingService.generateContent(prompt, "character_profile", aiConfig);
 
         Map<String, Object> profile = parseProfile(response);
-        profile.putIfAbsent("character_name", characterName);
-        if (role != null) {
-            profile.put("requested_role", role);
+        profile.putIfAbsent("character_name", characterName.trim());
+        if (StringUtils.isNotBlank(role)) {
+            profile.put("requested_role", role.trim());
         }
 
         persistProfile(novelId, chapterNumber, profile);
-
         return profile;
     }
 
     private String buildPrompt(String name, String role, String context) {
         StringBuilder sb = new StringBuilder();
-        sb.append(basePrompt).append("\n\n");
+        sb.append(resolveBasePrompt()).append("\n\n");
         sb.append("【角色信息】\n");
-        sb.append("- 角色名称：").append(name).append("\n");
+        sb.append("- 角色名称：").append(name.trim()).append("\n");
         if (StringUtils.isNotBlank(role)) {
-            sb.append("- 角色定位：").append(role).append("\n");
+            sb.append("- 角色定位：").append(role.trim()).append("\n");
         }
         if (StringUtils.isNotBlank(context)) {
-            sb.append("- 剧情背景：").append(context).append("\n");
+            sb.append("- 剧情背景：").append(context.trim()).append("\n");
         }
-        sb.append("\n请严格按照上述要求输出 JSON：");
+        sb.append("\n请严格按照上述要求输出 JSON。");
         return sb.toString();
+    }
+
+    private String resolveBasePrompt() {
+        String prompt = managedPromptService.getContent(SystemPromptDescriptor.builder()
+            .promptKey(PROMPT_KEY)
+            .name("十维角色档案提示词")
+            .category("agentic")
+            .description("用于生成角色十维档案并写入图谱的基础提示词")
+            .sortOrder(532)
+            .defaultContent(DEFAULT_PROMPT)
+            .build());
+        if (StringUtils.isBlank(prompt)) {
+            throw new IllegalStateException("Missing prompt template: " + PROMPT_KEY);
+        }
+        return prompt;
     }
 
     private Map<String, Object> parseProfile(String response) throws Exception {
@@ -162,10 +236,9 @@ public class GenerateCharacterProfileTool implements Tool {
                 .build();
 
             graphService.addEntity(novelId, entity);
-            logger.info("✅ 角色档案写入图谱: novelId={}, character={}", novelId, characterName);
+            logger.info("角色档案已写入图谱: novelId={}, character={}", novelId, characterName);
         } catch (Exception e) {
             logger.error("角色档案写入图谱失败: novelId={}", novelId, e);
         }
     }
 }
-

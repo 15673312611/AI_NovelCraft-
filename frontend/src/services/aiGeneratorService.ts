@@ -1,11 +1,10 @@
-import api from './api';
+﻿import api from './api';
 
 export interface AiGenerator {
   id: number;
   name: string;
   description: string;
   icon: string;
-  prompt: string;
   category: string;
   sortOrder: number;
   status: number;
@@ -13,38 +12,28 @@ export interface AiGenerator {
   updatedAt: string;
 }
 
-/**
- * Lấy tất c�?generator đang active
- */
 export const getAllGenerators = async (): Promise<AiGenerator[]> => {
   try {
     const response: any = await api.get('/ai-generator');
     if (response.success) {
       return response.data;
     }
-    throw new Error(response.message || 'Lỗi khi lấy danh sách generator');
+    throw new Error(response.message || 'Failed to load generators');
   } catch (error: any) {
-    console.error('Lỗi getAllGenerators:', error);
+    console.error('getAllGenerators failed:', error);
     throw error;
   }
 };
 
-/**
- * Lấy generator theo ID
- */
 export const getGeneratorById = async (id: number): Promise<AiGenerator> => {
   try {
     const response: any = await api.get(`/ai-generator/${id}`);
     if (response.success) {
       return response.data;
     }
-    throw new Error(response.message || 'Lỗi khi lấy generator');
+    throw new Error(response.message || 'Failed to load generator');
   } catch (error: any) {
-    console.error('Lỗi getGeneratorById:', error);
+    console.error('getGeneratorById failed:', error);
     throw error;
   }
 };
-
-
-
-

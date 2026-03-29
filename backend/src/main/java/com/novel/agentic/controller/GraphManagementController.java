@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -134,6 +135,8 @@ public class GraphManagementController {
             String characterA = (String) request.get("a");
             String characterB = (String) request.get("b");
             String type = (String) request.get("type");
+            String description = (String) request.get("description");
+            String publicStatus = (String) request.get("publicStatus");
 
             Number strengthNum = request.get("strength") instanceof Number ? (Number) request.get("strength") : null;
             Double strength = strengthNum != null ? strengthNum.doubleValue() : null;
@@ -141,7 +144,13 @@ public class GraphManagementController {
             Number chapterNum = request.get("chapter") instanceof Number ? (Number) request.get("chapter") : null;
             Integer chapterNumber = chapterNum != null ? chapterNum.intValue() : 0;
 
-            graphService.upsertRelationshipState(novelId, characterA, characterB, type, strength, chapterNumber);
+            Map<String, Object> relationData = new HashMap<>();
+            relationData.put("type", type);
+            relationData.put("description", description != null ? description : type);
+            relationData.put("strength", strength);
+            relationData.put("publicStatus", publicStatus);
+
+            graphService.upsertRelationshipStateComplete(novelId, characterA, characterB, relationData, chapterNumber);
             return CollectionUtils.mapOf("status", "success", "message", "关系已更新");
         } catch (Exception e) {
             logger.error("更新关系状态失败", e);

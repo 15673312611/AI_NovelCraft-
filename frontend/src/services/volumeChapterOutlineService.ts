@@ -61,7 +61,12 @@ export const getChapterOutlinesByVolume = async (
   volumeId: number,
   summary: boolean = true
 ): Promise<VolumeChapterOutline[]> => {
-  const res: any = await api.get(`/volumes/${volumeId}/chapter-outlines`, {
+  const normalizedVolumeId = Number(volumeId)
+  if (!Number.isFinite(normalizedVolumeId) || normalizedVolumeId <= 0) {
+    throw new Error('缺少有效的卷ID')
+  }
+
+  const res: any = await api.get(`/volumes/${normalizedVolumeId}/chapter-outlines`, {
     params: { summary }
   })
 
@@ -113,7 +118,9 @@ export const createChapterOutline = async (
  */
 export const generateVolumeChapterOutlines = async (
   volumeId: number,
-  count?: number
+  count?: number,
+  model?: string,
+  userRequirement?: string
 ): Promise<{
   volumeId: number
   novelId: number
@@ -123,8 +130,12 @@ export const generateVolumeChapterOutlines = async (
   if (typeof count === 'number' && Number.isFinite(count)) {
     body.count = count
   }
+  const trimmedRequirement = userRequirement?.trim()
+  if (trimmedRequirement) {
+    body.userRequirement = trimmedRequirement
+  }
 
-  const requestBody = withAIConfig(body)
+  const requestBody = withAIConfig(body, { model })
   const res: any = await api.post(
     `/volumes/${volumeId}/chapter-outlines/generate`,
     requestBody
@@ -144,5 +155,52 @@ export const generateVolumeChapterOutlines = async (
     volumeId,
     novelId: 0,
     count: 0
+  }
+}
+
+/**
+ * 重新生成“下一批”细纲（仅覆盖未写正文的章节范围）。
+ */
+export const regenerateVolumeChapterOutlines = async (
+  volumeId: number,
+  count?: number,
+  model?: string,
+  userRequirement?: string
+): Promise<{
+  volumeId: number
+  novelId: number
+  count: number
+  batchStartInVolume?: number
+  batchEndInVolume?: number
+}> => {
+  const body: any = {}
+  if (typeof count === 'number' && Number.isFinite(count)) {
+    body.count = count
+  }
+  const trimmedRequirement = userRequirement?.trim()
+  if (trimmedRequirement) {
+    body.userRequirement = trimmedRequirement
+  }
+
+  const requestBody = withAIConfig(body, { model })
+  const res: any = await api.post(
+    `/volumes/${volumeId}/chapter-outlines/regenerate`,
+    requestBody
+  )
+
+  if (res && typeof res === 'object') {
+    return {
+      volumeId: Number(res.volumeId ?? volumeId),
+      novelId: Number(res.novelId ?? 0),
+      count: Number(res.count ?? 0),
+      batchStartInVolume: res.batchStartInVolume != null ? Number(res.batchStartInVolume) : undefined,
+      batchEndInVolume: res.batchEndInVolume != null ? Number(res.batchEndInVolume) : undefined,
+    }
+  }
+
+  return {
+    volumeId,
+    novelId: 0,
+    count: 0,
   }
 }

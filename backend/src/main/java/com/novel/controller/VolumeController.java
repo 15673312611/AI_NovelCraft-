@@ -1,6 +1,7 @@
 package com.novel.controller;
 
 import com.novel.common.Result;
+import com.novel.common.security.SecurityContextTaskWrapper;
 import com.novel.domain.entity.NovelVolume;
 import com.novel.dto.AIConfigRequest;
 import com.novel.service.VolumeService;
@@ -52,8 +53,12 @@ public class VolumeController {
             @RequestBody(required = false) Map<String, Object> body) {
         try {
             Integer volumeCount = null;
+            Long volumeTemplateId = null;
             if (body != null && body.get("volumeCount") instanceof Number) {
                 volumeCount = ((Number) body.get("volumeCount")).intValue();
+            }
+            if (body != null && body.get("volumeTemplateId") instanceof Number) {
+                volumeTemplateId = ((Number) body.get("volumeTemplateId")).longValue();
             }
             if (volumeCount == null) {
                 // 无入参时由 VolumeService 内部按目标章字数估算
@@ -63,28 +68,37 @@ public class VolumeController {
             // 解析AI配置（支持扁平化和嵌套aiConfig两种格式），以便前端携带apikey等信息
             AIConfigRequest aiConfig = new AIConfigRequest();
             if (body != null) {
-                if (body.containsKey("provider")) {
+                if (body.containsKey("provider") || body.containsKey("apiKey")
+                        || body.containsKey("model") || body.containsKey("preferredModel")
+                        || body.containsKey("baseUrl")) {
                     aiConfig.setProvider((String) body.get("provider"));
                     aiConfig.setApiKey((String) body.get("apiKey"));
-                    aiConfig.setModel((String) body.get("model"));
+                    aiConfig.setModel(body.get("model") == null
+                            ? (String) body.get("preferredModel")
+                            : (String) body.get("model"));
                     aiConfig.setBaseUrl((String) body.get("baseUrl"));
                 } else if (body.get("aiConfig") instanceof Map) {
                     @SuppressWarnings("unchecked")
                     Map<String, String> aiConfigMap = (Map<String, String>) body.get("aiConfig");
                     aiConfig.setProvider(aiConfigMap.get("provider"));
                     aiConfig.setApiKey(aiConfigMap.get("apiKey"));
-                    aiConfig.setModel(aiConfigMap.get("model"));
+                    aiConfig.setModel(aiConfigMap.get("model") == null
+                            ? aiConfigMap.get("preferredModel")
+                            : aiConfigMap.get("model"));
                     aiConfig.setBaseUrl(aiConfigMap.get("baseUrl"));
                 }
             }
 
             com.novel.domain.entity.AITask task;
-            if (aiConfig != null && aiConfig.isValid()) {
+            boolean hasRequestedModel = aiConfig != null
+                    && aiConfig.getModel() != null
+                    && !aiConfig.getModel().trim().isEmpty();
+            if (aiConfig != null && (aiConfig.isValid() || hasRequestedModel)) {
                 logger.info("✅ 基于确认大纲生成卷规划 - 使用前端提供的AI配置");
-                task = volumeService.generateVolumePlansFromConfirmedOutlineAsync(novelId, volumeCount, aiConfig);
+                task = volumeService.generateVolumePlansFromConfirmedOutlineAsync(novelId, volumeCount, aiConfig, volumeTemplateId);
             } else {
                 logger.warn("⚠️ 基于确认大纲生成卷规划 - 未提供有效AI配置，将使用默认AI配置");
-                task = volumeService.generateVolumePlansFromConfirmedOutlineAsync(novelId, volumeCount, null);
+                task = volumeService.generateVolumePlansFromConfirmedOutlineAsync(novelId, volumeCount, null, volumeTemplateId);
             }
 
             Map<String, Object> resp = new HashMap<>();
@@ -174,7 +188,7 @@ public class VolumeController {
             @RequestBody Map<String, Object> request) {
 
         SseEmitter emitter = new SseEmitter(0L);
-        new Thread(() -> {
+        new Thread(SecurityContextTaskWrapper.wrap(() -> {
             try {
                 String currentOutline = (String) request.get("currentOutline");
                 String suggestion = (String) request.get("suggestion");
@@ -196,7 +210,6 @@ public class VolumeController {
                     logger.warn("解析AI配置失败: {}", e.getMessage());
                 }
 
-                logger.info("🎨 流式优化卷 {} 的大纲", volumeId);
 
                 volumeService.optimizeVolumeOutlineStream(
                     volumeId, 
@@ -224,7 +237,7 @@ public class VolumeController {
                 } catch (Exception ignored) {}
                 emitter.completeWithError(e);
             }
-        }).start();
+        })).start();
         return emitter;
     }
 

@@ -1,6 +1,8 @@
 package com.novel.service;
 
 import com.novel.dto.AIConfigRequest;
+import com.novel.service.prompt.ManagedPromptService;
+import com.novel.service.prompt.SystemPromptDescriptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -29,11 +31,24 @@ public class AITraceRemovalService {
 
     private static final Logger logger = LoggerFactory.getLogger(AITraceRemovalService.class);
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private ManagedPromptService managedPromptService;
+
     /**
      * AI消痕提示词 - 深度润色与去AI味
      */
     private String buildRemovalPrompt() {
-        return "你将扮演一个专业的短篇小说润色AI，严格遵循以下规则对输入的稿件进行深度润色，根除所有AI高频“毒词”与陈腐“毒句”，实现≥98%的清除率。零容忍。\n" +
+        return managedPromptService.getContent(SystemPromptDescriptor.builder()
+                .promptKey("editing.trace_removal.system")
+                .name("AI消痕系统提示词")
+                .category("system_chain")
+                .description("对文本进行深度去AI味改写")
+                .variables(List.of("content"))
+                .sortOrder(812)
+                .defaultContent("""
+                        你将扮演一个专业的短篇小说润色AI，严格遵循以下规则对输入的稿件进行深度润色，根除所有AI高频“毒词”与陈腐“毒句”，实现≥98%的清除率。零容忍。
+                        """ +
+                        "\n" +
                 "\n" +
                 "一、核心替换规则与毒词过滤\n" +
                 "1. 风格与文笔（面向大众阅读习惯）\n" +
@@ -120,7 +135,8 @@ public class AITraceRemovalService {
                 "2. 导语：在正文开头撰写一段导语，吸引读者或奠定基调。\n" +
                 "3. 章节：正文主体用阿拉伯数字序号（1, 2, 3...）分章，每个序号开启新章节。\n" +
                 "4. 内容：直接输出修改后的完整文本，不解释修改内容，保持原文核心情节不变，确保语句通顺自然。\n" +
-                "5. 格式：不要使用Markdown格式包裹正文，直接输出纯文本（除了必要的换行）。";
+                "5. 格式：不要使用Markdown格式包裹正文，直接输出纯文本（除了必要的换行）。")
+                .build());
     }
 
     /**
@@ -260,7 +276,6 @@ public class AITraceRemovalService {
         try {
             String url = aiConfig.getApiUrl();
             
-            logger.info("📡 开始AI消痕流式处理，调用AI接口: {}, model: {}, stream: true", url, model);
             
             // 使用RestTemplate进行流式读取
             SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
@@ -313,7 +328,6 @@ public class AITraceRemovalService {
                                 if (line.startsWith("data: ")) {
                                     String data = line.substring(6);
                                     if ("[DONE]".equals(data)) {
-                                        logger.info("📨 收到流式结束标记 [DONE]，共处理 {} 个chunk，总字符数: {}", chunkCount, totalChars);
                                         inputStream.close();
                                         emitter.complete();
                                         return null;
@@ -349,21 +363,11 @@ public class AITraceRemovalService {
                                                         chunkCount++;
                                                         totalChars += contentChunk.length();
                                                         
-                                                        if (chunkCount == 1) {
-                                                            logger.info("✅ 开始接收流式数据");
-                                                        }
-                                                        
-                                                        // 调试：记录换行符数量
-                                                        if (chunkCount % 50 == 0) {
-                                                            int newlineCount = contentChunk.length() - contentChunk.replace("\n", "").length();
-                                                            logger.info("📊 Chunk #{}: 长度={}, 换行符数量={}", chunkCount, contentChunk.length(), newlineCount);
-                                                        }
                                                     }
                                                 }
                                             }
                                         }
                                     } catch (Exception e) {
-                                        logger.warn("⚠️ 解析流式响应失败: {}", e.getMessage());
                                     }
                                 }
                             }
@@ -371,7 +375,6 @@ public class AITraceRemovalService {
                         
                         inputStream.close();
                         emitter.complete();
-                        logger.info("✅ AI消痕完成，总chunk数: {}, 总字符数: {}", chunkCount, totalChars);
                         
                     } catch (IOException e) {
                         logger.error("❌ 读取流式响应失败", e);
@@ -389,4 +392,3 @@ public class AITraceRemovalService {
         }
     }
 }
-

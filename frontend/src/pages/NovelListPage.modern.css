@@ -91,6 +91,8 @@
 .sort-native-wrapper {
   position: relative;
   display: inline-flex;
+  min-width: 216px;
+  isolation: isolate;
 }
 
 .sort-native-select {
@@ -110,34 +112,165 @@
 
 /* 排序触发器 */
 .sort-trigger-modern {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 18px;
-  background: white;
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  border-radius: 12px;
-  color: #64748b;
-  font-size: 14px;
-  font-weight: 500;
+  gap: 12px;
+  width: 100%;
+  min-width: 216px;
+  padding: 11px 14px 11px 13px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(248, 250, 252, 0.98) 100%);
+  border: 1px solid rgba(191, 219, 254, 0.9);
+  border-radius: 16px;
+  color: #475569;
   cursor: pointer;
-  transition: all 0.2s;
-  height: 48px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease, background 0.22s ease;
+  min-height: 54px;
+  box-shadow:
+    0 14px 28px -24px rgba(37, 99, 235, 0.55),
+    0 8px 16px -16px rgba(15, 23, 42, 0.35);
   user-select: none;
+  overflow: hidden;
+}
+
+.sort-trigger-modern::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top right, rgba(96, 165, 250, 0.18), transparent 42%),
+    linear-gradient(120deg, rgba(255, 255, 255, 0.34), transparent 54%);
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+.sort-trigger-modern > * {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
 }
 
 /* 由于 select 在上层，hover/focus 通过 wrapper 驱动 */
 .sort-native-wrapper:hover .sort-trigger-modern,
 .sort-native-wrapper:focus-within .sort-trigger-modern {
-  background: #f8fafc;
-  color: #3b82f6;
-  border-color: #3b82f6;
+  background:
+    linear-gradient(135deg, rgba(239, 246, 255, 0.98) 0%, rgba(255, 255, 255, 1) 100%);
+  border-color: rgba(59, 130, 246, 0.88);
+  box-shadow:
+    0 22px 38px -26px rgba(37, 99, 235, 0.6),
+    0 12px 22px -20px rgba(15, 23, 42, 0.42);
+  transform: translateY(-1px);
 }
 
 .sort-icon {
   display: flex;
   align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(219, 234, 254, 0.95) 0%, rgba(224, 231, 255, 0.95) 100%);
+  color: #2563eb;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    0 10px 18px -16px rgba(37, 99, 235, 0.8);
+  font-size: 15px;
+}
+
+.sort-label {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+}
+
+.sort-label::before {
+  content: '排序方式';
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.dropdown-arrow {
+  flex-shrink: 0;
+  margin-left: 4px;
+  font-size: 11px !important;
+  color: #64748b;
+  transition: transform 0.22s ease, color 0.22s ease;
+}
+
+.sort-native-wrapper:hover .sort-icon,
+.sort-native-wrapper:focus-within .sort-icon {
+  background:
+    linear-gradient(135deg, rgba(191, 219, 254, 1) 0%, rgba(224, 231, 255, 1) 100%);
+  color: #1d4ed8;
+}
+
+.sort-native-wrapper:hover .sort-label,
+.sort-native-wrapper:focus-within .sort-label {
+  color: #1e3a8a;
+}
+
+.sort-native-wrapper:hover .sort-label::before,
+.sort-native-wrapper:focus-within .sort-label::before,
+.sort-native-wrapper:hover .dropdown-arrow,
+.sort-native-wrapper:focus-within .dropdown-arrow {
+  color: #2563eb;
+}
+
+.sort-native-wrapper:hover .dropdown-arrow,
+.sort-native-wrapper:focus-within .dropdown-arrow {
+  transform: rotate(180deg);
+}
+
+@media (max-width: 768px) {
+  .actions-section {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .sort-native-wrapper {
+    flex: 1 1 220px;
+    min-width: 0;
+  }
+
+  .sort-trigger-modern {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .sort-trigger-modern {
+    min-height: 50px;
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .sort-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+  }
+
+  .sort-label {
+    font-size: 13px;
+  }
+
+  .sort-label::before {
+    font-size: 9px;
+  }
 }
 
 /* 排序菜单 */
@@ -188,6 +321,112 @@
 }
 
 /* 新建按钮 */
+.sort-select-shell {
+  position: relative;
+  min-width: 216px;
+}
+
+.sort-select-modern.ant-select {
+  min-width: 216px;
+}
+
+.sort-select-modern.ant-select .ant-select-selector {
+  height: 48px !important;
+  padding: 0 42px 0 16px !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(226, 232, 240, 0.9) !important;
+  background: rgba(255, 255, 255, 0.98) !important;
+  box-shadow: 0 6px 14px -12px rgba(15, 23, 42, 0.3) !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease !important;
+}
+
+.sort-select-modern.ant-select:not(.ant-select-disabled):hover .ant-select-selector {
+  border-color: rgba(96, 165, 250, 0.95) !important;
+  box-shadow:
+    0 14px 24px -18px rgba(37, 99, 235, 0.42) !important;
+}
+
+.sort-select-modern.ant-select-focused .ant-select-selector,
+.sort-select-modern.ant-select.ant-select-open .ant-select-selector {
+  border-color: #3b82f6 !important;
+  box-shadow:
+    0 0 0 4px rgba(59, 130, 246, 0.12),
+    0 16px 28px -20px rgba(37, 99, 235, 0.45) !important;
+}
+
+.sort-select-modern.ant-select-single .ant-select-selector .ant-select-selection-item {
+  line-height: 46px !important;
+  font-size: 14px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.sort-select-modern .ant-select-arrow {
+  right: 14px;
+  color: #64748b;
+}
+
+.sort-select-caret {
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.sort-select-modern.ant-select-open .sort-select-caret {
+  transform: rotate(180deg);
+  color: #2563eb;
+}
+
+.sort-select-dropdown {
+  padding: 8px !important;
+  border-radius: 18px !important;
+  background: rgba(255, 255, 255, 0.98) !important;
+  border: 1px solid rgba(226, 232, 240, 0.95) !important;
+  box-shadow:
+    0 22px 48px -24px rgba(15, 23, 42, 0.28),
+    0 12px 22px -20px rgba(59, 130, 246, 0.4) !important;
+  backdrop-filter: blur(18px);
+}
+
+.sort-select-dropdown .ant-select-item {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  margin: 2px 0;
+  padding: 10px 12px !important;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #475569;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.sort-select-dropdown .ant-select-item-option-content {
+  line-height: 1.45;
+}
+
+.sort-select-dropdown .ant-select-item-option-active:not(.ant-select-item-option-disabled) {
+  background: linear-gradient(135deg, #eff6ff 0%, #eef2ff 100%) !important;
+  color: #1d4ed8;
+  transform: translateX(2px);
+}
+
+.sort-select-dropdown .ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
+  background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%) !important;
+  color: #0f172a !important;
+  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.35);
+}
+
+.sort-select-dropdown .ant-select-item-option-selected .ant-select-item-option-state {
+  color: #2563eb;
+}
+
+@media (max-width: 768px) {
+  .sort-select-shell,
+  .sort-select-modern.ant-select {
+    min-width: 180px;
+    width: 100%;
+  }
+}
+
 .create-novel-btn-modern {
   height: 48px !important;
   padding: 0 28px !important;

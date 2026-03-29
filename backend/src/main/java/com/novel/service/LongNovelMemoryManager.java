@@ -905,22 +905,16 @@ public class LongNovelMemoryManager {
             Integer chapterNumber, 
             String chapterContent,
             com.novel.dto.AIConfigRequest aiConfig) {
-        
         logger.info("🤖 开始提取第{}章信息, 使用AI配置={}", chapterNumber, aiConfig != null);
         
         try {
             // 构建AI提示词，提取当前章节的信息（不需要记忆库）
-            String prompt = buildChapterAnalysisPrompt(chapterNumber, chapterContent, null);
+            String optimizedContent = ChapterTextOptimizer.sampleForAi(chapterContent, 8000);
+            String prompt = buildChapterAnalysisPrompt(chapterNumber, optimizedContent, null);
             
             // 调用AI服务提取内容
             String aiResponse;
-            if (aiConfig != null && aiConfig.isValid()) {
-                // 使用前端传递的AI配置
-                aiResponse = callAIWithConfig(prompt, aiConfig);
-            } else {
-                // 使用后端默认配置
-                aiResponse = aiWritingService.generateContent(prompt, "chapter_memory_extraction");
-            }
+            aiResponse = aiWritingService.generateContent(prompt, "chapter_memory_extraction", aiConfig);
             
             // 解析AI返回的JSON格式信息
             Map<String, Object> extractedInfo = parseAIResponse(aiResponse);
@@ -1217,17 +1211,12 @@ public class LongNovelMemoryManager {
         
         try {
             // 构建AI提示词，一次性提取所有需要的信息
-            String prompt = buildChapterAnalysisPrompt(chapterNumber, chapterContent, memoryBank);
+            String optimizedContent = ChapterTextOptimizer.sampleForAi(chapterContent, 8000);
+            String prompt = buildChapterAnalysisPrompt(chapterNumber, optimizedContent, memoryBank);
             
             // 调用AI服务提取内容
             String aiResponse;
-            if (aiConfig != null && aiConfig.isValid()) {
-                // 使用前端传递的AI配置（同步调用）
-                aiResponse = callAIWithConfig(prompt, aiConfig);
-            } else {
-                // 使用后端默认配置
-                aiResponse = aiWritingService.generateContent(prompt, "chapter_memory_extraction");
-            }
+            aiResponse = aiWritingService.generateContent(prompt, "chapter_memory_extraction", aiConfig);
             
             // 解析AI返回的JSON格式信息
             Map<String, Object> extractedInfo = parseAIResponse(aiResponse);

@@ -81,14 +81,14 @@ public class AgenticChapterWriter {
     @Autowired(required = false)
     private CoreStateExtractor coreStateExtractor;
 
-    @Autowired
-    private PlotReasoningService plotReasoningService;
-
     @Autowired(required = false)
     private VolumeChapterOutlineRepository outlineRepository;
 
     @Autowired
     private com.novel.service.AIConfigService aiConfigService;
+
+    @Autowired
+    private com.novel.service.VolumeCharacterProfileService volumeCharacterProfileService;
 
 
 
@@ -102,6 +102,7 @@ public class AgenticChapterWriter {
             AIConfigRequest aiConfig,
             String stylePromptFile,
             Long promptTemplateId,
+            String outlineContextMode,
             Map<String, String> referenceContents,
             SseEmitter emitter) throws Exception {
 
@@ -148,7 +149,18 @@ public class AgenticChapterWriter {
 
         // 收集上下文
         sendEvent(emitter, "phase", "📥 收集写作上下文中...");
-        WritingContext context = buildDirectWritingContext(novelId, chapterNumber, userAdjustment, referenceContents);
+        String effectiveOutlineContextMode = resolveOutlineContextMode(outlineContextMode, novel);
+        WritingContext context = buildDirectWritingContext(
+                novelId,
+                chapterNumber,
+                userAdjustment,
+                referenceContents,
+                effectiveOutlineContextMode
+        );
+        if (Novel.OUTLINE_CONTEXT_MODE_FULL.equals(effectiveOutlineContextMode)
+                && !Novel.OUTLINE_CONTEXT_MODE_FULL.equals(resolveOutlineContextMode(context.getOutlineContextMode(), null))) {
+            sendEvent(emitter, "warning", "当前未提供完整大纲，已自动回退为精简大纲上下文");
+        }
 
         // 图谱健康检查（仅日志）
         checkGraphHealth(novelId, chapterNumber, context);
@@ -163,11 +175,11 @@ public class AgenticChapterWriter {
             }
         }
 
-        // 优先查询预生成章纲
+        boolean enableOutlineIntent = true;
         VolumeChapterOutline preGeneratedOutline = null;
         VolumeChapterOutline prevOutline = null;
         VolumeChapterOutline nextOutline = null;
-        if (outlineRepository != null) {
+        if (enableOutlineIntent && outlineRepository != null) {
             try {
                 preGeneratedOutline = outlineRepository.findByNovelAndGlobalChapter(novelId, chapterNumber);
                 if (preGeneratedOutline != null) {
@@ -192,41 +204,24 @@ public class AgenticChapterWriter {
         // 推理与意图
         Map<String, Object> plotIntent = null;
         String reasoningPrompt = null;
-        String mode = "intent_writing";
+        String mode = "direct_writing";
 
-        if (preGeneratedOutline != null) {
+        if (enableOutlineIntent && preGeneratedOutline != null) {
             // 有章纲：跳过推理，直接用章纲构建 plotIntent
             sendEvent(emitter, "phase", "📋 使用预生成章纲...");
             plotIntent = convertOutlineToIntent(preGeneratedOutline, prevOutline, nextOutline);
-            mode = "outline_writing";
+            mode = "outline_direct_writing";
         } else {
-            // 无章纲：走推理流程
-            try {
-                sendEvent(emitter, "phase", "🧠 推理本章剧情...");
-                plotIntent = plotReasoningService.reasonPlotIntent(context, chapterNumber, aiConfig);
-                sendEvent(emitter, "intent", "✅ 剧情推理完成");
-                if (plotIntent != null && plotIntent.get("_reasoning_prompt") != null) {
-                    reasoningPrompt = String.valueOf(plotIntent.get("_reasoning_prompt"));
-                }
-            } catch (Exception e) {
-                logger.warn("⚠️ 剧情推理失败，将回退到直接写作: {}", e.getMessage());
-            }
+            logger.warn("当前章节未查询到细纲，按直接写作继续: novelId={}, chapter={}", novelId, chapterNumber);
+            sendEvent(emitter, "warning", "当前章节未查询到细纲，按直接写作继续");
+            plotIntent = Collections.emptyMap();
         }
 
-        sendEvent(emitter, "phase", "✍️ AI创作中（意图驱动）...");
-        Map<String, Object> effectiveIntent = plotIntent;
-        if (effectiveIntent == null || effectiveIntent.isEmpty()) {
-            logger.warn("⚠️ plotIntent 为空，使用最小意图继续写作: novelId={}, chapter={}", novelId, chapterNumber);
-            effectiveIntent = new HashMap<>();
-            effectiveIntent.put("direction", "继续推进主线，保持角色目标一致，并制造新的冲突钩子。");
-        }
-
+        sendEvent(emitter, "phase", "✍️ AI创作中...");
+        Map<String, Object> effectiveIntent = plotIntent != null ? plotIntent : Collections.emptyMap();
         List<Map<String, String>> messages = structuredMessageBuilder.buildMessagesFromIntent(
                 novel, context, effectiveIntent, chapterNumber, stylePromptFile, promptTemplateId);
 
-        if (mode.equals("intent_writing") && plotIntent == null) {
-            sendEvent(emitter, "intent", "⚠️ 未获取到完整章纲，已按最小意图继续写作");
-        }
 
         logger.info("🔍 构建messages后 - 消息总数: {}", messages.size());
 
@@ -332,6 +327,7 @@ public class AgenticChapterWriter {
             AIConfigRequest aiConfig,
             String stylePromptFile,
             Long promptTemplateId,
+            String outlineContextMode,
             Map<String, String> referenceContents,
             SseEmitter emitter) throws Exception {
 
@@ -359,7 +355,17 @@ public class AgenticChapterWriter {
             sendEvent(emitter, "chapter_start", "开始生成第 " + currentChapter + " 章 (" + (i + 1) + "/" + count + ")");
 
             try {
-                Chapter chapter = generateChapter(novelId, currentChapter, null, aiConfig, stylePromptFile, promptTemplateId, referenceContents, emitter);
+                Chapter chapter = generateChapter(
+                        novelId,
+                        currentChapter,
+                        null,
+                        aiConfig,
+                        stylePromptFile,
+                        promptTemplateId,
+                        outlineContextMode,
+                        referenceContents,
+                        emitter
+                );
                 chapters.add(chapter);
 
                 // 🔧 验证章节是否正确保存
@@ -399,8 +405,25 @@ public class AgenticChapterWriter {
      * 对外公开，便于重写/编辑等场景复用同一套上下文来源。
      */
     public WritingContext buildDirectWritingContext(Long novelId, Integer chapterNumber, String userAdjustment, Map<String, String> referenceContents) {
+        return buildDirectWritingContext(
+                novelId,
+                chapterNumber,
+                userAdjustment,
+                referenceContents,
+                Novel.OUTLINE_CONTEXT_MODE_SIMPLIFIED
+        );
+    }
+
+    public WritingContext buildDirectWritingContext(
+            Long novelId,
+            Integer chapterNumber,
+            String userAdjustment,
+            Map<String, String> referenceContents,
+            String outlineContextMode) {
         WritingContext.WritingContextBuilder contextBuilder = WritingContext.builder();
         contextBuilder.userAdjustment(userAdjustment);
+        contextBuilder.outlineContextMode(resolveOutlineContextMode(outlineContextMode, null));
+        boolean includeHistoricalEventsInDirectWriting = false;
         if (referenceContents != null && !referenceContents.isEmpty()) {
             contextBuilder.referenceContents(referenceContents);
         }
@@ -409,18 +432,25 @@ public class AgenticChapterWriter {
             // 1. 获取核心设定（替代大纲）
             Map<String, Object> outlineArgs = new HashMap<>();
             outlineArgs.put("novelId", novelId);
+            outlineArgs.put("mode", resolveOutlineContextMode(outlineContextMode, null));
             Object outlineResult = toolRegistry.executeTool("getOutline", outlineArgs);
             if (outlineResult instanceof Map) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> outlineMap = (Map<String, Object>) outlineResult;
                 Object core = outlineMap.get("coreSettings");
-                if (core instanceof String && org.apache.commons.lang3.StringUtils.isNotBlank((String) core)) {
+                if (core instanceof String && StringUtils.hasText((String) core)) {
                     contextBuilder.coreSettings((String) core);
-                    logger.info("✅ 已加载核心设定");
+                }
+                Object fullOutline = outlineMap.get("fullOutline");
+                if (fullOutline instanceof String && StringUtils.hasText((String) fullOutline)) {
+                    contextBuilder.outline((String) fullOutline);
+                }
+                Object resolvedMode = outlineMap.get("resolvedMode");
+                if (resolvedMode instanceof String && StringUtils.hasText((String) resolvedMode)) {
+                    contextBuilder.outlineContextMode(resolveOutlineContextMode((String) resolvedMode, null));
                 }
             } else if (outlineResult instanceof String) {
                 contextBuilder.coreSettings((String) outlineResult);
-                logger.info("✅ 已加载核心设定（字符串）");
             }
 
             // 2. 获取卷蓝图
@@ -432,6 +462,15 @@ public class AgenticChapterWriter {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> blueprintMap = (Map<String, Object>) blueprintResult;
                 contextBuilder.volumeBlueprint(blueprintMap);
+
+                Long volumeId = getLongValue(blueprintMap.get("volumeId"));
+                if (volumeId != null) {
+                    List<Map<String, Object>> volumeProfiles = loadVolumeCharacterProfiles(volumeId);
+                    if (!volumeProfiles.isEmpty()) {
+                        contextBuilder.volumeCharacterProfiles(volumeProfiles);
+                        logger.info("✅ 已加载{}个本卷人设卡: volumeId={}", volumeProfiles.size(), volumeId);
+                    }
+                }
 
                 // 详细日志：检查卷蓝图内容
                 Object blueprint = blueprintMap.get("blueprint");
@@ -446,7 +485,23 @@ public class AgenticChapterWriter {
                 }
             }
 
-            // 3. 获取最近1章完整内容
+            // 3. 获取当前章节细纲
+            if (outlineRepository != null && chapterNumber != null && chapterNumber > 0) {
+                try {
+                    VolumeChapterOutline currentOutline = outlineRepository.findByNovelAndGlobalChapter(novelId, chapterNumber);
+                    if (currentOutline != null) {
+                        String currentChapterOutline = buildCurrentChapterOutlineText(currentOutline);
+                        if (StringUtils.hasText(currentChapterOutline)) {
+                            contextBuilder.currentChapterOutline(currentChapterOutline);
+                            logger.info("已加载当前章节细纲: chapter={}", chapterNumber);
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.warn("加载当前章节细纲失败: {}", e.getMessage());
+                }
+            }
+
+            // 4. 获取最近1章完整内容
             if (chapterNumber > 1) {
                 List<Chapter> recentChapters = chapterService.getRecentChapters(novelId, chapterNumber, 1);
                 if (recentChapters != null && !recentChapters.isEmpty()) {
@@ -489,7 +544,7 @@ public class AgenticChapterWriter {
             }
 
             // 6. 获取图谱数据（相关事件）
-            if (chapterNumber > 1 && graphService != null) {
+            if (includeHistoricalEventsInDirectWriting && chapterNumber > 1 && graphService != null) {
                 try {
                     List<com.novel.agentic.model.GraphEntity> events = graphService.getRelevantEvents(novelId, chapterNumber, 10);
                     if (events != null && !events.isEmpty()) {
@@ -592,6 +647,125 @@ public class AgenticChapterWriter {
         return contextBuilder.build();
     }
 
+    private String resolveOutlineContextMode(String outlineContextMode, Novel novel) {
+        if (Novel.OUTLINE_CONTEXT_MODE_FULL.equalsIgnoreCase(outlineContextMode)) {
+            return Novel.OUTLINE_CONTEXT_MODE_FULL;
+        }
+        if (Novel.OUTLINE_CONTEXT_MODE_SIMPLIFIED.equalsIgnoreCase(outlineContextMode)) {
+            return Novel.OUTLINE_CONTEXT_MODE_SIMPLIFIED;
+        }
+        if (novel != null && Novel.OUTLINE_CONTEXT_MODE_FULL.equalsIgnoreCase(novel.getOutlineContextMode())) {
+            return Novel.OUTLINE_CONTEXT_MODE_FULL;
+        }
+        return Novel.OUTLINE_CONTEXT_MODE_SIMPLIFIED;
+    }
+
+    private String buildCurrentChapterOutlineText(VolumeChapterOutline outline) {
+        if (outline == null) {
+            return null;
+        }
+
+        String direction = resolveOutlineDirection(outline);
+        String foreshadowDetail = buildOutlineStructuredFieldText(outline.getForeshadowDetail());
+        String antagonism = buildOutlineStructuredFieldText(outline.getAntagonism());
+
+        StringBuilder sb = new StringBuilder();
+        boolean hasBody = false;
+
+        sb.append("【当前章节细纲（优先遵守）】\n");
+        if (outline.getGlobalChapterNumber() != null) {
+            sb.append("章节：第").append(outline.getGlobalChapterNumber()).append("章\n");
+        } else if (outline.getChapterInVolume() != null) {
+            sb.append("卷内章节：第").append(outline.getChapterInVolume()).append("章\n");
+        }
+
+        if (StringUtils.hasText(direction)) {
+            sb.append("核心细纲：\n").append(direction.trim()).append("\n");
+            hasBody = true;
+        }
+        if (StringUtils.hasText(outline.getEmotionalTone())) {
+            sb.append("情感基调：").append(outline.getEmotionalTone().trim()).append("\n");
+            hasBody = true;
+        }
+        if (StringUtils.hasText(outline.getSubplot())) {
+            sb.append("支线/人物刻画：").append(outline.getSubplot().trim()).append("\n");
+            hasBody = true;
+        }
+        if (StringUtils.hasText(outline.getForeshadowAction())
+                && !"NONE".equalsIgnoreCase(outline.getForeshadowAction().trim())) {
+            sb.append("伏笔操作：").append(outline.getForeshadowAction().trim()).append("\n");
+            hasBody = true;
+        }
+        if (StringUtils.hasText(foreshadowDetail)) {
+            sb.append("伏笔细节：\n").append(foreshadowDetail).append("\n");
+            hasBody = true;
+        }
+        if (StringUtils.hasText(antagonism)) {
+            sb.append("对手/阻力与赌注：\n").append(antagonism).append("\n");
+            hasBody = true;
+        }
+
+        return hasBody ? sb.toString().trim() : null;
+    }
+
+    private List<Map<String, Object>> loadVolumeCharacterProfiles(Long volumeId) {
+        if (volumeId == null) {
+            return Collections.emptyList();
+        }
+        try {
+            List<com.novel.domain.entity.VolumeCharacterProfile> profiles =
+                volumeCharacterProfileService.getByVolumeId(volumeId);
+            if (profiles == null || profiles.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (com.novel.domain.entity.VolumeCharacterProfile profile : profiles) {
+                if (profile == null) {
+                    continue;
+                }
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("characterName", profile.getCharacterName());
+                item.put("currentPersona", profile.getCurrentPersona());
+                item.put("coreMotivation", profile.getCoreMotivation());
+                item.put("stanceRelationships", profile.getStanceRelationships());
+                item.put("unfinishedGoals", profile.getUnfinishedGoals());
+                item.put("behaviorBottomLine", profile.getBehaviorBottomLine());
+                result.add(item);
+            }
+            return result;
+        } catch (Exception e) {
+            logger.warn("⚠️ 加载本卷人设失败: volumeId={}, err={}", volumeId, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    private Long getLongValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        try {
+            return Long.parseLong(String.valueOf(value).trim());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (value != null && !value.trim().isEmpty()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
     /**
      * 保存章节
      */
@@ -661,20 +835,25 @@ public class AgenticChapterWriter {
             // 对于 message 事件（流式输出），移除换行符避免破坏 SSE 协议
             // 换行由前端的 applyRealtimeLineBreaks() 函数处理
             if ("message".equals(eventType)) {
-                payload = payload.replace("\r\n", " ").replace("\r", " ").replace("\n", " ");
+                payload = payload.replace("\r\n", "\n").replace("\r", "\n");
             } else {
                 // 其他事件（phase、outline等）保留换行符
                 payload = payload.replace("\r\n", "\n").replace("\r", "\n");
             }
             
-            SseEmitter.SseEventBuilder builder = SseEmitter.event()
-                    .data(payload, MediaType.TEXT_PLAIN);
+            SseEmitter.SseEventBuilder builder = SseEmitter.event();
             if (StringUtils.hasText(eventType)) {
                 builder.name(eventType);
             }
+            if ("message".equals(eventType)) {
+                builder.data(objectMapper.writeValueAsString(Collections.singletonMap("chunk", payload)), MediaType.APPLICATION_JSON);
+            } else {
+                for (String line : payload.split("\n", -1)) {
+                    builder.data(line, MediaType.TEXT_PLAIN);
+                }
+            }
             emitter.send(builder);
         } catch (IllegalStateException ex) {
-            logger.warn("SSE已完成，忽略事件: {}", eventType);
         } catch (IOException ex) {
             logger.error("发送SSE事件失败: {}", eventType, ex);
         }
@@ -942,6 +1121,10 @@ public class AgenticChapterWriter {
             return fromKeyPlot;
         }
         return outline.getDirection();
+    }
+
+    private String buildOutlineStructuredFieldText(String raw) {
+        return extractKeyPlotPointsText(raw);
     }
 
     private String extractKeyPlotPointsText(String raw) {

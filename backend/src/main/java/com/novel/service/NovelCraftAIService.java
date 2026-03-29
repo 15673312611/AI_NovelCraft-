@@ -1,6 +1,7 @@
 package com.novel.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.novel.common.security.AuthUtils;
 import com.novel.domain.entity.Novel;
 import com.novel.dto.AIConfigRequest;
 import com.novel.entity.AIConversation;
@@ -16,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -74,6 +76,12 @@ public class NovelCraftAIService {
     
     @Autowired
     private LongFormCoherenceService longFormCoherenceService;
+
+    @Autowired
+    private CreditService creditService;
+
+    @Autowired
+    private SystemAIConfigService systemAIConfigService;
 
     // ================================
     // 1️⃣ 动态大纲引擎 (Dynamic Outline Engine)
@@ -796,6 +804,18 @@ public class NovelCraftAIService {
 
             // 为不同角色设置不同的参数
             Map<String, Object> requestBody = buildAIRequest(agentRole, model, prompt);
+            Long userId = AuthUtils.getCurrentUserId();
+            int inputTokens = prompt != null ? prompt.length() : 0;
+            int estimatedOutputTokens = requestBody.get("max_tokens") instanceof Number
+                    ? ((Number) requestBody.get("max_tokens")).intValue()
+                    : 2000;
+
+            if (userId != null) {
+                BigDecimal estimatedCost = systemAIConfigService.calculateCost(model, inputTokens, estimatedOutputTokens);
+                if (!creditService.hasEnoughBalance(userId, estimatedCost)) {
+                    throw new RuntimeException("字数点余额不足，请先充值");
+                }
+            }
 
             // 发送请求
             RestTemplate restTemplate = createRestTemplate();
@@ -806,7 +826,13 @@ public class NovelCraftAIService {
             ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                return parseAIResponse(response.getBody());
+                String content = parseAIResponse(response.getBody());
+                if (userId != null) {
+                    int outputTokens = content != null ? content.length() : 0;
+                    BigDecimal actualCost = systemAIConfigService.calculateCost(model, inputTokens, outputTokens);
+                    creditService.consume(userId, actualCost, null, model, inputTokens, outputTokens, "NovelCraft:" + agentRole);
+                }
+                return content;
             }
 
             throw new RuntimeException("AI服务响应异常");
@@ -833,6 +859,20 @@ public class NovelCraftAIService {
 
             // 为不同角色设置不同的参数
             Map<String, Object> requestBody = buildAIRequest(agentRole, model, messages.get(messages.size() - 1).getOrDefault("content", ""));
+            Long userId = AuthUtils.getCurrentUserId();
+            int inputTokens = messages.stream()
+                    .mapToInt(message -> message.getOrDefault("content", "").length())
+                    .sum();
+            int estimatedOutputTokens = requestBody.get("max_tokens") instanceof Number
+                    ? ((Number) requestBody.get("max_tokens")).intValue()
+                    : 2000;
+
+            if (userId != null) {
+                BigDecimal estimatedCost = systemAIConfigService.calculateCost(model, inputTokens, estimatedOutputTokens);
+                if (!creditService.hasEnoughBalance(userId, estimatedCost)) {
+                    throw new RuntimeException("字数点余额不足，请先充值");
+                }
+            }
 
             // 发送请求
             RestTemplate restTemplate = createRestTemplate();
@@ -843,7 +883,13 @@ public class NovelCraftAIService {
             ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                return parseAIResponse(response.getBody());
+                String content = parseAIResponse(response.getBody());
+                if (userId != null) {
+                    int outputTokens = content != null ? content.length() : 0;
+                    BigDecimal actualCost = systemAIConfigService.calculateCost(model, inputTokens, outputTokens);
+                    creditService.consume(userId, actualCost, null, model, inputTokens, outputTokens, "NovelCraft:" + agentRole);
+                }
+                return content;
             }
 
             throw new RuntimeException("AI服务响应异常");

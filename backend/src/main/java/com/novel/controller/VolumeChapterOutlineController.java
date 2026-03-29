@@ -46,10 +46,34 @@ public class VolumeChapterOutlineController {
 
         // 提取 AI 配置（扁平化参数）
         AIConfigRequest aiConfig = extractAIConfig(request);
+        String userRequirement = extractUserRequirement(request);
 
         // 调用服务生成章纲
-        Map<String, Object> result = service.generateOutlinesForVolume(volumeId, count, aiConfig);
+        Map<String, Object> result = service.generateOutlinesForVolume(volumeId, count, aiConfig, userRequirement);
 
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * 重新生成"下一批"细纲（仅覆盖未写正文的章节范围）
+     * - 以"本卷下一章未写"为起点，生成 count 章（最多10章），会覆盖已存在的细纲
+     * - 已写正文的章节不会被重新生成
+     */
+    @PostMapping("/{volumeId}/chapter-outlines/regenerate")
+    public ResponseEntity<?> regenerateChapterOutlines(
+            @PathVariable("volumeId") Long volumeId,
+            @RequestBody(required = false) Map<String, Object> request
+    ) {
+        Integer count = null;
+        if (request != null) {
+            if (request.containsKey("count") && request.get("count") != null) {
+                count = ((Number) request.get("count")).intValue();
+            }
+        }
+
+        AIConfigRequest aiConfig = extractAIConfig(request);
+        String userRequirement = extractUserRequirement(request);
+        Map<String, Object> result = service.regenerateOutlinesForVolume(volumeId, count, aiConfig, userRequirement);
         return ResponseEntity.ok(result);
     }
 
@@ -68,7 +92,6 @@ public class VolumeChapterOutlineController {
             java.util.List<VolumeChapterOutline> outlines = outlineRepository.findByVolumeId(volumeId);
 
             if (summary) {
-                // 只返回列表所需的基本字段，减少数据传输
                 java.util.List<Map<String, Object>> summaryList = new java.util.ArrayList<>();
                 for (VolumeChapterOutline outline : outlines) {
                     Map<String, Object> item = new HashMap<>();
@@ -77,13 +100,9 @@ public class VolumeChapterOutlineController {
                     item.put("chapterInVolume", outline.getChapterInVolume());
                     item.put("emotionalTone", outline.getEmotionalTone());
                     item.put("status", outline.getStatus());
-                    // 添加 direction 摘要用于列表预览（截取前60字符）
                     String direction = outline.getDirection();
                     String keyPlotPoints = outline.getKeyPlotPoints();
-                    String preview = (keyPlotPoints != null && !keyPlotPoints.isBlank()) ? keyPlotPoints : direction;
-                    if (preview != null && preview.length() > 60) {
-                        preview = preview.substring(0, 60) + "...";
-                    }
+                    String preview = (direction != null && !direction.isBlank()) ? direction : keyPlotPoints;
                     item.put("direction", preview);
                     item.put("keyPlotPoints", preview);
                     summaryList.add(item);
@@ -300,6 +319,9 @@ public class VolumeChapterOutlineController {
         Object providerObj = request.get("provider");
         Object apiKeyObj = request.get("apiKey");
         Object modelObj = request.get("model");
+        if (!(modelObj instanceof String)) {
+            modelObj = request.get("preferredModel");
+        }
         Object baseUrlObj = request.get("baseUrl");
 
         if (providerObj instanceof String || apiKeyObj instanceof String ||
@@ -329,6 +351,9 @@ public class VolumeChapterOutlineController {
             Object provider = aiConfigMap.get("provider");
             Object apiKey = aiConfigMap.get("apiKey");
             Object model = aiConfigMap.get("model");
+            if (!(model instanceof String)) {
+                model = aiConfigMap.get("preferredModel");
+            }
             Object baseUrl = aiConfigMap.get("baseUrl");
             if (provider instanceof String) {
                 config.setProvider(((String) provider).trim());
@@ -351,6 +376,34 @@ public class VolumeChapterOutlineController {
     /**
      * 辅助方法：从 Map 中获取字符串
      */
+    private String extractUserRequirement(Map<String, Object> request) {
+        if (request == null || request.isEmpty()) {
+            return null;
+        }
+
+        String[] candidateKeys = new String[]{
+                "userRequirement",
+                "user_requirement",
+                "customRequirement",
+                "requirement",
+                "requirements",
+                "instructions"
+        };
+
+        for (String key : candidateKeys) {
+            Object value = request.get(key);
+            if (value == null) {
+                continue;
+            }
+            String text = String.valueOf(value).trim();
+            if (!text.isEmpty()) {
+                return text;
+            }
+        }
+
+        return null;
+    }
+
     private String getString(Map<String, Object> map, String key) {
         Object v = map.get(key);
         if (v == null) return null;

@@ -4,12 +4,17 @@ import com.novel.domain.entity.Novel;
 import com.novel.domain.entity.NovelOutline;
 import com.novel.repository.NovelOutlineRepository;
 import com.novel.repository.NovelRepository;
+import com.novel.service.prompt.ManagedPromptService;
+import com.novel.service.prompt.SystemPromptDescriptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Map;
 
 /**
  * 核心设定提炼服务
@@ -30,6 +35,9 @@ public class CoreSettingsExtractionService {
 
     @Autowired
     private AIWritingService aiWritingService;
+
+    @Autowired
+    private ManagedPromptService managedPromptService;
     
     /**
      * 异步提炼核心设定
@@ -91,15 +99,6 @@ public class CoreSettingsExtractionService {
      * 构建核心设定提炼提示词
      */
     private String buildExtractionPrompt(Long novelId, String basicIdea, String plotStructure) {
-        StringBuilder prompt = new StringBuilder();
-
-        // 角色与任务目标
-        prompt.append("角色：资深网文编辑与设定统筹\n\n");
-        prompt.append("任务目标：\n");
-        prompt.append("从完整大纲中提炼仅包含核心世界观、关键设定与风格锚点的蓝图。只描述“是什么”，不描述“发生了什么”。严禁上帝视角、禁止剧情化表达。缺项不自填，信息不足时仅提出澄清问题并停止。\n\n");
-
-        // 输入字段
-        prompt.append("输入字段：\n\n");
         String title = "";
         try {
             if (novelId != null) {
@@ -109,9 +108,8 @@ public class CoreSettingsExtractionService {
                 }
             }
         } catch (Exception ignore) {}
-        if (!title.isEmpty()) {
-            prompt.append("作品名：").append(title).append("\n");
-        }
+
+        String titleBlock = title.isEmpty() ? "" : "作品名：" + title + "\n";
         StringBuilder source = new StringBuilder();
         if (plotStructure != null && !plotStructure.trim().isEmpty()) {
             source.append("【完整大纲】\n").append(plotStructure.trim()).append("\n\n");
@@ -119,94 +117,114 @@ public class CoreSettingsExtractionService {
         if (basicIdea != null && !basicIdea.trim().isEmpty()) {
             source.append("【原始设定】\n").append(basicIdea.trim()).append("\n");
         }
-        prompt.append("完整大纲与原始设定：\n").append(source.toString()).append("\n");
+        return renderManagedPrompt(
+            "core.settings.extraction",
+            "核心设定提炼提示词",
+            "system_chain",
+            "从完整大纲中提炼核心世界观、力量体系、阵营结构和写作锚点，避免剧情化与上帝视角",
+            123,
+            List.of("title_block", "source_content"),
+            """
+                角色：资深网文编辑与设定统筹
 
-        // 输出结构
-        prompt.append("输出结构（编号，纯文本）：\n\n");
-        prompt.append("1. 作品定位\n");
-        prompt.append("类型标签：不超过3个\n");
-        prompt.append("基调：不超过2个词组\n");
-        prompt.append("一句话核心概念：1句，抽象设定，不含事件词\n");
-        prompt.append("主题命题：2-4个词，如权力、自由、记忆、信仰\n");
-        prompt.append("受众期待：2个词组，如快节奏爽感、设定推理\n\n");
+                任务目标：
+                从完整大纲中提炼仅包含核心世界观、关键设定与风格锚点的蓝图。只描述“是什么”，不描述“发生了什么”。严禁上帝视角、禁止剧情化表达。缺项不自填，信息不足时仅提出澄清问题并停止。
 
-        prompt.append("2. 世界观规则\n");
-        prompt.append("时代与技术层级：静态描述\n");
-        prompt.append("核心法则：1-3条可检验规则\n");
-        prompt.append("空间与权力结构：区域划分与权力分布\n");
-        prompt.append("社会与文化规范：主流秩序与价值观\n\n");
+                输入字段：
 
-        prompt.append("3. 力量体系\n");
-        prompt.append("力量来源：列表\n");
-        prompt.append("等级或分类：名称与划分标准\n");
-        prompt.append("使用代价与限制：硬约束\n");
-        prompt.append("相克与边界：简明规则\n\n");
+                {{title_block}}完整大纲与原始设定：
+                {{source_content}}
 
-        prompt.append("4. 阵营与组织\n");
-        prompt.append("每个阵营包含：宗旨或立场、资源或优势、影响范围\n");
-        prompt.append("静态设定，不写互动与走向\n\n");
+                输出结构（编号，纯文本）：
 
-        prompt.append("5. 关键名词表\n");
-        prompt.append("术语、物品、地点、技术各3-8条\n");
-        prompt.append("每条≤20字，功能性定义\n");
-        prompt.append("无资料则标注：待定\n\n");
+                1. 作品定位
+                类型标签：不超过3个
+                基调：不超过2个词组
+                一句话核心概念：1句，抽象设定，不含事件词
+                主题命题：2-4个词，如权力、自由、记忆、信仰
+                受众期待：2个词组，如快节奏爽感、设定推理
 
-        prompt.append("6. 主角起点设定（非剧情）\n");
-        prompt.append("身份与出身：初始状态\n");
-        prompt.append("固有能力与短板：客观特征\n");
-        prompt.append("长期动机（抽象）：如自由、秩序、探索\n");
-        prompt.append("行事风格：2-3个标签\n");
-        prompt.append("价值观标签：2-3个词\n\n");
+                2. 世界观规则
+                时代与技术层级：静态描述
+                核心法则：1-3条可检验规则
+                空间与权力结构：区域划分与权力分布
+                社会与文化规范：主流秩序与价值观
 
-        prompt.append("7. 核心冲突类型（抽象）\n");
-        prompt.append("矛盾范式：如个体与秩序、传统与变革、理性与信仰\n");
-        prompt.append("不涉及事件与时间线\n\n");
+                3. 力量体系
+                力量来源：列表
+                等级或分类：名称与划分标准
+                使用代价与限制：硬约束
+                相克与边界：简明规则
 
-        prompt.append("8. 写作边界与风格提示\n");
-        prompt.append("必须保持：本书独特性要素\n");
-        prompt.append("禁忌清单：不可触碰的内容与写法\n");
-        prompt.append("语言与节奏：风格关键词与描写侧重点\n");
-        prompt.append("描写优先级：如对话>战斗>环境\n\n");
+                4. 阵营与组织
+                每个阵营包含：宗旨或立场、资源或优势、影响范围
+                静态设定，不写互动与走向
 
-        prompt.append("9. 一致性锚点\n");
-        prompt.append("术语锁定：统一用词与拼写\n");
-        prompt.append("风格锁定：2-4个稳定风格标签\n\n");
+                5. 关键名词表
+                术语、物品、地点、技术各3-8条
+                每条≤20字，功能性定义
+                无资料则标注：待定
 
-        prompt.append("10. 有意留白\n");
-        prompt.append("列出刻意不设定的领域，避免AI自作主张填坑\n\n");
+                6. 主角起点设定（非剧情）
+                身份与出身：初始状态
+                固有能力与短板：客观特征
+                长期动机（抽象）：如自由、秩序、探索
+                行事风格：2-3个标签
+                价值观标签：2-3个词
 
-        prompt.append("11. 澄清问题（必要时）\n");
-        prompt.append("若输入不足，提出最多5个定义型问题；否则省略\n\n");
+                7. 核心冲突类型（抽象）
+                矛盾范式：如个体与秩序、传统与变革、理性与信仰
+                不涉及事件与时间线
 
-        // 兼容与缺项规则
-        prompt.append("兼容与缺项规则：\n\n");
-        prompt.append("条目数量为上限与建议范围；允许为空或“待定”\n");
-        prompt.append("信息缺失不补写；不得生成新核心设定填空\n");
-        prompt.append("若术语冲突，选定一个主用词，其余标记为别名\n");
-        prompt.append("若整体信息不足，仅输出第11项澄清问题并停止\n\n");
+                8. 写作边界与风格提示
+                必须保持：本书独特性要素
+                禁忌清单：不可触碰的内容与写法
+                语言与节奏：风格关键词与描写侧重点
+                描写优先级：如对话>战斗>环境
 
-        // 硬性限制
-        prompt.append("硬性限制（必须遵守）：\n\n");
-        prompt.append("禁止任何剧情、事件、遭遇、任务、冲突展开、时间线与转折描述\n");
-        prompt.append("禁止使用或暗示未来式与走向判断；禁用词示例：将会、后来、最终、结局、命运、注定、反转、遇到、发现（作事件用时）、第X章、剧情、伏笔\n");
-        prompt.append("禁止上帝视角与全局掌控式结论；不得评价发展趋势\n");
-        prompt.append("禁止角色心理变化过程与关系演化；仅允许稳定人格标签\n");
-        prompt.append("禁止创设输入以外的新核心名词与规则；缺项标注“待定”\n");
-        prompt.append("用定义句与名词句呈现；避免因果链与推演\n\n");
+                9. 一致性锚点
+                术语锁定：统一用词与拼写
+                风格锁定：2-4个稳定风格标签
 
-        // 流程要求
-        prompt.append("流程要求：\n\n");
-        prompt.append("读取输入并判断信息充足性\n");
-        prompt.append("若不足，仅输出第11项澄清问题并停止\n");
-        prompt.append("若充足，按上述结构生成设定\n");
-        prompt.append("生成后自检以下清单，不合规则重写：是否出现事件或走向；是否新增核心设定；是否含上帝视角；是否未用短句定义\n\n");
+                10. 有意留白
+                列出刻意不设定的领域，避免AI自作主张填坑
 
-        // 输出格式
-        prompt.append("输出格式：\n\n");
-        prompt.append("纯文本，编号与短列表\n");
-        prompt.append("不使用Markdown、不加引号、不写额外解释\n");
+                11. 澄清问题（必要时）
+                若输入不足，提出最多5个定义型问题；否则省略
 
-        return prompt.toString();
+                兼容与缺项规则：
+
+                条目数量为上限与建议范围；允许为空或“待定”
+                信息缺失不补写；不得生成新核心设定填空
+                若术语冲突，选定一个主用词，其余标记为别名
+                若整体信息不足，仅输出第11项澄清问题并停止
+
+                硬性限制（必须遵守）：
+
+                禁止任何剧情、事件、遭遇、任务、冲突展开、时间线与转折描述
+                禁止使用或暗示未来式与走向判断；禁用词示例：将会、后来、最终、结局、命运、注定、反转、遇到、发现（作事件用时）、第X章、剧情、伏笔
+                禁止上帝视角与全局掌控式结论；不得评价发展趋势
+                禁止角色心理变化过程与关系演化；仅允许稳定人格标签
+                禁止创设输入以外的新核心名词与规则；缺项标注“待定”
+                用定义句与名词句呈现；避免因果链与推演
+
+                流程要求：
+
+                读取输入并判断信息充足性
+                若不足，仅输出第11项澄清问题并停止
+                若充足，按上述结构生成设定
+                生成后自检以下清单，不合规则重写：是否出现事件或走向；是否新增核心设定；是否含上帝视角；是否未用短句定义
+
+                输出格式：
+
+                纯文本，编号与短列表
+                不使用Markdown、不加引号、不写额外解释
+                """,
+            Map.of(
+                "title_block", titleBlock,
+                "source_content", source.toString()
+            )
+        );
     }
 
 
@@ -265,5 +283,24 @@ public class CoreSettingsExtractionService {
         }
         return outline.getCoreSettings();
     }
-}
 
+    private String renderManagedPrompt(String promptKey,
+                                       String name,
+                                       String category,
+                                       String description,
+                                       int sortOrder,
+                                       java.util.List<String> variables,
+                                       String template,
+                                       java.util.Map<String, ?> values) {
+        return managedPromptService.render(SystemPromptDescriptor.builder()
+                        .promptKey(promptKey)
+                        .name(name)
+                        .category(category)
+                        .description(description)
+                        .variables(variables)
+                        .sortOrder(sortOrder)
+                        .defaultContent(template)
+                        .build(),
+                values);
+    }
+}

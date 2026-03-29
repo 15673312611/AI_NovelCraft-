@@ -6,6 +6,7 @@ import { AppDispatch, RootState } from '@/store'
 import { clearError, setCredentials } from '@/store/slices/authSlice'
 import SliderCaptcha from '@/components/SliderCaptcha'
 import api from '@/services/api'
+import { authService } from '@/services/authService'
 import './RegisterPage.css'
 
 const RegisterPage: React.FC = () => {
@@ -63,15 +64,14 @@ const RegisterPage: React.FC = () => {
   const onFinish = async (values: any) => {
     try {
       setLoading(true)
-      const res: any = await api.post('/auth/register', {
+      const res = await authService.register({
         username: values.username,
         email: values.email,
         code: values.code,
         password: values.password,
       })
-      
-      // 后端返回格式: { success: true, data: { user, token } }
-      const { user, token } = res.data || res
+
+      const { user, token } = res
       dispatch(setCredentials({ user, token }))
       message.success('注册成功')
       navigate('/')

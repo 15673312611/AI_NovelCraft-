@@ -1,6 +1,6 @@
 ﻿import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import { Layout, Spin, message, Modal, List, Button, Tag, Drawer, Progress } from 'antd'
+import { App, Layout, Spin, Modal, List, Button, Tag, Drawer, Progress, InputNumber, Tooltip } from 'antd'
 import {
   ExportOutlined,
   FileTextOutlined,
@@ -10,13 +10,16 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   SaveOutlined,
-  AimOutlined
+  AimOutlined,
+  ReloadOutlined,
+  UploadOutlined
 } from '@ant-design/icons'
 import FileTree from '@/components/writing/FileTree'
 import ExportModal from '@/components/writing/ExportModal'
 import EditorPanel from '@/components/writing/EditorPanel'
 import ToolPanel from '@/components/writing/ToolPanel'
 import MarkdownRenderer from '@/components/MarkdownRenderer'
+import GraphDataModal from '@/components/graph/GraphDataModal'
 import type { NovelFolder } from '@/services/folderService'
 import type { NovelDocument } from '@/services/documentService'
 import type { ReferenceFile } from '@/services/referenceFileService'
@@ -35,6 +38,7 @@ import {
 import {
   getChaptersByNovel,
   getChapterById,
+  getChapterSummaryById,
   createChapter,
   updateChapter,
   autoSaveChapter,
@@ -42,6 +46,7 @@ import {
 } from '@/services/chapterServiceForStudio'
 import {
   getReferenceFiles,
+  getReferenceFileById,
   uploadReferenceFile,
   deleteReferenceFile,
 } from '@/services/referenceFileService'
@@ -51,7 +56,7 @@ import {
 } from '@/services/aiConversationService'
 import type { AIConversation } from '@/services/aiConversationService'
 import { getAllGenerators, AiGenerator } from '@/services/aiGeneratorService'
-import novelService from '@/services/novelService'
+import novelService, { type OutlineContextMode } from '@/services/novelService'
 import novelVolumeService, { NovelVolume } from '@/services/novelVolumeService'
 import {
   getChapterOutline,
@@ -59,149 +64,541 @@ import {
   updateChapterOutline as updateVolumeChapterOutline,
   createChapterOutline,
   generateVolumeChapterOutlines,
+  regenerateVolumeChapterOutlines,
   type VolumeChapterOutline,
 } from '@/services/volumeChapterOutlineService'
+import {
+  getVolumeCharacterProfiles,
+  generateVolumeCharacterProfiles,
+  updateVolumeCharacterProfile,
+  type VolumeCharacterProfile,
+} from '@/services/volumeCharacterProfileService'
 import { getChapterHistory, getDocumentHistory, type WritingVersionHistory } from '@/services/writingHistoryService'
 import api from '@/services/api'
 import { withAIConfig, checkAIConfig, AI_CONFIG_ERROR_MESSAGE } from '@/utils/aiRequest'
 import { formatAIErrorMessage } from '@/utils/errorHandler'
+import { extractSseEvents } from '@/utils/sse'
 import './WritingStudioPage.css'
 
 const { Sider, Content } = Layout
 
-/**
- * 智能排版系统 - 一键格式化
- * 
- * 功能：
- * 1. 段落智能识别（对话、叙述、心理描写）
- * 2. 自动空行（对话段落、场景切换）
- * 3. 标点优化（修复常见错误）
- * 4. 段首缩进（可选）
- * 5. 特殊格式处理（章节标题、分隔线）
- */
-const formatChineseSentences = (input: string): string => {
-  if (!input) return '';
-  
-  let text = input.replace(/\r\n?/g, '\n');
-  let result = '';
-  let inQuote = false; // 是否在引号内
-  let currentLine = '';
-  
-  // 左引号字符集（只包括双引号和书名号）
-  const leftQuotes = '\u201c\u2018\u300c\u300e';  // "'「『
-  // 右引号字符集  
-  const rightQuotes = '\u201d\u2019\u300d\u300f'; // "'」』
-  // 句子结尾标点
-  const endMarks = '。？！';
-  // 所有中文标点符号（用于检查引号后是否跟标点）
-  const allPunctuation = '。？！，、；：…—';
-  
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    currentLine += char;
-    
-    // 检测左引号（进入引号）
-    if (leftQuotes.includes(char)) {
-      inQuote = true;
-    }
-    // 检测右引号（离开引号）
-    else if (rightQuotes.includes(char)) {
-      inQuote = false;
-      // 检查右引号后是否紧跟任何标点符号
-      const nextChar = i + 1 < text.length ? text[i + 1] : '';
-      if (allPunctuation.includes(nextChar)) {
-        // 如果后面是任何标点，不换行，继续累积
-        // 例如：“降维打击”。 或 “你好”，
-      } else {
-        // 右引号后没有标点，才换行（独立对话）
-        result += currentLine.trim() + '\n';
-        currentLine = '';
-      }
-    }
-    // 检测句子结尾标点
-    else if (endMarks.includes(char)) {
-      // 只有在引号外才换行
-      if (!inQuote) {
-        // 检查后面（跳过换行符和空格）是否有引号
-        let j = i + 1;
-        while (j < text.length && (text[j] === '\n' || text[j] === ' ' || text[j] === '\r')) {
-          j++;
-        }
-        const nextNonWhitespace = j < text.length ? text[j] : '';
-        
-        // 如果后面紧跟引号，不换行，继续累积
-        if (rightQuotes.includes(nextNonWhitespace)) {
-          // 例如：这一档了吧？\n”
-        } else {
-          // 后面没有引号，正常换行
-          result += currentLine.trim() + '\n';
-          currentLine = '';
-        }
-      }
-      // 引号内不换行，继续累积
-    }
-    // 检测省略号
-    else if (char === '…') {
-      // 检查是否是连续的省略号
-      if (i + 1 < text.length && text[i + 1] === '…') {
-        currentLine += text[i + 1];
-        i++; // 跳过下一个省略号
-      }
-      // 只有在引号外才换行
-      if (!inQuote) {
-        // 检查后面（跳过换行符和空格）是否有引号
-        let j = i + 1;
-        while (j < text.length && (text[j] === '\n' || text[j] === ' ' || text[j] === '\r')) {
-          j++;
-        }
-        const nextNonWhitespace = j < text.length ? text[j] : '';
-        
-        // 如果后面紧跟引号，不换行，继续累积
-        if (rightQuotes.includes(nextNonWhitespace)) {
-          // 例如：天啊…\n”
-        } else {
-          // 后面没有引号，正常换行
-          result += currentLine.trim() + '\n';
-          currentLine = '';
-        }
-      }
-    }
-    // 已有的换行符
-    else if (char === '\n') {
-      // 如果在引号内，将换行符替换为空格，不换行
-      if (inQuote) {
-        currentLine = currentLine.slice(0, -1) + ' ' // 移除换行符，添加空格
-      } else {
-        // 引号外，保留换行
-        if (currentLine.trim().length > 1) { // 排除只有换行符的情况
-          result += currentLine.trim() + '\n'
-        }
-        currentLine = ''
-      }
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const CHAPTER_HEADING_LINE_PATTERN = /^第\s*(?:\d+|[零〇一二两三四五六七八九十百千万]+)\s*章(?:\s*[：:·\-—]\s*|\s+)[^\n]{1,40}$/u
+const INLINE_CHAPTER_HEADING_PATTERN = /^(第\s*(?:\d+|[零〇一二两三四五六七八九十百千万]+)\s*章)(\s*[：:·\-—]\s*|\s+)(.+)$/u
+const INLINE_CHAPTER_HEADING_SPLIT_PATTERN =
+  /^(第\s*(?:\d+|[零〇一二两三四五六七八九十百千万]+)\s*章(?:\s*[：:·\-—]\s*|\s+).+?)(?:\s{2,}|\s+(?=[^\s]{1,8}[，。！？?!；：…])|\s+(?=[“‘「『"']))(.+)$/u
+const INLINE_BODY_PUNCTUATION_PATTERN = /[，。！？?!；：…]/u
+const INLINE_OPENING_QUOTE_PATTERN = /^[“‘「『"']/u
+const VOLUME_PLANNING_MODAL_Z_INDEX = 1200
+const VOLUME_PLANNING_DETAIL_MODAL_Z_INDEX = VOLUME_PLANNING_MODAL_Z_INDEX + 20
+const VOLUME_PLANNING_REGEN_MODAL_Z_INDEX = VOLUME_PLANNING_DETAIL_MODAL_Z_INDEX + 20
+const VOLUME_PLANNING_GENERATE_MODAL_Z_INDEX = VOLUME_PLANNING_REGEN_MODAL_Z_INDEX + 20
+
+type VolumeProfileEditableKey =
+  | 'currentPersona'
+  | 'coreMotivation'
+  | 'stanceRelationships'
+  | 'unfinishedGoals'
+  | 'behaviorBottomLine'
+
+const VOLUME_PROFILE_EDITABLE_FIELDS: Array<{ key: VolumeProfileEditableKey; label: string }> = [
+  { key: 'currentPersona', label: '当前人设' },
+  { key: 'coreMotivation', label: '核心动机' },
+  { key: 'stanceRelationships', label: '立场关系' },
+  { key: 'unfinishedGoals', label: '未完成目标' },
+  { key: 'behaviorBottomLine', label: '行为底线' },
+]
+
+const extractLeadingLine = (text: string): { line: string; rest: string } => {
+  const normalized = text.replace(/\r\n?/g, '\n').trimStart()
+  const newlineIndex = normalized.indexOf('\n')
+
+  if (newlineIndex === -1) {
+    return {
+      line: normalized.trim(),
+      rest: '',
     }
   }
 
-  // 添加剩余内容
-  if (currentLine.trim()) {
-    result += currentLine.trim()
+  return {
+    line: normalized.slice(0, newlineIndex).trim(),
+    rest: normalized.slice(newlineIndex).replace(/^\n+/, '').trimStart(),
   }
-  
-  // 清理：移除多余的连续换行（超过2个）
-  result = result.replace(/\n{3,}/g, '\n\n')
-  
-  return result.trim()
 }
 
+const isGeneratedChapterHeadingLine = (line: string, currentTitle?: string | null): boolean => {
+  if (!line) {
+    return false
+  }
+
+  if (CHAPTER_HEADING_LINE_PATTERN.test(line)) {
+    return true
+  }
+
+  return Boolean(currentTitle && line === currentTitle.trim())
+}
+
+const findInlineHeadingBodySplitIndex = (text: string): number => {
+  const whitespacePattern = /\s+/g
+  let match: RegExpExecArray | null
+
+  while ((match = whitespacePattern.exec(text)) !== null) {
+    const boundary = match.index ?? -1
+
+    if (boundary <= 0) {
+      continue
+    }
+
+    const titlePart = text.slice(0, boundary).trim()
+    const bodyPart = text.slice(boundary + match[0].length).trim()
+
+    if (!titlePart || !bodyPart || titlePart.length > 40) {
+      continue
+    }
+
+    if (INLINE_OPENING_QUOTE_PATTERN.test(bodyPart)) {
+      return boundary
+    }
+
+    const punctuationIndex = bodyPart.search(INLINE_BODY_PUNCTUATION_PATTERN)
+
+    if (punctuationIndex >= 1 && punctuationIndex <= 8) {
+      return boundary
+    }
+  }
+
+  return -1
+}
+
+const splitInlineChapterHeading = (line: string): { heading: string; body: string } => {
+  const directMatch = line.match(INLINE_CHAPTER_HEADING_SPLIT_PATTERN)
+
+  if (directMatch) {
+    const [, heading, body] = directMatch
+
+    if (heading.trim() && body.trim()) {
+      return {
+        heading: heading.trim(),
+        body: body.trim(),
+      }
+    }
+  }
+
+  const match = line.match(INLINE_CHAPTER_HEADING_PATTERN)
+
+  if (!match) {
+    return { heading: '', body: '' }
+  }
+
+  const [, prefix, separator, remainder] = match
+  const splitIndex = findInlineHeadingBodySplitIndex(remainder)
+
+  if (splitIndex === -1) {
+    return { heading: '', body: '' }
+  }
+
+  const titlePart = remainder.slice(0, splitIndex).trim()
+  const bodyPart = remainder.slice(splitIndex).trim()
+
+  if (!titlePart || !bodyPart) {
+    return { heading: '', body: '' }
+  }
+
+  return {
+    heading: `${prefix}${separator}${titlePart}`.trim(),
+    body: bodyPart,
+  }
+}
+
+const extractChapterTitleFromHeading = (heading: string): string => {
+  if (!heading) {
+    return ''
+  }
+
+  const inlineMatch = heading.match(INLINE_CHAPTER_HEADING_PATTERN)
+
+  if (inlineMatch) {
+    return inlineMatch[3].trim()
+  }
+
+  return heading.trim()
+}
+
+const stripGeneratedChapterHeading = (content: string, currentTitle?: string | null): string => {
+  if (!content) return ''
+
+  const { line, rest } = extractLeadingLine(content)
+
+  const inlineHeading = splitInlineChapterHeading(line)
+
+  if (inlineHeading.heading) {
+    return [inlineHeading.body, rest].filter(Boolean).join('\n').trimStart()
+  }
+
+  if (isGeneratedChapterHeadingLine(line, currentTitle)) {
+    return rest
+  }
+
+  return content.trimStart()
+}
+
+const DIALOGUE_LEFT_QUOTES = new Set(['“', '‘', '「', '『'])
+const DIALOGUE_RIGHT_QUOTES = new Set(['”', '’', '」', '』'])
+const SENTENCE_ENDING_CHARS = new Set(['。', '！', '？', '!', '?', '…'])
+const STRUCTURED_TEXT_PATTERN = /(^|\n)\s*(#{1,6}\s|[-*+]\s|>\s|\d+\.\s|```|~~~|\|.+\|)/m
+
+const isWhitespace = (char: string | undefined): boolean =>
+  !char || char === ' ' || char === '\n' || char === '\r' || char === '\t' || char === '\u3000'
+
+const getPreviousNonWhitespaceChar = (text: string, fromIndex: number): string => {
+  for (let i = fromIndex - 1; i >= 0; i -= 1) {
+    if (!isWhitespace(text[i])) {
+      return text[i]
+    }
+  }
+
+  return ''
+}
+
+const getNextNonWhitespaceIndex = (text: string, fromIndex: number): number => {
+  for (let i = fromIndex; i < text.length; i += 1) {
+    if (!isWhitespace(text[i])) {
+      return i
+    }
+  }
+
+  return -1
+}
+
+const isLikelyOpeningAsciiQuote = (text: string, index: number): boolean => {
+  const previousChar = getPreviousNonWhitespaceChar(text, index)
+
+  if (!previousChar) {
+    return true
+  }
+
+  return /[([{<（【《〈「『“‘，。！？?!；：、…,:;-]/u.test(previousChar)
+}
+
+const isLeftQuoteChar = (text: string, index: number): boolean => {
+  const char = text[index]
+
+  if (DIALOGUE_LEFT_QUOTES.has(char)) {
+    return true
+  }
+
+  return (char === '"' || char === "'") && isLikelyOpeningAsciiQuote(text, index)
+}
+
+const isRightQuoteChar = (text: string, index: number): boolean => {
+  const char = text[index]
+
+  if (DIALOGUE_RIGHT_QUOTES.has(char)) {
+    return true
+  }
+
+  return (char === '"' || char === "'") && !isLikelyOpeningAsciiQuote(text, index)
+}
+
+const isSentenceEndingChar = (char: string): boolean => SENTENCE_ENDING_CHARS.has(char)
+
+const getPreviousSentenceContextChar = (text: string, fromIndex: number): string => {
+  for (let i = fromIndex - 1; i >= 0; i -= 1) {
+    if (isWhitespace(text[i]) || isRightQuoteChar(text, i)) {
+      continue
+    }
+
+    return text[i]
+  }
+
+  return ''
+}
+
+const shouldPreserveStructuredText = (text: string): boolean => STRUCTURED_TEXT_PATTERN.test(text)
+
+const normalizeNovelText = (text: string): string => {
+  let normalized = text.replace(/\r\n?/g, '\n')
+
+  normalized = normalized.replace(
+    /[ \t\u3000]*\n+[ \t\u3000]*(?=[，。！？?!；：、…》」』】）〉”’"'])/gu,
+    ''
+  )
+  normalized = normalized.replace(/\n{3,}/g, '\n\n')
+
+  return normalized.trim()
+}
+
+const normalizeNovelBlock = (block: string): string =>
+  block
+    .replace(/[ \t\u3000]*\n+[ \t\u3000]*/gu, '')
+    .replace(/[ \t\u3000]{2,}/gu, ' ')
+    .trim()
+
+const extractLeadingChapterHeading = (text: string): { heading: string; body: string } => {
+  const { line, rest } = extractLeadingLine(text)
+
+  const inlineHeading = splitInlineChapterHeading(line)
+
+  if (inlineHeading.heading) {
+    return {
+      heading: inlineHeading.heading,
+      body: [inlineHeading.body, rest].filter(Boolean).join('\n').trim(),
+    }
+  }
+
+  if (CHAPTER_HEADING_LINE_PATTERN.test(line)) {
+    return {
+      heading: line,
+      body: rest,
+    }
+  }
+
+  return {
+    heading: '',
+    body: text,
+  }
+}
+
+const splitNovelBlockIntoParagraphs = (block: string): string[] => {
+  const flattenedBlock = normalizeNovelBlock(block)
+
+  if (!flattenedBlock) {
+    return []
+  }
+
+  const paragraphs: string[] = []
+  let current = ''
+  let quoteDepth = 0
+
+  const pushCurrentParagraph = () => {
+    const trimmed = current.trim()
+
+    if (trimmed) {
+      paragraphs.push(trimmed)
+    }
+
+    current = ''
+  }
+
+  for (let i = 0; i < flattenedBlock.length; i += 1) {
+    const char = flattenedBlock[i]
+    current += char
+
+    if (isLeftQuoteChar(flattenedBlock, i)) {
+      quoteDepth += 1
+      continue
+    }
+
+    if (isRightQuoteChar(flattenedBlock, i)) {
+      quoteDepth = Math.max(0, quoteDepth - 1)
+
+      const previousContextChar = getPreviousSentenceContextChar(flattenedBlock, i)
+      const nextIndex = getNextNonWhitespaceIndex(flattenedBlock, i + 1)
+
+      if (
+        isSentenceEndingChar(previousContextChar) &&
+        (nextIndex === -1 || isLeftQuoteChar(flattenedBlock, nextIndex))
+      ) {
+        pushCurrentParagraph()
+      }
+
+      continue
+    }
+
+    if (!isSentenceEndingChar(char)) {
+      continue
+    }
+
+    while (i + 1 < flattenedBlock.length && isSentenceEndingChar(flattenedBlock[i + 1])) {
+      current += flattenedBlock[i + 1]
+      i += 1
+    }
+
+    const nextIndex = getNextNonWhitespaceIndex(flattenedBlock, i + 1)
+
+    if (quoteDepth > 0) {
+      continue
+    }
+
+    if (nextIndex !== -1 && isRightQuoteChar(flattenedBlock, nextIndex)) {
+      continue
+    }
+
+    pushCurrentParagraph()
+  }
+
+  pushCurrentParagraph()
+
+  return paragraphs
+}
+
+const formatNovelParagraphs = (paragraphs: string[]): string =>
+  paragraphs
+    .map(paragraph => paragraph.trim())
+    .filter(Boolean)
+    .map(paragraph => `  ${paragraph}`)
+    .join('\n\n')
+
 /**
- * 修复常见标点错误
+ * 格式化流式输出文本 - 按照小说段落格式
+ * 每段之间有空行，每段开头有两个空格缩进
  */
+const formatStreamOutput = (text: string): string => {
+  if (!text) return ''
+
+  const normalized = normalizeNovelText(text)
+
+  if (!normalized) {
+    return ''
+  }
+
+  if (shouldPreserveStructuredText(normalized)) {
+    return normalized
+  }
+
+  const { heading, body } = extractLeadingChapterHeading(normalized)
+  const paragraphs = body
+    .split(/\n{2,}/)
+    .map(splitNovelBlockIntoParagraphs)
+    .flat()
+
+  if (heading && !paragraphs.length) {
+    return heading
+  }
+
+  if (!paragraphs.length) {
+    return formatNovelParagraphs([normalizeNovelBlock(body)])
+  }
+
+  const formattedBody = formatNovelParagraphs(paragraphs)
+
+  if (heading) {
+    return `${heading}\n\n${formattedBody}`
+  }
+
+  return formattedBody
+}
+
+const safeFormatStreamOutput = (text: string): string => {
+  try {
+    return formatStreamOutput(text)
+  } catch (error) {
+    console.error('formatStreamOutput failed, fallback to raw text:', error)
+    return text
+  }
+}
+
+const decodeWritingMessageChunk = (data: string): string => {
+  if (!data) {
+    return ''
+  }
+
+  const trimmed = data.trim()
+  if (!trimmed.startsWith('{')) {
+    return data
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as { chunk?: unknown }
+    if (typeof parsed.chunk === 'string') {
+      return parsed.chunk
+    }
+  } catch (error) {
+    console.warn('解析写作流消息失败，回退原始内容', error)
+  }
+
+  return data
+}
+
+const WRITING_STUDIO_PREFERENCES_KEY_PREFIX = 'writing-studio.preferences.'
+
+type WritingStudioPreferences = {
+  selectedModel?: string
+  writingStyleId?: number | null
+  temperature?: number
+}
+
+const getWritingStudioPreferencesKey = (novelId: number): string =>
+  `${WRITING_STUDIO_PREFERENCES_KEY_PREFIX}${novelId}`
+
+const readWritingStudioPreferences = (novelId: number): WritingStudioPreferences => {
+  if (!Number.isFinite(novelId) || novelId <= 0 || typeof window === 'undefined') {
+    return {}
+  }
+
+  try {
+    const raw = window.localStorage.getItem(getWritingStudioPreferencesKey(novelId))
+    if (!raw) {
+      return {}
+    }
+
+    const parsed = JSON.parse(raw) as WritingStudioPreferences
+
+    return {
+      selectedModel: typeof parsed.selectedModel === 'string' ? parsed.selectedModel : undefined,
+      writingStyleId:
+        parsed.writingStyleId === null
+          ? null
+          : typeof parsed.writingStyleId === 'number' && Number.isFinite(parsed.writingStyleId)
+          ? parsed.writingStyleId
+          : undefined,
+      temperature:
+        typeof parsed.temperature === 'number' && Number.isFinite(parsed.temperature)
+          ? parsed.temperature
+          : undefined,
+    }
+  } catch (error) {
+    console.warn('读取写作工作室偏好失败', error)
+    return {}
+  }
+}
+
+const writeWritingStudioPreferences = (
+  novelId: number,
+  preferences: WritingStudioPreferences
+): void => {
+  if (!Number.isFinite(novelId) || novelId <= 0 || typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    const next: WritingStudioPreferences = {}
+
+    if (typeof preferences.selectedModel === 'string' && preferences.selectedModel.trim()) {
+      next.selectedModel = preferences.selectedModel.trim()
+    }
+
+    if (preferences.writingStyleId === null) {
+      next.writingStyleId = null
+    } else if (
+      typeof preferences.writingStyleId === 'number' &&
+      Number.isFinite(preferences.writingStyleId)
+    ) {
+      next.writingStyleId = preferences.writingStyleId
+    }
+
+    if (typeof preferences.temperature === 'number' && Number.isFinite(preferences.temperature)) {
+      next.temperature = preferences.temperature
+    }
+
+    window.localStorage.setItem(getWritingStudioPreferencesKey(novelId), JSON.stringify(next))
+  } catch (error) {
+    console.warn('保存写作工作室偏好失败', error)
+  }
+}
 
 const WritingStudioPage: React.FC = () => {
   const { novelId } = useParams<{ novelId: string }>()
   const novelIdNumber = Number(novelId)
+  const { message, modal } = App.useApp()
 
   const [loading, setLoading] = useState(true)
   const [novelTitle, setNovelTitle] = useState('')
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window === 'undefined' ? 1440 : window.innerWidth
+  )
+  const [toolsDrawerVisible, setToolsDrawerVisible] = useState(false)
   
   // 章节相关状态
   const [chapters, setChapters] = useState<Chapter[]>([])
@@ -219,9 +616,17 @@ const WritingStudioPage: React.FC = () => {
   const [referenceFiles, setReferenceFiles] = useState<ReferenceFile[]>([])
   const [selectedReferenceIds, setSelectedReferenceIds] = useState<number[]>([])
   const [selectedLinkedIds, setSelectedLinkedIds] = useState<number[]>([])
-  const [selectedModel, setSelectedModel] = useState<string>('')  // 初始为空，由 ToolPanel 加载后设置默认模型
-  const [temperature, setTemperature] = useState<number>(1.0)
-  const [writingStyleId, setWritingStyleId] = useState<number | null>(null)
+  const [selectedModel, setSelectedModel] = useState<string>(
+    () => readWritingStudioPreferences(novelIdNumber).selectedModel ?? ''
+  )
+  const [temperature, setTemperature] = useState<number>(
+    () => readWritingStudioPreferences(novelIdNumber).temperature ?? 1.0
+  )
+  const [writingStyleId, setWritingStyleId] = useState<number | null>(
+    () => readWritingStudioPreferences(novelIdNumber).writingStyleId ?? null
+  )
+  const [outlineContextMode, setOutlineContextMode] = useState<OutlineContextMode>('SIMPLIFIED')
+  const [outlineContextModeSaving, setOutlineContextModeSaving] = useState(false)
   const [aiHistory, setAIHistory] = useState<AIConversation[]>([])
   const [aiInput, setAIInput] = useState('')
   const [aiOutput, setAIOutput] = useState('')
@@ -235,6 +640,9 @@ const WritingStudioPage: React.FC = () => {
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null)
   const [selectedTreeKey, setSelectedTreeKey] = useState<string>('root')
   const hasInitialized = useRef<Record<number, boolean>>({})
+  const isApplyingStudioPreferencesRef = useRef(false)
+  const pendingAiOutputRef = useRef('')
+  const aiOutputFlushTimerRef = useRef<number | null>(null)
   
   // 自动保存相关状态
   const autoSaveTimerRef = useRef<number | null>(null)
@@ -281,12 +689,55 @@ const WritingStudioPage: React.FC = () => {
   
   // 章纲缺失提醒弹窗状态
   const [outlineMissingModalVisible, setOutlineMissingModalVisible] = useState(false)
-  // 标记章纲缺失弹窗的来源：'generate' 从生成按钮进入（显示“继续生成”），'outline' 从章纲按钮进入（不显示“继续生成”）
+  // 标记提醒弹窗的来源：'generate' 从生成按钮进入（优先引导卷规划并保留“继续生成”），'outline' 从章纲按钮进入（直接引导生成细纲）
   const [outlineMissingSource, setOutlineMissingSource] = useState<'generate' | 'outline'>('generate')
   const [outlineGenerateModalVisible, setOutlineGenerateModalVisible] = useState(false)
   const [isGeneratingOutline, setIsGeneratingOutline] = useState(false)
   const [outlineGenerateProgress, setOutlineGenerateProgress] = useState<string>('')
   const [outlineGeneratePercent, setOutlineGeneratePercent] = useState<number>(0)
+  const [outlineBatchSize, setOutlineBatchSize] = useState<number>(() => {
+    try {
+      const raw = localStorage.getItem('outlineBatchSize')
+      const parsed = raw ? Number(raw) : 10
+      if (Number.isFinite(parsed)) {
+        return Math.min(15, Math.max(5, parsed))
+      }
+    } catch (e) {
+      // ignore
+    }
+    return 10
+  })
+  const [outlineReminderInfo, setOutlineReminderInfo] = useState<{
+    volumeId?: number
+    lastOutlineChapterInVolume: number
+    currentChapterInVolume?: number
+    totalChapters?: number
+  } | null>(null)
+  const [profileGenerateModalVisible, setProfileGenerateModalVisible] = useState(false)
+  const [profileGenerationRequirement, setProfileGenerationRequirement] = useState('')
+  const [outlineGenerationRequirement, setOutlineGenerationRequirement] = useState('')
+  const [planningVolumeId, setPlanningVolumeId] = useState<number | null>(null)
+  const [profileCount, setProfileCount] = useState<number | null>(null)
+  const [isGeneratingProfiles, setIsGeneratingProfiles] = useState(false)
+  const [volumePlanningVisible, setVolumePlanningVisible] = useState(false)
+  const [planningProfiles, setPlanningProfiles] = useState<VolumeCharacterProfile[]>([])
+  const [planningProfilesLoading, setPlanningProfilesLoading] = useState(false)
+  const [planningOutlinesLoading, setPlanningOutlinesLoading] = useState(false)
+  const [profileDetailVisible, setProfileDetailVisible] = useState(false)
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [editingProfile, setEditingProfile] = useState<VolumeCharacterProfile | null>(null)
+  const [outlineDetailVisible, setOutlineDetailVisible] = useState(false)
+  const [outlineDetailLoading, setOutlineDetailLoading] = useState(false)
+  const [detailProfile, setDetailProfile] = useState<VolumeCharacterProfile | null>(null)
+  const [detailOutline, setDetailOutline] = useState<VolumeChapterOutline | null>(null)
+  const [detailOutlineEditing, setDetailOutlineEditing] = useState(false)
+  const [detailOutlineSaving, setDetailOutlineSaving] = useState(false)
+  const [editingDetailFields, setEditingDetailFields] = useState<Partial<VolumeChapterOutline>>({})
+  // 重新生成细纲相关
+  const [regenModalVisible, setRegenModalVisible] = useState(false)
+  const [regenFrom, setRegenFrom] = useState<number>(1)
+  const [regenTo, setRegenTo] = useState<number>(10)
+  const [isRegenerating, setIsRegenerating] = useState(false)
   
   // AI审稿相关状态
   const [reviewDrawerVisible, setReviewDrawerVisible] = useState(false)
@@ -295,6 +746,7 @@ const WritingStudioPage: React.FC = () => {
   
   // 导出相关状态
   const [exportVisible, setExportVisible] = useState(false)
+  const [exportModalTab, setExportModalTab] = useState<'export' | 'import'>('export')
 
   // AI消痕相关状态
   const [traceRemovalDrawerVisible, setTraceRemovalDrawerVisible] = useState(false)
@@ -304,7 +756,80 @@ const WritingStudioPage: React.FC = () => {
   // 概要相关状态
   const [summaryDrawerVisible, setSummaryDrawerVisible] = useState(false)
   const [summaryLoading, setSummaryLoading] = useState(false)
+  const [summaryGenerating, setSummaryGenerating] = useState(false)
   const [summaryData, setSummaryData] = useState<any>(null)
+  const [graphModalVisible, setGraphModalVisible] = useState(false)
+
+  const scheduleAIOutputFlush = useCallback((content: string) => {
+    pendingAiOutputRef.current = content
+
+    if (aiOutputFlushTimerRef.current !== null) {
+      return
+    }
+
+    aiOutputFlushTimerRef.current = window.setTimeout(() => {
+      aiOutputFlushTimerRef.current = null
+      setAIOutput(pendingAiOutputRef.current)
+    }, 48)
+  }, [])
+
+  const flushAIOutput = useCallback((content: string) => {
+    pendingAiOutputRef.current = content
+
+    if (aiOutputFlushTimerRef.current !== null) {
+      clearTimeout(aiOutputFlushTimerRef.current)
+      aiOutputFlushTimerRef.current = null
+    }
+
+    setAIOutput(content)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (aiOutputFlushTimerRef.current !== null) {
+        clearTimeout(aiOutputFlushTimerRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!novelIdNumber) {
+      return
+    }
+
+    const preferences = readWritingStudioPreferences(novelIdNumber)
+    isApplyingStudioPreferencesRef.current = true
+    setSelectedModel(preferences.selectedModel ?? '')
+    setWritingStyleId(preferences.writingStyleId ?? null)
+    setTemperature(preferences.temperature ?? 1.0)
+  }, [novelIdNumber])
+
+  useEffect(() => {
+    if (!novelIdNumber) {
+      return
+    }
+
+    if (isApplyingStudioPreferencesRef.current) {
+      const preferences = readWritingStudioPreferences(novelIdNumber)
+      const matchesStoredPreferences =
+        (preferences.selectedModel ?? '') === selectedModel &&
+        (preferences.writingStyleId ?? null) === writingStyleId &&
+        (preferences.temperature ?? 1.0) === temperature
+
+      if (!matchesStoredPreferences) {
+        return
+      }
+
+      isApplyingStudioPreferencesRef.current = false
+      return
+    }
+
+    writeWritingStudioPreferences(novelIdNumber, {
+      selectedModel,
+      writingStyleId,
+      temperature,
+    })
+  }, [novelIdNumber, selectedModel, temperature, writingStyleId])
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -324,6 +849,7 @@ const WritingStudioPage: React.FC = () => {
         try {
           const novel = await novelService.getNovelById(novelIdNumber)
           setNovelTitle(novel.title)
+          setOutlineContextMode(novel.outlineContextMode === 'FULL' ? 'FULL' : 'SIMPLIFIED')
         } catch (e) {
           console.warn('获取小说信息失败', e)
         }
@@ -380,6 +906,26 @@ const WritingStudioPage: React.FC = () => {
 
     loadInitialData()
   }, [novelIdNumber])
+
+  const handleOutlineContextModeChange = useCallback(async (mode: OutlineContextMode) => {
+    if (!novelIdNumber || mode === outlineContextMode || outlineContextModeSaving) {
+      return
+    }
+
+    const previousMode = outlineContextMode
+    setOutlineContextMode(mode)
+    setOutlineContextModeSaving(true)
+
+    try {
+      await novelService.updateNovel(novelIdNumber, { outlineContextMode: mode })
+    } catch (error: any) {
+      console.error('保存大纲上下文模式失败:', error)
+      setOutlineContextMode(previousMode)
+      message.error(error?.message || '保存大纲模式失败')
+    } finally {
+      setOutlineContextModeSaving(false)
+    }
+  }, [message, novelIdNumber, outlineContextMode, outlineContextModeSaving])
 
   // 加载小说大纲
   const loadNovelOutline = async () => {
@@ -460,30 +1006,132 @@ const WritingStudioPage: React.FC = () => {
     }
   }
 
-  // 加载概要信息
+  const buildChapterSummaryViewData = (
+    chapter: Chapter,
+    extra?: { characterCount?: number; eventCount?: number; message?: string }
+  ) => ({
+    mode: 'chapter',
+    chapterId: chapter.id,
+    chapterNumber: chapter.chapterNumber,
+    title: chapter.title || (chapter.chapterNumber != null ? `第 ${chapter.chapterNumber} 章` : '当前章节'),
+    summary: chapter.summary || '',
+    wordCount: chapter.wordCount || String(chapter.content || '').replace(/\s+/g, '').length,
+    updatedAt: chapter.updatedAt || chapter.createdAt || '',
+    characterCount: extra?.characterCount,
+    eventCount: extra?.eventCount,
+    message: extra?.message || '',
+  })
+
+  const syncChapterSummaryState = (chapterId: number, summary: string) => {
+    setSelectedChapter((prev) => {
+      if (!prev || prev.id !== chapterId) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        summary,
+      }
+    })
+
+    setChapters((prev) =>
+      prev.map((chapter) =>
+        chapter.id === chapterId
+          ? {
+              ...chapter,
+              summary,
+            }
+          : chapter
+      )
+    )
+  }
+
   const loadSummary = async () => {
-    if (!novelIdNumber) return
     setSummaryLoading(true)
     try {
-      // 获取小说基本信息
-      const novelResponse = await api.get(`/novels/${novelIdNumber}`)
-      const novelData = novelResponse.data || novelResponse
-      
-      // 获取大纲信息
-      const outlineResponse = await api.get(`/novel-outlines/novel/${novelIdNumber}`)
-      const outlineData = outlineResponse.data || outlineResponse
-      
-      setSummaryData({
-        novel: novelData,
-        outline: outlineData
-      })
-      message.success('概要加载成功')
+      if (editingType === 'document') {
+        if (!selectedDocument) {
+          message.warning('请先选择一个文档')
+          setSummaryData(null)
+          return
+        }
+
+        setSummaryData({
+          mode: 'document',
+          title: selectedDocument.title || '当前文档',
+          wordCount: String(selectedDocument.content || '').replace(/\s+/g, '').length,
+          updatedAt: selectedDocument.updatedAt || selectedDocument.createdAt || '',
+          preview: (selectedDocument.content || '').trim(),
+          message: '当前“概要”仅支持章节内容。请切换到章节后使用。',
+        })
+        return
+      }
+
+      if (!selectedChapter?.id) {
+        message.warning('请先选择一个章节')
+        setSummaryData(null)
+        return
+      }
+
+      const summaryResult = await getChapterSummaryById(selectedChapter.id)
+      const chapterWithSummary = {
+        ...selectedChapter,
+        summary: summaryResult.summary || '',
+      }
+
+      syncChapterSummaryState(selectedChapter.id, chapterWithSummary.summary)
+      setSummaryData(buildChapterSummaryViewData(chapterWithSummary))
     } catch (error: any) {
       console.error('加载概要失败:', error)
-      message.error('加载概要失败')
+      message.error(error?.message || '加载概要失败')
       setSummaryData(null)
     } finally {
       setSummaryLoading(false)
+    }
+  }
+
+  const handleGenerateSummary = async () => {
+    if (editingType !== 'chapter' || !selectedChapter?.id) {
+      message.warning('概要仅支持章节')
+      return
+    }
+
+    if (!selectedChapter.content || !selectedChapter.content.trim()) {
+      message.warning('当前章节没有内容，无法生成概要')
+      return
+    }
+
+    setSummaryGenerating(true)
+    try {
+      const result: any = await api.post(`/chapters/${selectedChapter.id}/summarize`, withAIConfig({}))
+      let latestSummary = typeof result?.summary === 'string' ? result.summary : ''
+
+      if (!latestSummary.trim()) {
+        const summaryResult = await getChapterSummaryById(selectedChapter.id)
+        latestSummary = summaryResult.summary || ''
+      }
+
+      syncChapterSummaryState(selectedChapter.id, latestSummary)
+
+      const chapterWithSummary = {
+        ...selectedChapter,
+        summary: latestSummary,
+      }
+
+      setSummaryData(
+        buildChapterSummaryViewData(chapterWithSummary, {
+          characterCount: Number(result?.characterCount ?? 0),
+          eventCount: Number(result?.eventCount ?? 0),
+          message: result?.message || '章节概要完成',
+        })
+      )
+
+      message.success(result?.message || '章节概要完成')
+    } catch (error: any) {
+      console.error('生成概要失败:', error)
+      message.error(error?.message || '生成概要失败')
+    } finally {
+      setSummaryGenerating(false)
     }
   }
 
@@ -499,8 +1147,133 @@ const WritingStudioPage: React.FC = () => {
     })
     return matched || currentVolume || volumes[0] || null
   }
+
+  const resolveTotalChaptersInVolume = (volume: NovelVolume | null): number | null => {
+    if (!volume) return null
+    const count = Number((volume as any).chapterCount)
+    if (Number.isFinite(count) && count > 0) return count
+    const start = Number((volume as any).chapterStart)
+    const end = Number((volume as any).chapterEnd)
+    if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+      return end - start + 1
+    }
+    return null
+  }
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('outlineBatchSize', String(outlineBatchSize))
+    } catch (e) {
+      // ignore
+    }
+  }, [outlineBatchSize])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const refreshPlanningStatus = async () => {
+      if (!novelIdNumber || editingType !== 'chapter' || !selectedChapter?.chapterNumber) {
+        setOutlineReminderInfo(null)
+        return
+      }
+
+      let volumeList = volumes
+      if (!volumeList || volumeList.length === 0) {
+        try {
+          volumeList = await novelVolumeService.getVolumesByNovelId(novelIdNumber.toString())
+          if (cancelled) return
+          setVolumes(volumeList)
+        } catch (error) {
+          console.warn('加载卷列表失败，无法刷新细纲提醒', error)
+          return
+        }
+      }
+
+      const volumeForChapter = findVolumeForChapter(selectedChapter.chapterNumber)
+      if (!volumeForChapter) {
+        setOutlineReminderInfo(null)
+        return
+      }
+
+      const volumeId = Number(volumeForChapter.id)
+      setPlanningVolumeId(volumeId)
+      setChapterOutlineVolumeId(volumeId)
+
+      let outlineList: VolumeChapterOutline[] = []
+      try {
+        outlineList = await getChapterOutlinesByVolume(volumeId, true)
+      } catch (error) {
+        console.warn('获取细纲列表失败，继续写作流程', error)
+      }
+      if (cancelled) return
+      setChapterOutlineList(outlineList)
+
+      const volumeStart = Number((volumeForChapter as any).chapterStart ?? 1)
+      const currentCiv = selectedChapter.chapterNumber - volumeStart + 1
+      const lastOutlineCiv = outlineList.reduce((max, item) => {
+        const civ = Number(item.chapterInVolume ?? 0)
+        return civ > max ? civ : max
+      }, 0)
+      const hasOutline = outlineList.some((item) => {
+        if (item.globalChapterNumber != null) {
+          return Number(item.globalChapterNumber) === selectedChapter.chapterNumber
+        }
+        if (item.chapterInVolume != null) {
+          return Number(item.chapterInVolume) === currentCiv
+        }
+        return false
+      })
+
+      setOutlineReminderInfo({
+        volumeId,
+        lastOutlineChapterInVolume: lastOutlineCiv,
+        currentChapterInVolume: currentCiv,
+        totalChapters: resolveTotalChaptersInVolume(volumeForChapter) ?? undefined,
+      })
+
+      try {
+        const profileRes = await getVolumeCharacterProfiles(volumeId)
+        if (cancelled) return
+        setProfileCount(profileRes.count ?? 0)
+      } catch (error) {
+        console.warn('获取本卷人设失败', error)
+      }
+    }
+
+    refreshPlanningStatus()
+
+    return () => {
+      cancelled = true
+    }
+  }, [novelIdNumber, editingType, selectedChapter?.chapterNumber, volumes, isGeneratingOutline])
   const formatKeyPlotPointsText = (raw: unknown): string => {
     if (raw == null) return ''
+    const extractFromObject = (obj: any): string => {
+      if (!obj || typeof obj !== 'object') return ''
+      const content = typeof obj.content === 'string' ? obj.content.trim() : ''
+      if (content) return content
+      const direction = typeof obj.direction === 'string' ? obj.direction.trim() : ''
+      if (direction) return direction
+      const hardConstraints = obj.hard_constraints ?? obj.hardConstraints
+      if (Array.isArray(hardConstraints)) {
+        const joined = hardConstraints
+          .map((item: any) => String(item ?? '').trim())
+          .filter(Boolean)
+          .join('\n')
+        if (joined) return joined
+      }
+      const sceneBeats = obj.scene_beats ?? obj.sceneBeats
+      if (Array.isArray(sceneBeats)) {
+        const joined = sceneBeats
+          .map((item: any) => String(item ?? '').trim())
+          .filter(Boolean)
+          .join('\n')
+        if (joined) return joined
+      }
+      const hook = typeof obj.hook === 'string' ? obj.hook.trim() : ''
+      if (hook) return hook
+      return ''
+    }
     if (Array.isArray(raw)) {
       return raw
         .map((item) => String(item ?? '').trim())
@@ -533,7 +1306,7 @@ const WritingStudioPage: React.FC = () => {
                 return innerParsed
               }
               if (innerParsed && typeof innerParsed === 'object') {
-                return JSON.stringify(innerParsed, null, 2)
+                return extractFromObject(innerParsed)
               }
             } catch (innerError) {
               return parsed
@@ -542,7 +1315,7 @@ const WritingStudioPage: React.FC = () => {
           return parsed
         }
         if (parsed && typeof parsed === 'object') {
-          return JSON.stringify(parsed, null, 2)
+          return extractFromObject(parsed)
         }
       } catch (error) {
         return trimmed
@@ -550,11 +1323,8 @@ const WritingStudioPage: React.FC = () => {
       return trimmed
     }
     if (typeof raw === 'object') {
-      try {
-        return JSON.stringify(raw, null, 2)
-      } catch (error) {
-        return String(raw)
-      }
+      const extracted = extractFromObject(raw as any)
+      return extracted || ''
     }
     return String(raw)
   }
@@ -654,6 +1424,151 @@ const WritingStudioPage: React.FC = () => {
     return flattened.length > 50 ? `${flattened.slice(0, 50)}...` : flattened
   }
 
+  const normalizeVolumeCharacterProfile = (profile: VolumeCharacterProfile): VolumeCharacterProfile => {
+    const raw = (profile.rawProfile || '').trim()
+
+    const firstNonEmpty = (...candidates: any[]): string | undefined => {
+      for (const item of candidates) {
+        if (item === null || item === undefined) continue
+        const text = String(item).trim()
+        if (text.length > 0) return text
+      }
+      return undefined
+    }
+
+    const extractJsonObjectText = (text: string): string | null => {
+      const start = text.indexOf('{')
+      const end = text.lastIndexOf('}')
+      if (start >= 0 && end > start) return text.slice(start, end + 1)
+      return null
+    }
+
+    const readRawObject = (text: string): Record<string, any> | null => {
+      const trimmed = text.trim()
+      if (!trimmed) return null
+
+      const attempts = [trimmed]
+      const extracted = extractJsonObjectText(trimmed)
+      if (extracted && extracted !== trimmed) attempts.unshift(extracted)
+
+      for (const candidate of attempts) {
+        const looksJson =
+          candidate.startsWith('{') ||
+          candidate.startsWith('[') ||
+          candidate.startsWith('"') ||
+          candidate.startsWith('`')
+        if (!looksJson) continue
+
+        let normalized = candidate
+        if (normalized.startsWith('```')) {
+          normalized = normalized.replace(/^```[a-zA-Z]*\s*/m, '').replace(/```$/m, '').trim()
+        }
+
+        try {
+          const parsed = JSON.parse(normalized)
+          if (parsed && typeof parsed === 'object') {
+            if (Array.isArray(parsed)) {
+              const first = parsed.find((item) => item && typeof item === 'object' && !Array.isArray(item))
+              return first ? (first as Record<string, any>) : null
+            }
+            return parsed as Record<string, any>
+          }
+          if (typeof parsed === 'string') {
+            try {
+              const parsed2 = JSON.parse(parsed)
+              if (parsed2 && typeof parsed2 === 'object' && !Array.isArray(parsed2)) {
+                return parsed2 as Record<string, any>
+              }
+            } catch {
+              // ignore
+            }
+          }
+        } catch {
+          // ignore and continue
+        }
+      }
+
+      return null
+    }
+
+    const rawObj = raw ? readRawObject(raw) : null
+
+    const getFromRaw = (...keys: string[]): string | undefined => {
+      if (!rawObj) return undefined
+      for (const key of keys) {
+        if (!key) continue
+        const value = (rawObj as any)[key]
+        const text = value === null || value === undefined ? '' : String(value).trim()
+        if (text.length > 0) return text
+      }
+      return undefined
+    }
+
+    const normalized: VolumeCharacterProfile = { ...profile }
+    normalized.characterName = firstNonEmpty(
+      profile.characterName,
+      getFromRaw('character_name', 'characterName', '人物', '角色名', '角色名称', '姓名', 'name')
+    )
+    normalized.currentPersona = firstNonEmpty(
+      profile.currentPersona,
+      getFromRaw('current_persona', 'currentPersona', '当前人设', '人设', 'persona')
+    )
+    normalized.coreMotivation = firstNonEmpty(
+      profile.coreMotivation,
+      getFromRaw('core_motivation', 'coreMotivation', '核心动机', '动机', 'motivation')
+    )
+    normalized.stanceRelationships = firstNonEmpty(
+      profile.stanceRelationships,
+      getFromRaw('stance_relationships', 'stanceRelationships', '立场关系', '关系', 'stance')
+    )
+    normalized.unfinishedGoals = firstNonEmpty(
+      profile.unfinishedGoals,
+      getFromRaw('unfinished_goals', 'unfinishedGoals', '未竟目标', '未完成目标', '目标', 'goals')
+    )
+    normalized.behaviorBottomLine = firstNonEmpty(
+      profile.behaviorBottomLine,
+      getFromRaw('behavior_bottom_line', 'behaviorBottomLine', '行为底线', '底线', '原则', 'bottom_line')
+    )
+
+    return normalized
+  }
+
+  const getProfileInitial = (name?: string) => {
+    const trimmed = (name || '').trim()
+    if (!trimmed) return '角'
+    return trimmed.slice(0, 1).toUpperCase()
+  }
+
+  const buildProfileSummary = (profile: VolumeCharacterProfile) => {
+    const candidates = [
+      profile.currentPersona,
+      profile.coreMotivation,
+      profile.stanceRelationships,
+      profile.unfinishedGoals,
+      profile.behaviorBottomLine,
+    ]
+    const found = candidates.find((item) => item && String(item).trim().length > 0)
+    const text = String(found || '').replace(/\s+/g, ' ').trim()
+    if (!text) return '暂无摘要'
+    return text.length > 70 ? `${text.slice(0, 70)}...` : text
+  }
+
+  const getVolumeProfileDetailFields = (
+    profile: VolumeCharacterProfile
+  ): Array<{ key: VolumeProfileEditableKey; label: string; value?: string }> =>
+    VOLUME_PROFILE_EDITABLE_FIELDS.map((field) => ({
+      key: field.key,
+      label: field.label,
+      value: profile[field.key] ? String(profile[field.key]) : undefined,
+    }))
+
+  const buildOutlineSummary = (outline: VolumeChapterOutline) => {
+    const text = formatKeyPlotPointsText(outline.keyPlotPoints) || outline.direction || ''
+    const flattened = text.replace(/\s+/g, ' ').trim()
+    if (!flattened) return '暂无细纲摘要'
+    return flattened.length > 100 ? `${flattened.slice(0, 100)}...` : flattened
+  }
+
   const mapOutlineToEditingForm = (
     outline: VolumeChapterOutline,
     fallbackChapterNumber?: number
@@ -664,7 +1579,7 @@ const WritingStudioPage: React.FC = () => {
     })
     
     const keyPlotPointsText = formatKeyPlotPointsText(outline.keyPlotPoints)
-    const directionText = keyPlotPointsText || outline.direction || ''
+    const directionText = (outline.direction || '').trim() || keyPlotPointsText || ''
     const foreshadowDetailText = formatForeshadowDetailText(outline.foreshadowDetail)
     const mapped = {
       outlineId: outline.id,
@@ -675,8 +1590,8 @@ const WritingStudioPage: React.FC = () => {
       foreshadowAction: outline.foreshadowAction || 'NONE',
       foreshadowDetail: foreshadowDetailText,
       status: outline.status || undefined,
-      // 兼容字段：keyPlotPoints 作为剧情方向来源
-      keyPlotPoints: keyPlotPointsText,
+      // 兼容字段：旧数据可能把整坨 JSON 塞在 keyPlotPoints；现在统一用 direction 存纯文本细纲
+      keyPlotPoints: undefined,
       emotionalTone: outline.emotionalTone || '',
       subplot: outline.subplot || '',
       antagonism: outline.antagonism || '',
@@ -772,10 +1687,7 @@ const WritingStudioPage: React.FC = () => {
         return
       }
     }
-    const directionText = (editingChapterOutline.keyPlotPoints ?? editingChapterOutline.direction ?? '').trim()
-    const keyPlotPointsPayload = buildKeyPlotPointsPayload(
-      editingChapterOutline.keyPlotPoints ?? editingChapterOutline.direction
-    )
+    const directionText = (editingChapterOutline.direction ?? '').trim()
 
     setChapterOutlineLoading(true)
     try {
@@ -785,7 +1697,8 @@ const WritingStudioPage: React.FC = () => {
         // 更新模式
         const payload = {
           direction: directionText,
-          keyPlotPoints: keyPlotPointsPayload,
+          // 细纲已改为 direction 单字段纯文本；清空遗留的 keyPlotPoints，避免前端预览出现 JSON。
+          keyPlotPoints: '',
           foreshadowAction: editingChapterOutline.foreshadowAction,
           foreshadowDetail: editingChapterOutline.foreshadowDetail,
         }
@@ -803,7 +1716,6 @@ const WritingStudioPage: React.FC = () => {
           chapterInVolume: editingChapterOutline.chapterInVolume,
           volumeNumber: editingChapterOutline.volumeNumber,
           direction: directionText,
-          keyPlotPoints: keyPlotPointsPayload,
           foreshadowAction: editingChapterOutline.foreshadowAction,
           foreshadowDetail: editingChapterOutline.foreshadowDetail,
         }
@@ -824,6 +1736,64 @@ const WritingStudioPage: React.FC = () => {
   const allDocuments = useMemo(() => {
     return Object.values(documentsMap).flat()
   }, [documentsMap])
+
+  const leftSidebarWidth = useMemo(() => {
+    const adaptiveWidth = Math.round(viewportWidth * 0.17)
+    return Math.min(Math.max(adaptiveWidth, 200), 240)
+  }, [viewportWidth])
+
+  const toolsSidebarWidth = useMemo(() => {
+    const adaptiveWidth = Math.round(viewportWidth * 0.3)
+    return Math.min(Math.max(adaptiveWidth, 340), 520)
+  }, [viewportWidth])
+
+  const shouldUseToolsDrawer = viewportWidth - leftSidebarWidth - toolsSidebarWidth < 600
+
+  const toolsDrawerWidth = useMemo(() => {
+    const adaptiveWidth = Math.min(Math.max(Math.round(viewportWidth * 0.42), 320), 420)
+    return Math.min(adaptiveWidth, Math.max(viewportWidth - 24, 280))
+  }, [viewportWidth])
+
+  const aiHistoryItems = useMemo(
+    () =>
+      aiHistory.map((item) => ({
+        id: item.id,
+        content: item.assistantMessage,
+        createdAt: item.createdAt,
+      })),
+    [aiHistory]
+  )
+
+  const handleCopyAIOutput = useCallback(() => {
+    navigator.clipboard.writeText(aiOutput)
+    message.success('已复制到剪贴板')
+  }, [aiOutput])
+
+  const handleClearAIHistory = useCallback(() => {
+    return clearAIConversations(novelIdNumber).then(() => {
+      setAIHistory([])
+      setAIOutput('')
+    })
+  }, [novelIdNumber])
+
+  useEffect(() => {
+    const handleResize = () => {
+      setViewportWidth(window.innerWidth)
+    }
+
+    handleResize()
+    window.addEventListener('resize', handleResize)
+
+    return () => {
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!shouldUseToolsDrawer) {
+      setToolsDrawerVisible(false)
+    }
+  }, [shouldUseToolsDrawer])
 
   const loadFolderDocuments = useCallback(
     async (folderId: number) => {
@@ -1050,7 +2020,7 @@ const WritingStudioPage: React.FC = () => {
   const handleDeleteFolder = async (folder: NovelFolder) => {
     if (!novelIdNumber) return
     try {
-      Modal.confirm({
+      modal.confirm({
         title: '确认删除',
         content: `确定要删除文件夹"${folder.folderName}"吗？这将同时删除其中的所有文档。`,
         okText: '删除',
@@ -1079,7 +2049,7 @@ const WritingStudioPage: React.FC = () => {
 
   const handleDeleteDocument = async (document: NovelDocument) => {
     try {
-      Modal.confirm({
+      modal.confirm({
         title: '确认删除',
         content: `确定要删除文档"${document.title}"吗？`,
         okText: '删除',
@@ -1109,7 +2079,7 @@ const WritingStudioPage: React.FC = () => {
   // 删除章节
   const handleDeleteChapter = async (chapter: Chapter) => {
     try {
-      Modal.confirm({
+      modal.confirm({
         title: '确认删除',
         content: `确定要删除章节"${chapter.title}"吗？`,
         okText: '删除',
@@ -1176,69 +2146,69 @@ const WritingStudioPage: React.FC = () => {
     }
   }
 
-  const handleSendAIRequest = async (skipOutlineCheck?: boolean | React.MouseEvent) => {
-    // 处理参数：如果是事件对象，则视为未跳过检查
-    const shouldSkipCheck = typeof skipOutlineCheck === 'boolean' ? skipOutlineCheck : false
-    
-    if (!selectedChapter && !selectedDocument) {
-      message.warning('请选择要编辑的内容')
-      return
+  const hasCachedOutlineForCurrentChapter = () => {
+    if (editingType !== 'chapter' || !selectedChapter?.chapterNumber) {
+      return true
     }
 
-    if (!novelIdNumber) return
+    const chapterNumber = selectedChapter.chapterNumber
+    const currentChapterInVolume = outlineReminderInfo?.currentChapterInVolume
 
-    // 检查AI配置
-    if (!checkAIConfig()) {
-      message.error(AI_CONFIG_ERROR_MESSAGE)
-      return
-    }
-
-    // 检查章纲是否存在（仅对章节类型检查，且未跳过检查时）
-    if (!shouldSkipCheck && editingType === 'chapter' && selectedChapter?.chapterNumber) {
-      console.log('[章纲检查] 开始检查章纲, novelId:', novelIdNumber, 'chapterNumber:', selectedChapter.chapterNumber)
-      try {
-        const outlineRes = await getChapterOutline(novelIdNumber, selectedChapter.chapterNumber)
-        console.log('[章纲检查] 接口返回:', outlineRes)
-        if (!outlineRes.hasOutline) {
-          // 章纲不存在，弹出提醒（标记来源为 'generate'，显示“继续生成”按钮）
-          console.log('[章纲检查] 章纲不存在，弹出提醒')
-          setOutlineMissingSource('generate')
-          setOutlineMissingModalVisible(true)
-          return
-        }
-        console.log('[章纲检查] 章纲存在，继续生成')
-      } catch (error) {
-        console.warn('[章纲检查] 检查章纲失败，继续生成:', error)
-        // 检查失败时不阻断流程
+    return chapterOutlineList.some((item) => {
+      if (item.globalChapterNumber != null) {
+        return Number(item.globalChapterNumber) === chapterNumber
       }
-    } else {
-      console.log('[章纲检查] 跳过检查, shouldSkipCheck:', shouldSkipCheck, 'editingType:', editingType, 'chapterNumber:', selectedChapter?.chapterNumber)
-    }
+
+      if (currentChapterInVolume != null && item.chapterInVolume != null) {
+        return Number(item.chapterInVolume) === currentChapterInVolume
+      }
+
+      return false
+    })
+  }
+
+  const openVolumePlanningFromGeneratePrompt = async () => {
+    setOutlineMissingModalVisible(false)
+    await handleOpenVolumePlanning()
+  }
+
+  const executeAIRequest = async () => {
+    let accumulatedContent = ''
+    let hasStreamContent = false
 
     try {
       // 重置所有状态，确保每次生成都是全新的
       setIsGenerating(true)
-      setAIOutput('')
+      flushAIOutput('')
       setGenerationPhases([])
       setHasContentStarted(false)
-      
+
       const userMessage = aiInput.trim() || '开始'
       const currentChapterNumber =
         editingType === 'chapter' ? selectedChapter?.chapterNumber : null
-      
+
       // 构建参考内容：将选中的参考文件和关联文档合并
       const referenceContents: Record<string, string> = {}
-      
+
       // 添加选中的参考文件
       if (selectedReferenceIds.length > 0) {
         for (const refId of selectedReferenceIds) {
           const refFile = referenceFiles.find(f => f.id === refId)
-          if (refFile && refFile.fileContent) {
-            referenceContents[`参考文件: ${refFile.fileName}`] = refFile.fileContent
+          if (!refFile) {
+            continue
+          }
+
+          try {
+            const fullReferenceFile = await getReferenceFileById(novelIdNumber, refId)
+            if (fullReferenceFile.fileContent) {
+              referenceContents[`参考文件: ${refFile.fileName}`] = fullReferenceFile.fileContent
+            }
+          } catch (err) {
+            console.warn(`获取参考文件 ${refId} 内容失败`, err)
           }
         }
       }
-      
+
       // 添加选中的关联文档（需要动态获取内容，因为列表可能只有摘要）
       if (selectedLinkedIds.length > 0) {
         for (const docId of selectedLinkedIds) {
@@ -1260,7 +2230,7 @@ const WritingStudioPage: React.FC = () => {
           }
         }
       }
-      
+
       const token = localStorage.getItem('token')
       const requestBody = withAIConfig(
         {
@@ -1269,6 +2239,7 @@ const WritingStudioPage: React.FC = () => {
           count: 1,
           userAdjustment: userMessage,
           promptTemplateId: writingStyleId,
+          outlineContextMode,
           referenceContents: Object.keys(referenceContents).length > 0 ? referenceContents : undefined,
         },
         {
@@ -1276,7 +2247,7 @@ const WritingStudioPage: React.FC = () => {
           temperature: temperature,
         }
       )
-      
+
       const response = await fetch('/api/agentic/generate-chapters-stream', {
         method: 'POST',
         headers: {
@@ -1300,140 +2271,212 @@ const WritingStudioPage: React.FC = () => {
       }
 
       let buffer = ''
-      let accumulatedContent = ''
-      let currentEventName = ''
-      let currentDataLines: string[] = []
+      let receivedComplete = false
+      let receivedError = false
       const phases: string[] = []
 
-      const processSSEEvent = (eventName: string, data: string) => {
-        if (!data || data === '[DONE]') {
+      const processSseEvent = (eventName: string, data: string) => {
+        const normalizedEvent = eventName || 'message'
+
+        if (!data || data === '[DONE]' || normalizedEvent === 'keepalive') {
           return
         }
 
-        // 按事件类型处理：后端已保证使用 event 类型区分内容与状态
-        if (eventName === 'error') {
+        if (normalizedEvent === 'error') {
+          receivedError = true
           message.error(formatAIErrorMessage(data))
-          setIsGenerating(false)
           return
         }
 
-        if (eventName === 'phase') {
+        if (normalizedEvent === 'complete') {
+          receivedComplete = true
+          return
+        }
+
+        if (normalizedEvent === 'warning') {
+          phases.push(`⚠️ ${data}`)
+          setGenerationPhases([...phases])
+          message.warning(data)
+          return
+        }
+
+        if (normalizedEvent === 'phase' || normalizedEvent === 'outline') {
           phases.push(data)
           setGenerationPhases([...phases])
-          console.log('phase', data)
           return
         }
 
-        if (eventName === 'outline') {
-          phases.push(data)
-          setGenerationPhases([...phases])
-          console.log('outline', data)
-          return
+        if (normalizedEvent === 'message') {
+          accumulatedContent += decodeWritingMessageChunk(data)
+          if (!hasStreamContent) {
+            hasStreamContent = true
+            setHasContentStarted(true)
+          }
+          scheduleAIOutputFlush(accumulatedContent)
         }
-
-        if (eventName === 'message') {
-          // 处理正文内容流式输出（message事件），按一键格式化逻辑实时排版
-          console.log('[流式输出] 接收到 message 事件，纯文本:', data)
-          setHasContentStarted(true)
-          accumulatedContent += data
-          console.log('[流式输出] 累积内容长度:', accumulatedContent.length)
-          const formattedContent = formatChineseSentences(accumulatedContent)
-          setAIOutput(formattedContent)
-          return
-        }
-
-        // 其他事件类型（keepalive、batch_complete等）不写入正文
       }
 
       while (true) {
         const { done, value } = await reader.read()
-        
+
         if (done) {
-          // 生成完成，重置状态
-          setIsGenerating(false)
-          if (accumulatedContent.trim()) {
-            // 生成完成后格式化内容
-            const formatted = formatChineseSentences(accumulatedContent)
-            setAIOutput(formatted)
-            message.success('AI写作完成')
-          } else {
-            // 如果没有内容，也要确保状态正确
-            setHasContentStarted(false)
-          }
           break
         }
 
-        const chunk = decoder.decode(value, { stream: true })
-        buffer += chunk
-
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          const trimmed = line.trim()
-
-          // 空行表示一个事件块结束：处理当前块
-          if (!trimmed) {
-            if (currentDataLines.length > 0) {
-              const data = currentDataLines.join('\n')
-              processSSEEvent(currentEventName, data)
-              currentDataLines = []
-              currentEventName = ''
-            }
-            continue
-          }
-
-          // 事件名称可以出现在 data 之前或之后，取同一块中最后一次出现的名称
-          if (line.startsWith('event:')) {
-            currentEventName = line.startsWith('event: ')
-              ? line.slice(7).trim()
-              : line.slice(6).trim()
-            continue
-          }
-          
-          if (line.startsWith('data:')) {
-            const payload = line.startsWith('data: ')
-              ? line.slice(6)
-              : line.slice(5)
-            if (payload === '[DONE]') {
-              // 单独处理 DONE：结束当前块并重置状态
-              if (currentDataLines.length > 0) {
-                const data = currentDataLines.join('\n')
-                processSSEEvent(currentEventName, data)
-                currentDataLines = []
-                currentEventName = ''
-              }
-              continue
-            }
-            currentDataLines.push(payload)
-            continue
-          }
-
-          // 其他行忽略
+        if (!value) {
+          continue
         }
+
+        buffer += decoder.decode(value, { stream: true })
+
+        const parsed = extractSseEvents(buffer)
+        buffer = parsed.remaining
+
+        for (const event of parsed.events) {
+          processSseEvent(event.event, event.data)
+
+          if (receivedError) {
+            break
+          }
+        }
+
+        if (receivedError) {
+          try {
+            await reader.cancel()
+          } catch (cancelError) {
+            console.warn('取消异常流读取失败', cancelError)
+          }
+          break
+        }
+      }
+
+      if (!receivedError && buffer.trim()) {
+        const parsed = extractSseEvents(`${buffer}\n\n`)
+        for (const event of parsed.events) {
+          processSseEvent(event.event, event.data)
+          if (receivedError) {
+            break
+          }
+        }
+      }
+
+      setIsGenerating(false)
+
+      if (receivedError) {
+        if (!hasStreamContent) {
+          setHasContentStarted(false)
+        }
+        return
+      }
+
+      if (receivedComplete) {
+        if (accumulatedContent.trim()) {
+          flushAIOutput(accumulatedContent)
+          message.success('AI写作完成')
+        } else {
+          setHasContentStarted(false)
+          message.warning('生成已结束，但未收到正文内容')
+        }
+        return
+      }
+
+      if (accumulatedContent.trim()) {
+        flushAIOutput(accumulatedContent)
+        message.warning('流式生成连接已中断，内容可能不完整，请重试')
+      } else {
+        setHasContentStarted(false)
+        message.error('流式生成已中断，请重试')
       }
     } catch (error: any) {
       console.error('AI生成失败:', error)
       message.error(formatAIErrorMessage(error))
-      // 确保错误时所有状态都被重置
       setIsGenerating(false)
-      setAIOutput('')
-      setGenerationPhases([])
-      setHasContentStarted(false)
+
+      if (!hasStreamContent) {
+        flushAIOutput('')
+        setGenerationPhases([])
+        setHasContentStarted(false)
+      }
     }
   }
 
-  const handleReplaceContent = () => {
-    if (!selectedChapter && !selectedDocument) return
-    const formatted = formatChineseSentences(aiOutput)
-    
-    if (editingType === 'chapter' && selectedChapter) {
-      setSelectedChapter((prev) => (prev ? { ...prev, content: formatted } : prev))
-    } else if (editingType === 'document' && selectedDocument) {
-      setSelectedDocument((prev) => (prev ? { ...prev, content: formatted } : prev))
+  const handleSendAIRequest = async (skipPlanningCheck?: boolean | React.MouseEvent) => {
+    if (!selectedChapter && !selectedDocument) {
+      message.warning('请选择要编辑的内容')
+      return
     }
-    
-    onContentChange(formatted)
+
+    if (!novelIdNumber) return
+
+    if (!checkAIConfig()) {
+      message.error(AI_CONFIG_ERROR_MESSAGE)
+      return
+    }
+
+    const shouldSkipPlanningCheck = typeof skipPlanningCheck === 'boolean'
+      ? skipPlanningCheck
+      : false
+
+    if (!shouldSkipPlanningCheck && editingType === 'chapter' && selectedChapter?.chapterNumber != null) {
+      let hasChapterOutline = false
+
+      try {
+        const outlineRes = await getChapterOutline(novelIdNumber, selectedChapter.chapterNumber)
+        hasChapterOutline = Boolean(outlineRes.hasOutline && outlineRes.outline)
+      } catch (error) {
+        console.warn('检查当前章节细纲失败，回退到本地缓存判断', error)
+        hasChapterOutline = hasCachedOutlineForCurrentChapter()
+      }
+
+      if (!hasChapterOutline) {
+        setOutlineMissingSource('generate')
+        setOutlineMissingModalVisible(true)
+        return
+      }
+    }
+
+    await executeAIRequest()
+  }
+
+  const handleReplaceContent = async () => {
+    if (!selectedChapter && !selectedDocument) return
+    const replacementContent = aiOutput
+
+    if (editingType === 'chapter' && selectedChapter) {
+      const { heading } = extractLeadingChapterHeading(replacementContent)
+      const generatedTitle = extractChapterTitleFromHeading(heading)
+
+      setSelectedChapter((prev) => (
+        prev
+          ? {
+              ...prev,
+              content: replacementContent,
+              title: generatedTitle || prev.title,
+            }
+          : prev
+      ))
+      setChapters((prev) => prev.map((chapter) => (
+        chapter.id === selectedChapter.id
+          ? {
+              ...chapter,
+              content: replacementContent,
+              title: generatedTitle || chapter.title,
+            }
+          : chapter
+      )))
+
+      if (generatedTitle && generatedTitle !== selectedChapter.title) {
+        try {
+          await updateChapter(selectedChapter.id, { title: generatedTitle })
+        } catch (error) {
+          console.warn('同步章节标题失败，保留本地替换结果', error)
+        }
+      }
+    } else if (editingType === 'document' && selectedDocument) {
+      setSelectedDocument((prev) => (prev ? { ...prev, content: replacementContent } : prev))
+    }
+
+    onContentChange(replacementContent)
     message.success('内容已替换到编辑器')
   }
 
@@ -1643,13 +2686,13 @@ const WritingStudioPage: React.FC = () => {
               if (contentToAdd && !progressRegex.test(contentToAdd)) {
                 accumulated += contentToAdd
                 const sanitized = accumulated.replace(progressRegex, '')
-                setProcessedContent(sanitized)
+                setProcessedContent(safeFormatStreamOutput(sanitized))
               }
             } catch (e) {
               if (data && data !== '[DONE]' && !progressRegex.test(data)) {
                 accumulated += data
                 const sanitized = accumulated.replace(progressRegex, '')
-                setProcessedContent(sanitized)
+                setProcessedContent(safeFormatStreamOutput(sanitized))
               }
             }
           }
@@ -1763,12 +2806,12 @@ const WritingStudioPage: React.FC = () => {
               
               if (contentToAdd) {
                 accumulated += contentToAdd
-                setReviewResult(accumulated)
+                setReviewResult(safeFormatStreamOutput(accumulated))
               }
             } catch (e) {
               if (data && data !== '[DONE]') {
                 accumulated += data
-                setReviewResult(accumulated)
+                setReviewResult(safeFormatStreamOutput(accumulated))
               }
             }
           }
@@ -1782,8 +2825,8 @@ const WritingStudioPage: React.FC = () => {
   }
 
   // 处理章纲生成
-  const handleGenerateChapterOutline = async () => {
-    let volumeId = chapterOutlineVolumeId || Number(currentVolume?.id)
+  const handleGenerateChapterOutline = async (countOverride?: number) => {
+    let volumeId = planningVolumeId || chapterOutlineVolumeId || Number(currentVolume?.id)
     
     // 如果还没有确定卷ID，尝试加载并确定
     if (!volumeId) {
@@ -1833,13 +2876,13 @@ const WritingStudioPage: React.FC = () => {
 
     // 模拟进度条（因为实际接口不返回进度）
     const progressMessages = [
-      { percent: 5, msg: '正在分析卷大纲...' },
-      { percent: 15, msg: '正在规划章节结构...' },
+      { percent: 5, msg: '正在分析卷蓝图...' },
+      { percent: 15, msg: '正在规划细纲结构...' },
       { percent: 30, msg: '正在生成章节方向...' },
       { percent: 45, msg: '正在设计情节要点...' },
       { percent: 60, msg: '正在构建情感基调...' },
       { percent: 75, msg: '正在编排伏笔线索...' },
-      { percent: 85, msg: '正在优化章纲内容...' },
+      { percent: 85, msg: '正在优化细纲内容...' },
       { percent: 92, msg: '即将完成...' },
     ]
     
@@ -1854,19 +2897,27 @@ const WritingStudioPage: React.FC = () => {
     }, 15000) // 每15秒更新一次进度
 
     try {
-      const result = await generateVolumeChapterOutlines(volumeId)
+      const targetCount = typeof countOverride === 'number' && Number.isFinite(countOverride)
+        ? countOverride
+        : outlineBatchSize
+      const result = await generateVolumeChapterOutlines(
+        volumeId,
+        targetCount,
+        selectedModel,
+        outlineGenerationRequirement
+      )
       clearInterval(progressInterval)
       setOutlineGeneratePercent(100)
       setOutlineGenerateProgress('生成完成！')
-      
+
       setTimeout(() => {
-        message.success(`成功生成 ${result.count} 个章纲`)
+        message.success(`成功生成 ${result.count} 个细纲`)
         setOutlineGenerateModalVisible(false)
         setOutlineMissingModalVisible(false)
         setOutlineGenerateProgress('')
         setOutlineGeneratePercent(0)
       }, 500)
-      
+
       // 刷新章纲列表（使用 summary=true 提升性能）
       if (volumeId) {
         const list = await getChapterOutlinesByVolume(volumeId, true)
@@ -1874,7 +2925,7 @@ const WritingStudioPage: React.FC = () => {
       }
     } catch (error: any) {
       clearInterval(progressInterval)
-      console.error('生成章纲失败:', error)
+      console.error('生成细纲失败:', error)
       message.error(formatAIErrorMessage(error))
       setOutlineGenerateProgress('')
       setOutlineGeneratePercent(0)
@@ -1883,54 +2934,305 @@ const WritingStudioPage: React.FC = () => {
     }
   }
 
-  // 打开章纲生成弹窗
-  const openOutlineGenerateModal = async () => {
-    console.log('[章纲生成] 打开弹窗, selectedChapter:', selectedChapter, 'volumes:', volumes)
-    
-    // 如果 volumes 为空，先加载
+  // 重新生成指定范围的细纲
+  const handleRegenerateChapterOutline = async (fromChapter: number, toChapter: number) => {
+    const volumeId = planningVolumeId || chapterOutlineVolumeId || Number(currentVolume?.id)
+    if (!volumeId) { message.error('无法确定卷ID'); return }
+    if (!checkAIConfig()) { message.error(AI_CONFIG_ERROR_MESSAGE); return }
+
+    const count = toChapter - fromChapter + 1
+    setIsRegenerating(true)
+    try {
+      const result = await regenerateVolumeChapterOutlines(
+        volumeId,
+        count,
+        selectedModel,
+        outlineGenerationRequirement
+      )
+      message.success(`已重新生成第 ${fromChapter} - ${toChapter} 章细纲，共 ${result.count} 个`)
+      setRegenModalVisible(false)
+      const list = await getChapterOutlinesByVolume(volumeId, true)
+      setChapterOutlineList(list)
+    } catch (error: any) {
+      message.error(formatAIErrorMessage(error))
+    } finally {
+      setIsRegenerating(false)
+    }
+  }
+
+  // 保存细纲详情编辑
+  const handleSaveDetailOutline = async () => {
+    if (!detailOutline?.id) return
+    setDetailOutlineSaving(true)
+    try {
+      const updated = await updateVolumeChapterOutline(detailOutline.id, {
+        direction: editingDetailFields.direction,
+      })
+      setDetailOutline({ ...detailOutline, ...updated })
+      setChapterOutlineList((prev) =>
+        prev.map((o) => (o.id === detailOutline.id ? { ...o, ...updated } : o))
+      )
+      setDetailOutlineEditing(false)
+      message.success('细纲已保存')
+    } catch {
+      message.error('保存失败，请重试')
+    } finally {
+      setDetailOutlineSaving(false)
+    }
+  }
+
+
+  const handleGenerateVolumeProfiles = async () => {
+    const volumeId = planningVolumeId || chapterOutlineVolumeId || Number(currentVolume?.id)
+    if (!volumeId) {
+      message.error('无法确定卷ID，请刷新页面重试')
+      return
+    }
+
+    if (!checkAIConfig()) {
+      message.error(AI_CONFIG_ERROR_MESSAGE)
+      return
+    }
+
+    setIsGeneratingProfiles(true)
+    try {
+      const result = await generateVolumeCharacterProfiles(
+        volumeId,
+        selectedModel,
+        profileGenerationRequirement
+      )
+      const count = Number(result.count ?? 0)
+      setProfileCount(count)
+      if (Array.isArray(result.profiles)) {
+        setPlanningProfiles(result.profiles.map((item) => normalizeVolumeCharacterProfile(item)))
+      } else {
+        setPlanningProfiles([])
+      }
+      setProfileGenerateModalVisible(false)
+      message.success(count > 0 ? `生成人设完成（${count}人）` : '人设生成完成')
+    } catch (error: any) {
+      console.error('生成人设失败:', error)
+      message.error(formatAIErrorMessage(error))
+    } finally {
+      setIsGeneratingProfiles(false)
+    }
+  }
+
+  const handleSaveDetailProfile = async () => {
+    if (!detailProfile?.id || !editingProfile) return
+
+    const payload = VOLUME_PROFILE_EDITABLE_FIELDS.reduce((acc, field) => {
+      const rawValue = editingProfile[field.key]
+      acc[field.key] = typeof rawValue === 'string' ? rawValue.trim() : ''
+      return acc
+    }, {} as Partial<VolumeCharacterProfile>)
+
+    setProfileSaving(true)
+    try {
+      const updated = await updateVolumeCharacterProfile(detailProfile.id, payload)
+      const nextProfile = normalizeVolumeCharacterProfile({
+        ...detailProfile,
+        ...updated,
+        rawProfile: '',
+      })
+
+      setDetailProfile(nextProfile)
+      setPlanningProfiles((prev) =>
+        prev.map((item) => (item.id === detailProfile.id ? nextProfile : item))
+      )
+      setEditingProfile(null)
+      message.success('人设已保存')
+    } catch (error: any) {
+      message.error(formatAIErrorMessage(error))
+    } finally {
+      setProfileSaving(false)
+    }
+  }
+
+  const refreshPlanningProfiles = async (volumeIdOverride?: number) => {
+    const volumeId = volumeIdOverride || planningVolumeId || chapterOutlineVolumeId || Number(currentVolume?.id)
+    if (!volumeId) return
+    setPlanningProfilesLoading(true)
+    try {
+      const result = await getVolumeCharacterProfiles(volumeId)
+      const count = Number(result.count ?? 0)
+      setProfileCount(count)
+      setPlanningProfiles(
+        Array.isArray(result.profiles) ? result.profiles.map((item) => normalizeVolumeCharacterProfile(item)) : []
+      )
+    } catch (error: any) {
+      console.warn('获取本卷人设失败', error)
+      message.error(formatAIErrorMessage(error))
+    } finally {
+      setPlanningProfilesLoading(false)
+    }
+  }
+
+  const refreshPlanningOutlines = async (volumeIdOverride?: number) => {
+    const volumeId = volumeIdOverride || planningVolumeId || chapterOutlineVolumeId || Number(currentVolume?.id)
+    if (!volumeId) return
+    setPlanningOutlinesLoading(true)
+    try {
+      const list = await getChapterOutlinesByVolume(volumeId, true)
+      setChapterOutlineList(list)
+    } catch (error) {
+      console.warn('获取细纲列表失败', error)
+      message.error('获取细纲列表失败')
+    } finally {
+      setPlanningOutlinesLoading(false)
+    }
+  }
+
+  const resolvePlanningVolumeId = async (): Promise<number | null> => {
+    if (!novelIdNumber) return null
     let volumeList = volumes
     if (!volumeList || volumeList.length === 0) {
-      if (novelIdNumber) {
-        try {
-          volumeList = await novelVolumeService.getVolumesByNovelId(novelIdNumber.toString())
-          setVolumes(volumeList)
-          console.log('[章纲生成] 加载卷列表:', volumeList)
-        } catch (error) {
-          console.error('[章纲生成] 加载卷列表失败:', error)
-        }
+      try {
+        volumeList = await novelVolumeService.getVolumesByNovelId(novelIdNumber.toString())
+        setVolumes(volumeList)
+      } catch (error) {
+        console.warn('加载卷列表失败', error)
+        return null
       }
     }
-    
-    // 确定当前章节所属的卷
-    if (selectedChapter?.chapterNumber && volumeList && volumeList.length > 0) {
-      console.log('[章纲生成] 查找章节所属卷, chapterNumber:', selectedChapter.chapterNumber)
-      
-      // 按章节范围查找
-      const matched = volumeList.find((v) => {
-        const start = Number(v.chapterStart)
-        const end = Number(v.chapterEnd)
-        console.log('[章纲生成] 检查卷:', v.id, 'start:', start, 'end:', end)
-        if (!Number.isFinite(start) || !Number.isFinite(end)) return false
-        return selectedChapter.chapterNumber! >= start && selectedChapter.chapterNumber! <= end
-      })
-      
-      if (matched) {
-        console.log('[章纲生成] 找到匹配的卷:', matched.id)
-        setChapterOutlineVolumeId(Number(matched.id))
-      } else {
-        // 如果没有匹配，使用第一卷
-        console.log('[章纲生成] 未找到匹配的卷，使用第一卷')
-        setChapterOutlineVolumeId(Number(volumeList[0].id))
-      }
-    } else if (volumeList && volumeList.length > 0) {
-      // 没有选中章节，使用第一卷
-      console.log('[章纲生成] 没有选中章节，使用第一卷')
-      setChapterOutlineVolumeId(Number(volumeList[0].id))
+    if (!volumeList || volumeList.length === 0) return null
+    const volumeForChapter = findVolumeForChapter(selectedChapter?.chapterNumber ?? null)
+    const volumeId = Number(volumeForChapter?.id ?? volumeList[0].id)
+    if (!Number.isFinite(volumeId)) return null
+    setPlanningVolumeId(volumeId)
+    setChapterOutlineVolumeId(volumeId)
+    return volumeId
+  }
+
+  const handleOpenVolumePlanning = async () => {
+    if (editingType !== 'chapter' || !selectedChapter) {
+      message.warning('请先在左侧选择一个章节')
+      return
     }
-    
+    const volumeId = await resolvePlanningVolumeId()
+    if (!volumeId) {
+      message.error('未检测到当前章节所属卷，请先补充卷规划后再试')
+      return
+    }
+    setDetailProfile(null)
+    setDetailOutline(null)
+    setVolumePlanningVisible(true)
+    refreshPlanningProfiles(volumeId)
+    refreshPlanningOutlines(volumeId)
+  }
+
+  const openProfileGenerateModal = async () => {
+    const volumeId = await resolvePlanningVolumeId()
+    if (!volumeId) {
+      message.error('无法确定卷ID，请刷新页面重试')
+      return
+    }
+    setProfileGenerateModalVisible(true)
+  }
+
+  // 打开章纲生成弹窗
+  const openOutlineGenerateModal = async () => {
+    const volumeId = await resolvePlanningVolumeId()
+    if (!volumeId) {
+      message.error('无法确定卷ID，请刷新页面重试')
+      return
+    }
+
     setOutlineMissingModalVisible(false)
     setOutlineGenerateModalVisible(true)
   }
+
+  const outlineRangeText = useMemo(() => {
+    if (!outlineReminderInfo) return ''
+    const start = Math.max(1, (outlineReminderInfo.lastOutlineChapterInVolume || 0) + 1)
+    const total = outlineReminderInfo.totalChapters
+    const end = total
+      ? Math.min(start + outlineBatchSize - 1, total)
+      : start + outlineBatchSize - 1
+    return `卷内第 ${start} - ${end} 章`
+  }, [outlineReminderInfo, outlineBatchSize])
+
+  const planningVolume = useMemo(() => {
+    const candidateId = planningVolumeId || chapterOutlineVolumeId || currentVolume?.id
+    if (candidateId && volumes && volumes.length > 0) {
+      const matched = volumes.find((v) => Number(v.id) === Number(candidateId))
+      if (matched) return matched
+    }
+    return currentVolume || volumes[0] || null
+  }, [planningVolumeId, chapterOutlineVolumeId, currentVolume, volumes])
+
+  const sortedOutlineList = useMemo(() => {
+    if (!Array.isArray(chapterOutlineList)) return []
+    return [...chapterOutlineList].sort((a, b) => {
+      const aNum = Number(a.chapterInVolume ?? a.globalChapterNumber ?? 0)
+      const bNum = Number(b.chapterInVolume ?? b.globalChapterNumber ?? 0)
+      return aNum - bNum
+    })
+  }, [chapterOutlineList])
+
+  const profileReady = (profileCount ?? 0) > 0
+  const volumeTitle = planningVolume?.title || (planningVolume?.volumeNumber ? `第${planningVolume.volumeNumber}卷` : '当前卷')
+  const volumeRangeText = planningVolume?.chapterStart && planningVolume?.chapterEnd
+    ? `第 ${planningVolume.chapterStart} - ${planningVolume.chapterEnd} 章`
+    : '章节范围待定'
+  const outlineCoverageText = outlineReminderInfo
+    ? (outlineReminderInfo.lastOutlineChapterInVolume > 0
+      ? `已覆盖到卷内第 ${outlineReminderInfo.lastOutlineChapterInVolume} 章`
+      : '尚未生成细纲')
+    : '未获取到细纲信息'
+  const progressText = outlineReminderInfo?.currentChapterInVolume && outlineReminderInfo?.totalChapters
+    ? `当前进度 ${outlineReminderInfo.currentChapterInVolume}/${outlineReminderInfo.totalChapters}`
+    : outlineReminderInfo?.currentChapterInVolume
+    ? `当前进度 第 ${outlineReminderInfo.currentChapterInVolume} 章`
+    : '当前进度待定'
+
+  const toolPanelNode = (
+    <ToolPanel
+      isGenerating={isGenerating}
+      generatorId={generatorId}
+      onGeneratorChange={setGeneratorId}
+      selectedModel={selectedModel}
+      onModelChange={setSelectedModel}
+      temperature={temperature}
+      onTemperatureChange={setTemperature}
+      referenceFiles={referenceFiles}
+      onUploadReferenceFile={handleUploadReference}
+      onDeleteReferenceFile={handleDeleteReference}
+      onSelectReferenceFiles={setSelectedReferenceIds}
+      selectedReferenceFileIds={selectedReferenceIds}
+      linkedDocuments={allDocuments}
+      onSelectLinkedDocuments={setSelectedLinkedIds}
+      selectedLinkedDocumentIds={selectedLinkedIds}
+      outlineContextMode={outlineContextMode}
+      outlineContextModeSaving={outlineContextModeSaving}
+      onOutlineContextModeChange={handleOutlineContextModeChange}
+      writingStyleId={writingStyleId}
+      onWritingStyleChange={setWritingStyleId}
+      aiInputValue={aiInput}
+      onChangeAIInput={setAIInput}
+      onSendAIRequest={handleSendAIRequest}
+      aiOutput={aiOutput}
+      generationPhases={generationPhases}
+      hasContentStarted={hasContentStarted}
+      folders={folders}
+      documentsMap={documentsMap}
+      onCopyAIOutput={handleCopyAIOutput}
+      onReplaceWithAIOutput={handleReplaceContent}
+      aiHistory={aiHistoryItems}
+      onClearAIHistory={handleClearAIHistory}
+      generators={generators}
+      searchResults={searchResults}
+      onSelectSearchResult={handleSelectDocument}
+      novelId={novelIdNumber}
+      currentChapterNumber={
+        editingType === 'chapter' ? selectedChapter?.chapterNumber ?? null : null
+      }
+      currentVolumeId={currentVolume ? Number(currentVolume.id) : null}
+      currentVolumeNumber={currentVolume?.volumeNumber ?? null}
+      onShowGraph={() => setGraphModalVisible(true)}
+      onShowHistory={handleShowHistory}
+    />
+  )
 
   if (loading) {
     return (
@@ -1942,9 +3244,9 @@ const WritingStudioPage: React.FC = () => {
 
   return (
     <Layout className="writing-studio">
-      <Sider width={240} className="writing-sidebar" theme="light">
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <div style={{ flex: 1, overflow: 'hidden' }}>
+      <Sider width={leftSidebarWidth} className="writing-sidebar" theme="light">
+        <div className="writing-sidebar-shell">
+          <div className="writing-sidebar-tree">
             <FileTree
               novelTitle={novelTitle}
               folders={folders}
@@ -1994,18 +3296,52 @@ const WritingStudioPage: React.FC = () => {
               }}
             />
           </div>
-          <div style={{ padding: '12px', borderTop: '1px solid #f0f0f0', background: '#fff' }}>
-            <Button 
-              block 
-              icon={<ExportOutlined />} 
-              onClick={() => setExportVisible(true)}
-            >
-              导出作品
-            </Button>
+          <div className="writing-transfer-wrap">
+            <div className="writing-transfer-panel">
+              <div className="writing-transfer-actions">
+                <button
+                  type="button"
+                  className="writing-transfer-btn writing-transfer-btn-import"
+                  onClick={() => {
+                    setExportModalTab('import')
+                    setExportVisible(true)
+                  }}
+                >
+                  <span className="writing-transfer-btn-icon">
+                    <UploadOutlined />
+                  </span>
+                  <span className="writing-transfer-btn-title">导入</span>
+                </button>
+                <button
+                  type="button"
+                  className="writing-transfer-btn writing-transfer-btn-export"
+                  onClick={() => {
+                    setExportModalTab('export')
+                    setExportVisible(true)
+                  }}
+                >
+                  <span className="writing-transfer-btn-icon">
+                    <ExportOutlined />
+                  </span>
+                  <span className="writing-transfer-btn-title">导出</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </Sider>
       <Content className="writing-editor">
+        {shouldUseToolsDrawer && !toolsDrawerVisible && (
+          <div className="writing-tools-trigger">
+            <Button
+              type="primary"
+              icon={<RocketOutlined />}
+              onClick={() => setToolsDrawerVisible(true)}
+            >
+              AI助手
+            </Button>
+          </div>
+        )}
         <EditorPanel
           document={
             editingType === 'chapter' && selectedChapter
@@ -2050,70 +3386,51 @@ const WritingStudioPage: React.FC = () => {
             await loadVolumeOutline()
             setVolumeOutlineDrawerVisible(true)
           }}
+          onShowVolumePlanning={editingType === 'chapter' ? handleOpenVolumePlanning : undefined}
           onShowSummary={async () => {
             await loadSummary()
             setSummaryDrawerVisible(true)
           }}
           onReviewManuscript={handleReviewManuscript}
           onRemoveAITrace={handleRemoveAITrace}
+          onTitleChange={async (newTitle) => {
+            if (editingType === 'chapter' && selectedChapter) {
+              await updateChapter(selectedChapter.id, { title: newTitle })
+              setSelectedChapter((prev) => prev ? { ...prev, title: newTitle } : prev)
+              setChapters((prev) => prev.map((c) => c.id === selectedChapter.id ? { ...c, title: newTitle } : c))
+            } else if (editingType === 'document' && selectedDocument) {
+              await updateDocument(selectedDocument.id, { title: newTitle })
+              setSelectedDocument((prev) => prev ? { ...prev, title: newTitle } : prev)
+            }
+          }}
           chapterNumber={
             editingType === 'chapter' ? selectedChapter?.chapterNumber ?? null : null
           }
         />
       </Content>
-      <Sider width={600} className="writing-tools" theme="light">
-        <ToolPanel
-          isGenerating={isGenerating}
-          generatorId={generatorId}
-          onGeneratorChange={setGeneratorId}
-          selectedModel={selectedModel}
-          onModelChange={setSelectedModel}
-          temperature={temperature}
-          onTemperatureChange={setTemperature}
-          referenceFiles={referenceFiles}
-          onUploadReferenceFile={handleUploadReference}
-          onDeleteReferenceFile={handleDeleteReference}
-          onSelectReferenceFiles={setSelectedReferenceIds}
-          selectedReferenceFileIds={selectedReferenceIds}
-          linkedDocuments={allDocuments}
-          onSelectLinkedDocuments={setSelectedLinkedIds}
-          selectedLinkedDocumentIds={selectedLinkedIds}
-          writingStyleId={writingStyleId}
-          onWritingStyleChange={setWritingStyleId}
-          aiInputValue={aiInput}
-          onChangeAIInput={setAIInput}
-          onSendAIRequest={handleSendAIRequest}
-          aiOutput={aiOutput}
-          generationPhases={generationPhases}
-          hasContentStarted={hasContentStarted}
-          folders={folders}
-          documentsMap={documentsMap}
-          onShowChapterOutline={handleShowChapterOutline}
-          onCopyAIOutput={() => {
-            navigator.clipboard.writeText(aiOutput)
-            message.success('已复制到剪贴板')
-          }}
-          onReplaceWithAIOutput={handleReplaceContent}
-          aiHistory={aiHistory.map((item) => ({
-            id: item.id,
-            content: item.assistantMessage,
-            createdAt: item.createdAt,
-          }))}
-          onClearAIHistory={() => clearAIConversations(novelIdNumber).then(() => {
-            setAIHistory([])
-            setAIOutput('')
-          })}
-          generators={generators}
-          searchResults={searchResults}
-          onSelectSearchResult={handleSelectDocument}
-          novelId={novelIdNumber}
-          currentChapterNumber={
-            editingType === 'chapter' ? selectedChapter?.chapterNumber ?? null : null
-          }
-          currentVolumeId={currentVolume ? Number(currentVolume.id) : null}
-          currentVolumeNumber={currentVolume?.volumeNumber ?? null}
-        />
-      </Sider>
+      {!shouldUseToolsDrawer && (
+        <Sider width={toolsSidebarWidth} className="writing-tools" theme="light">
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            {toolPanelNode}
+          </div>
+        </Sider>
+      )}
+      {shouldUseToolsDrawer && (
+        <Drawer
+          title="AI写作助手"
+          placement="right"
+          width={toolsDrawerWidth}
+          mask={false}
+          open={toolsDrawerVisible}
+          onClose={() => setToolsDrawerVisible(false)}
+          className="writing-tools-drawer"
+          styles={{ body: { padding: 0, height: '100%' } }}
+        >
+          <div className="writing-tools-drawer-body">
+            {toolPanelNode}
+          </div>
+        </Drawer>
+      )}
 
       {/* 正文历史版本弹窗 */}
       <Modal
@@ -2278,7 +3595,7 @@ const WritingStudioPage: React.FC = () => {
           }}
         />
       </Modal>
-      
+
       {/* 卷大纲弹窗 */}
       <Modal
         title={`卷大纲${currentVolume ? ` - 第${currentVolume.volumeNumber}卷` : ''}`}
@@ -2333,7 +3650,502 @@ const WritingStudioPage: React.FC = () => {
           }}
         />
       </Modal>
-      
+
+      {/* 卷规划弹窗 */}
+      <Modal
+        title={null}
+        open={volumePlanningVisible}
+        onCancel={() => setVolumePlanningVisible(false)}
+        footer={null}
+        width={1480}
+        centered
+        destroyOnClose
+        className="volume-planning-modal"
+        zIndex={VOLUME_PLANNING_MODAL_Z_INDEX}
+        styles={{
+          content: { padding: 0, borderRadius: '20px', overflow: 'hidden' },
+          body: { padding: 0, height: '86vh' },
+        }}
+      >
+        <div className="vpm-shell">
+          <div className="vpm-header">
+            <div className="vpm-title-block">
+              <div className="vpm-badge">卷规划</div>
+              <div className="vpm-title">{volumeTitle}</div>
+              <div className="vpm-subtitle">{volumeRangeText}</div>
+            </div>
+            <div className="vpm-header-meta">
+              <div className="vpm-meta-pill">{outlineCoverageText}</div>
+              <div className="vpm-meta-pill">{progressText}</div>
+              {outlineRangeText && (
+                <div className="vpm-meta-pill vpm-meta-accent">{outlineRangeText}</div>
+              )}
+            </div>
+            <button className="vpm-close-btn" onClick={() => setVolumePlanningVisible(false)}>
+              关闭
+            </button>
+          </div>
+
+          <div className={`vpm-tip ${profileReady ? 'ready' : 'warn'}`}>
+            <span className="vpm-tip-dot" />
+            {profileReady
+              ? '已生成人设，细纲与正文生成都会自动引用本卷人设作为上下文。'
+              : '建议先生成本卷人设，细纲与正文生成都会引用人设作为上下文，剧情一致性更好。'}
+          </div>
+
+          <div className="vpm-body">
+            <div className="vpm-panel">
+              <div className="vpm-panel-header">
+                <div className="vpm-panel-head">
+                  <div className="vpm-panel-title">本卷人设</div>
+                  <div className="vpm-panel-sub">
+                    {profileCount ?? 0} 人
+                  </div>
+                </div>
+                <div className="vpm-panel-actions">
+                  <div className="vpm-panel-main-actions">
+                    <Button
+                      type="primary"
+                      onClick={openProfileGenerateModal}
+                      loading={isGeneratingProfiles}
+                    >
+                      {profileReady ? '重新生成人设' : '生成人设'}
+                    </Button>
+                  </div>
+                  <div className="vpm-panel-icon-actions">
+                    <Tooltip title="刷新本卷人设">
+                      <Button
+                        aria-label="刷新本卷人设"
+                        className="vpm-panel-refresh-btn"
+                        icon={<ReloadOutlined spin={planningProfilesLoading} />}
+                        onClick={() => refreshPlanningProfiles()}
+                        disabled={planningProfilesLoading || isGeneratingProfiles}
+                      />
+                    </Tooltip>
+                  </div>
+                </div>
+              </div>
+
+              <div className="vpm-panel-content">
+                {planningProfilesLoading ? (
+                  <div className="vpm-loading">
+                    <Spin size="large" />
+                    <div>加载人设中...</div>
+                  </div>
+                ) : planningProfiles.length > 0 ? (
+                  <div className="vpm-profile-list">
+                    {planningProfiles.map((profile, index) => {
+                      const name = profile.characterName?.trim() || '未命名角色'
+                      const profileKey = String(profile.id ?? `${name}-${index}`)
+                      const summaryText = buildProfileSummary(profile)
+                      return (
+                        <div className="vpm-list-item" key={profileKey}>
+                          <div className="vpm-li-left">
+                            <div className="vpm-avatar">{getProfileInitial(profile.characterName)}</div>
+                          </div>
+                          <div className="vpm-li-main">
+                            <div className="vpm-li-title-row">
+                              <div className="vpm-li-title" title={name}>{name}</div>
+                            </div>
+                            <div className="vpm-li-sub" title={summaryText}>
+                              {summaryText}
+                            </div>
+                          </div>
+                          <div className="vpm-li-actions">
+                            <button
+                              className="vpm-link-btn"
+                              onClick={() => {
+                                setDetailProfile(profile)
+                                setEditingProfile(null)
+                                setProfileDetailVisible(true)
+                              }}
+                            >
+                              查看
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="vpm-empty">
+                    <div className="vpm-empty-title">暂无人设</div>
+                    <div className="vpm-empty-desc">生成本卷人设后，细纲和正文生成都会引用角色设定。</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="vpm-panel">
+              <div className="vpm-panel-header">
+                <div className="vpm-panel-head">
+                  <div className="vpm-panel-title">本卷细纲</div>
+                  <div className="vpm-panel-sub">
+                    {outlineCoverageText}
+                    {outlineReminderInfo && outlineReminderInfo.lastOutlineChapterInVolume > 0 && (
+                      <span style={{ marginLeft: 8, color: '#94a3b8' }}>
+                        · 下次将生成 {outlineRangeText}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="vpm-panel-actions">
+                  <div className="vpm-panel-main-actions">
+                    <div className="vpm-batch-input">
+                      <span>批次</span>
+                      <InputNumber
+                        min={5}
+                        max={15}
+                        value={outlineBatchSize}
+                        onChange={(val) => {
+                          if (typeof val === 'number' && Number.isFinite(val)) {
+                            setOutlineBatchSize(Math.min(15, Math.max(5, val)))
+                          }
+                        }}
+                        size="small"
+                      />
+                    </div>
+                    <Button
+                      type="primary"
+                      onClick={openOutlineGenerateModal}
+                      loading={isGeneratingOutline}
+                    >
+                      生成细纲
+                    </Button>
+                    {sortedOutlineList.length > 0 && (
+                      <Button
+                        onClick={() => {
+                          const last = outlineReminderInfo?.lastOutlineChapterInVolume || sortedOutlineList.length
+                          const from = Math.max(1, last - 7)
+                          setRegenFrom(from)
+                          setRegenTo(last)
+                          setRegenModalVisible(true)
+                        }}
+                        disabled={isGeneratingOutline || isRegenerating}
+                      >
+                        重新生成
+                      </Button>
+                    )}
+                  </div>
+                  <div className="vpm-panel-icon-actions">
+                    <Tooltip title="刷新本卷细纲">
+                      <Button
+                        aria-label="刷新本卷细纲"
+                        className="vpm-panel-refresh-btn"
+                        icon={<ReloadOutlined spin={planningOutlinesLoading} />}
+                        onClick={() => refreshPlanningOutlines()}
+                        disabled={planningOutlinesLoading || isGeneratingOutline}
+                      />
+                    </Tooltip>
+                  </div>
+                </div>
+              </div>
+
+              <div className="vpm-panel-hint">
+                {profileReady ? '细纲和正文生成都会自动引用本卷人设作为上下文。' : '建议先生成人设，再生成细纲或正文。'}
+              </div>
+
+              <div className="vpm-panel-content">
+                {isGeneratingOutline && (
+                  <div className="vpm-progress">
+                    <div className="vpm-progress-text">
+                      {outlineGenerateProgress || '细纲生成中...'}
+                    </div>
+                    <Progress percent={outlineGeneratePercent} size="small" />
+                  </div>
+                )}
+
+                {planningOutlinesLoading ? (
+                  <div className="vpm-loading">
+                    <Spin size="large" />
+                    <div>加载细纲中...</div>
+                  </div>
+                ) : sortedOutlineList.length > 0 ? (
+                  <div className="vpm-outline-list">
+                    {sortedOutlineList.map((item) => {
+                      const chapterLabel = item.chapterInVolume ?? item.globalChapterNumber ?? '-'
+                      const summaryText = buildOutlineSummary(item)
+                      return (
+                        <div className="vpm-list-item" key={item.id}>
+                          <div className="vpm-li-left">
+                            <div className="vpm-outline-index" aria-label={`第 ${chapterLabel} 章`}>
+                              {chapterLabel}
+                            </div>
+                          </div>
+                          <div className="vpm-li-main">
+                            <div className="vpm-li-title-row">
+                              <div className="vpm-li-title">第 {chapterLabel} 章</div>
+                              {item.emotionalTone && (
+                                <span className="vpm-outline-tag" title={item.emotionalTone}>
+                                  {item.emotionalTone}
+                                </span>
+                              )}
+                              {item.status && (
+                                <span className="vpm-outline-status" title={item.status}>
+                                  {item.status}
+                                </span>
+                              )}
+                            </div>
+                            <div className="vpm-li-sub" title={summaryText}>
+                              {summaryText}
+                            </div>
+                          </div>
+                          <div className="vpm-li-actions">
+                            <button
+                              className="vpm-link-btn"
+                              onClick={async () => {
+                                setDetailOutline(item)
+                                setDetailOutlineEditing(false)
+                                setEditingDetailFields({})
+                                setOutlineDetailVisible(true)
+                                // 拉完整数据（summary=false）
+                                try {
+                                  const detailVolumeId = Number(
+                                    item.volumeId ?? planningVolumeId ?? chapterOutlineVolumeId ?? currentVolume?.id
+                                  )
+                                  if (!Number.isFinite(detailVolumeId) || detailVolumeId <= 0) {
+                                    return
+                                  }
+                                  const full = await getChapterOutlinesByVolume(detailVolumeId, false)
+                                  const found = full.find((o) => o.id === item.id)
+                                  if (found) setDetailOutline(found)
+                                } catch { /* 保持已有数据 */ }
+                              }}
+                            >
+                              查看
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="vpm-empty">
+                    <div className="vpm-empty-title">暂无细纲</div>
+                    <div className="vpm-empty-desc">可先生成人设，再批量生成细纲。</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 人设详情弹窗 */}
+      <Modal
+        title={null}
+        open={profileDetailVisible}
+        onCancel={() => {
+          setProfileDetailVisible(false)
+          setEditingProfile(null)
+        }}
+        footer={null}
+        width={920}
+        centered
+        destroyOnClose
+        className="volume-planning-modal vpm-detail-modal"
+        zIndex={VOLUME_PLANNING_DETAIL_MODAL_Z_INDEX}
+        styles={{
+          content: { padding: 0, borderRadius: '20px', overflow: 'hidden' },
+          body: { padding: 0, maxHeight: '80vh', overflow: 'auto' },
+        }}
+      >
+        {detailProfile
+          ? (() => {
+              const profile = normalizeVolumeCharacterProfile(detailProfile)
+              const profileDraft = editingProfile ?? profile
+              return (
+                <div className="vpm-detail">
+                  <div className="vpm-detail-header vpm-detail-header-space">
+                    <div className="vpm-detail-title">
+                      {profile.characterName || '未命名角色'}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {editingProfile ? (
+                        <>
+                          <Button size="small" onClick={() => setEditingProfile(null)}>取消</Button>
+                          <Button size="small" type="primary" loading={profileSaving} onClick={handleSaveDetailProfile}>保存</Button>
+                        </>
+                      ) : (
+                        <Button size="small" onClick={() => setEditingProfile({ ...profile })}>编辑</Button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="vpm-profile-detail-grid">
+                    {getVolumeProfileDetailFields(profileDraft).map((field) => (
+                      <div className="vpm-detail-block" key={field.key}>
+                        <div className="vpm-detail-key">{field.label}</div>
+                        {editingProfile ? (
+                          <textarea
+                            className="vpm-edit-textarea"
+                            value={typeof profileDraft[field.key] === 'string' ? profileDraft[field.key] ?? '' : ''}
+                            onChange={(e) =>
+                              setEditingProfile((prev) =>
+                                prev ? { ...prev, [field.key]: e.target.value } : prev
+                              )
+                            }
+                            rows={field.key === 'currentPersona' || field.key === 'stanceRelationships' ? 5 : 4}
+                          />
+                        ) : (
+                          <div className="vpm-detail-value prewrap">{field.value || '暂无'}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()
+          : null}
+      </Modal>
+
+      {/* 细纲详情/编辑弹窗 */}
+      <Modal
+        title={null}
+        open={outlineDetailVisible}
+        onCancel={() => {
+          setOutlineDetailVisible(false)
+          setDetailOutlineEditing(false)
+          setEditingDetailFields({})
+        }}
+        footer={null}
+        width={800}
+        centered
+        destroyOnClose
+        className="volume-planning-modal vpm-detail-modal"
+        zIndex={VOLUME_PLANNING_DETAIL_MODAL_Z_INDEX}
+        styles={{
+          content: { padding: 0, borderRadius: '20px', overflow: 'hidden' },
+          body: { padding: 0, maxHeight: '85vh', overflow: 'auto' },
+        }}
+      >
+        {detailOutline ? (
+          <div className="vpm-detail">
+            <div className="vpm-detail-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div className="vpm-detail-title">
+                  第 {detailOutline.chapterInVolume ?? detailOutline.globalChapterNumber ?? '-'} 章
+                </div>
+                {detailOutline.emotionalTone && (
+                  <span className="vpm-outline-tag">{detailOutline.emotionalTone}</span>
+                )}
+                {detailOutline.status && (
+                  <span className="vpm-outline-status">{detailOutline.status}</span>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {detailOutlineEditing ? (
+                  <>
+                    <Button size="small" onClick={() => { setDetailOutlineEditing(false); setEditingDetailFields({}) }}>取消</Button>
+                    <Button size="small" type="primary" loading={detailOutlineSaving} onClick={handleSaveDetailOutline}>保存</Button>
+                  </>
+                ) : (
+                  <Button size="small" onClick={() => {
+                    setEditingDetailFields({
+                      direction: formatKeyPlotPointsText(detailOutline.keyPlotPoints) || detailOutline.direction || '',
+                    })
+                    setDetailOutlineEditing(true)
+                  }}>编辑</Button>
+                )}
+              </div>
+            </div>
+            <div className="vpm-detail-body">
+              <div className="vpm-detail-block">
+                <div className="vpm-detail-key">章节细纲</div>
+                {detailOutlineEditing ? (
+                  <textarea
+                    className="vpm-edit-textarea"
+                    value={editingDetailFields.direction ?? ''}
+                    onChange={(e) => setEditingDetailFields((p) => ({ ...p, direction: e.target.value }))}
+                    rows={12}
+                    placeholder="输入章节细纲内容..."
+                  />
+                ) : (
+                  <div className="vpm-detail-value prewrap">
+                    {formatKeyPlotPointsText(detailOutline.keyPlotPoints) || detailOutline.direction || '暂无'}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      {/* 重新生成细纲弹窗 */}
+      <Modal
+        title="重新生成细纲"
+        open={regenModalVisible}
+        onCancel={() => setRegenModalVisible(false)}
+        centered
+        zIndex={VOLUME_PLANNING_REGEN_MODAL_Z_INDEX}
+        footer={[
+          <Button key="cancel" onClick={() => setRegenModalVisible(false)}>取消</Button>,
+          <Button key="ok" type="primary" loading={isRegenerating} onClick={() => handleRegenerateChapterOutline(regenFrom, regenTo)}>
+            开始重新生成
+          </Button>,
+        ]}
+      >
+        <div style={{ padding: '8px 0 16px' }}>
+          <div style={{ marginBottom: 16, padding: '10px 14px', background: '#f8fafc', borderRadius: 8, fontSize: 13, color: '#475569', lineHeight: 1.7 }}>
+            <div>当前已生成：<strong style={{ color: '#1e293b' }}>{outlineCoverageText}</strong></div>
+            {(outlineReminderInfo?.lastOutlineChapterInVolume ?? 0) > 0 && (
+              <div style={{ marginTop: 4 }}>共 <strong style={{ color: '#1e293b' }}>{sortedOutlineList.length}</strong> 个细纲</div>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: '#334155', flexShrink: 0 }}>重新生成卷内第</span>
+            <InputNumber
+              min={1}
+              max={regenTo}
+              value={regenFrom}
+              onChange={(v) => v && setRegenFrom(v)}
+              size="small"
+              style={{ width: 70 }}
+            />
+            <span style={{ fontSize: 13, color: '#334155' }}>章 到 第</span>
+            <InputNumber
+              min={regenFrom}
+              max={outlineReminderInfo?.lastOutlineChapterInVolume || sortedOutlineList.length || 99}
+              value={regenTo}
+              onChange={(v) => v && setRegenTo(v)}
+              size="small"
+              style={{ width: 70 }}
+            />
+            <span style={{ fontSize: 13, color: '#334155' }}>章</span>
+          </div>
+          <div className="vpm-requirement-card" style={{ marginTop: 16, marginBottom: 0 }}>
+            <div className="vpm-requirement-head">
+              <div>
+                <div className="vpm-requirement-title">重新生成要求</div>
+                <div className="vpm-requirement-desc">可选，本次重新生成会参考这里的要求。</div>
+              </div>
+              {outlineGenerationRequirement.trim() ? (
+                <button
+                  className="vpm-clear-link"
+                  onClick={() => setOutlineGenerationRequirement('')}
+                  type="button"
+                  disabled={isRegenerating}
+                >
+                  清空
+                </button>
+              ) : null}
+            </div>
+            <textarea
+              className="vpm-requirement-input"
+              value={outlineGenerationRequirement}
+              onChange={(e) => setOutlineGenerationRequirement(e.target.value)}
+              rows={4}
+              disabled={isRegenerating}
+              placeholder="例如：把这一段节奏再压紧一些；减少解释，多用冲突推动；这一批重点强化反派压迫感。"
+            />
+          </div>
+          <div style={{ marginTop: 12, fontSize: 12, color: '#94a3b8' }}>
+            将重新生成第 {regenFrom} - {regenTo} 章共 {regenTo - regenFrom + 1} 个细纲，会携带前序细纲、人设和当前填写的生成要求作为上下文。
+          </div>
+        </div>
+      </Modal>
+
+
       {/* 章节章纲弹窗 (Modernized) */}
       <Modal
         title={null}
@@ -2486,19 +4298,18 @@ const WritingStudioPage: React.FC = () => {
                 <div className="co-form-group">
                   <div className="co-label">
                     <CompassOutlined className="co-label-icon" />
-                    章节方向 / 核心梗概
+                    章节细纲（纯文本）
                   </div>
                   <textarea
                     className="co-textarea"
-                    value={editingChapterOutline.keyPlotPoints ?? editingChapterOutline.direction}
+                    value={editingChapterOutline.direction}
                     onChange={(e) =>
                       setEditingChapterOutline({
                         ...editingChapterOutline,
                         direction: e.target.value,
-                        keyPlotPoints: e.target.value,
                       })
                     }
-                    placeholder="本章主要写什么？例如：主角在拍卖会上遭遇反派挑衅，通过鉴宝技能打脸..."
+                    placeholder={`第N章：章节标题\n主要出场人物：角色A（...）、角色B（...）\n单元内作用：一句话说明本章作用。\n情节：\n（1）...\n（2）...\n（3）...\n（4）...\n（5）...（结尾留钩子）`}
                   />
                 </div>
 
@@ -3505,235 +5316,112 @@ const WritingStudioPage: React.FC = () => {
         </div>
       </Drawer>
 
+      <GraphDataModal
+        visible={graphModalVisible}
+        novelId={novelIdNumber}
+        novelTitle={novelTitle || ''}
+        onClose={() => setGraphModalVisible(false)}
+      />
+
       {/* 概要抽屉 */}
       <Drawer
-        title={<span style={{ fontSize: '16px', fontWeight: 600 }}>📚 小说概要</span>}
+        title={
+          <span style={{ fontSize: '16px', fontWeight: 600 }}>
+            {summaryData?.mode === 'document' ? '📝 文档说明' : '📝 章节概要'}
+          </span>
+        }
         placement="right"
-        width={700}
+        width={620}
         mask={false}
         open={summaryDrawerVisible}
         onClose={() => {
           setSummaryDrawerVisible(false)
         }}
       >
-        <div style={{ padding: '0' }}>
+        <div style={{ padding: 0 }}>
           {summaryLoading ? (
             <div style={{ textAlign: 'center', padding: '40px 0' }}>
               <Spin size="large" />
               <div style={{ marginTop: '16px', color: '#666' }}>加载中...</div>
             </div>
           ) : summaryData ? (
-            <div style={{ fontSize: '14px', lineHeight: '1.8' }}>
-              {/* 小说基本信息 */}
-              <div style={{ marginBottom: '24px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#1890ff' }}>
-                  📖 基本信息
-                </h3>
-                <div style={{ background: '#f5f5f5', padding: '16px', borderRadius: '8px' }}>
-                  <div style={{ marginBottom: '8px' }}>
-                    <span style={{ fontWeight: 500, color: '#666' }}>书名：</span>
-                    <span style={{ color: '#333' }}>{summaryData.novel?.title || '未设置'}</span>
-                  </div>
-                  <div style={{ marginBottom: '8px' }}>
-                    <span style={{ fontWeight: 500, color: '#666' }}>类型：</span>
-                    <span style={{ color: '#333' }}>{summaryData.novel?.genre || '未设置'}</span>
-                  </div>
-                  <div style={{ marginBottom: '8px' }}>
-                    <span style={{ fontWeight: 500, color: '#666' }}>状态：</span>
-                    <span style={{ color: '#333' }}>{summaryData.novel?.status || '未设置'}</span>
-                  </div>
-                  {summaryData.novel?.author && (
-                    <div style={{ marginBottom: '8px' }}>
-                      <span style={{ fontWeight: 500, color: '#666' }}>作者：</span>
-                      <span style={{ color: '#333' }}>{summaryData.novel.author}</span>
-                    </div>
-                  )}
-                  {summaryData.novel?.description && (
-                    <div>
-                      <span style={{ fontWeight: 500, color: '#666' }}>简介：</span>
-                      <div style={{ color: '#333', marginTop: '4px', whiteSpace: 'pre-wrap' }}>
-                        {summaryData.novel.description}
-                      </div>
-                    </div>
-                  )}
+            <div style={{ fontSize: 14, lineHeight: 1.8 }}>
+              <div style={{ marginBottom: 20, background: '#f8fafc', padding: 16, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                <div style={{ marginBottom: 8 }}>
+                  <span style={{ fontWeight: 500, color: '#64748b' }}>标题：</span>
+                  <span style={{ color: '#1f2937' }}>{summaryData.title || '未命名'}</span>
                 </div>
+                {summaryData.chapterNumber != null && (
+                  <div style={{ marginBottom: 8 }}>
+                    <span style={{ fontWeight: 500, color: '#64748b' }}>章节：</span>
+                    <span style={{ color: '#1f2937' }}>第 {summaryData.chapterNumber} 章</span>
+                  </div>
+                )}
+                <div style={{ marginBottom: summaryData.updatedAt ? 8 : 0 }}>
+                  <span style={{ fontWeight: 500, color: '#64748b' }}>字数：</span>
+                  <span style={{ color: '#1f2937' }}>{Number(summaryData.wordCount || 0).toLocaleString()} 字</span>
+                </div>
+                {summaryData.updatedAt && (
+                  <div>
+                    <span style={{ fontWeight: 500, color: '#64748b' }}>更新时间：</span>
+                    <span style={{ color: '#1f2937' }}>{summaryData.updatedAt}</span>
+                  </div>
+                )}
               </div>
 
-              {/* 大纲信息 */}
-              {summaryData.outline && (
+              {summaryData.mode === 'chapter' ? (
                 <>
-                  {summaryData.outline.basicIdea && (
-                    <div style={{ marginBottom: '24px' }}>
-                      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#52c41a' }}>
-                        💡 基本构思
-                      </h3>
-                      <div style={{ 
-                        background: '#f6ffed', 
-                        padding: '16px', 
-                        borderRadius: '8px',
-                        border: '1px solid #b7eb8f',
-                        whiteSpace: 'pre-wrap',
-                        color: '#333'
-                      }}>
-                        {summaryData.outline.basicIdea}
-                      </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 600, color: '#1677ff', margin: 0 }}>概要内容</h3>
+                    <Button
+                      type="primary"
+                      loading={summaryGenerating}
+                      onClick={handleGenerateSummary}
+                    >
+                      {summaryData.summary ? '重新生成概要' : '生成概要'}
+                    </Button>
+                  </div>
+
+                  {summaryData.summary ? (
+                    <div style={{ background: '#f0f7ff', padding: 16, borderRadius: 10, border: '1px solid #bae0ff', color: '#1f2937', whiteSpace: 'pre-wrap' }}>
+                      {summaryData.summary}
+                    </div>
+                  ) : (
+                    <div style={{ background: '#fff7e6', padding: 16, borderRadius: 10, border: '1px solid #ffd591', color: '#8c5a16' }}>
+                      当前章节还没有概要。点击右上角“生成概要”即可生成。
                     </div>
                   )}
 
-                  {summaryData.outline.coreTheme && (
-                    <div style={{ marginBottom: '24px' }}>
-                      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#722ed1' }}>
-                        🎯 核心主题
-                      </h3>
-                      <div style={{ 
-                        background: '#f9f0ff', 
-                        padding: '16px', 
-                        borderRadius: '8px',
-                        border: '1px solid #d3adf7',
-                        whiteSpace: 'pre-wrap',
-                        color: '#333'
-                      }}>
-                        {summaryData.outline.coreTheme}
-                      </div>
-                    </div>
-                  )}
-
-                  {summaryData.outline.mainCharacters && (
-                    <div style={{ marginBottom: '24px' }}>
-                      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#fa8c16' }}>
-                        👥 主要角色
-                      </h3>
-                      <div style={{ 
-                        background: '#fff7e6', 
-                        padding: '16px', 
-                        borderRadius: '8px',
-                        border: '1px solid #ffd591',
-                        whiteSpace: 'pre-wrap',
-                        color: '#333'
-                      }}>
-                        {summaryData.outline.mainCharacters}
-                      </div>
-                    </div>
-                  )}
-
-                  {summaryData.outline.plotStructure && (
-                    <div style={{ marginBottom: '24px' }}>
-                      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#eb2f96' }}>
-                        📊 剧情结构
-                      </h3>
-                      <div style={{ 
-                        background: '#fff0f6', 
-                        padding: '16px', 
-                        borderRadius: '8px',
-                        border: '1px solid #ffadd2',
-                        whiteSpace: 'pre-wrap',
-                        color: '#333'
-                      }}>
-                        {summaryData.outline.plotStructure}
-                      </div>
-                    </div>
-                  )}
-
-                  {summaryData.outline.worldSetting && (
-                    <div style={{ marginBottom: '24px' }}>
-                      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#13c2c2' }}>
-                        🌍 世界观设定
-                      </h3>
-                      <div style={{ 
-                        background: '#e6fffb', 
-                        padding: '16px', 
-                        borderRadius: '8px',
-                        border: '1px solid #87e8de',
-                        whiteSpace: 'pre-wrap',
-                        color: '#333'
-                      }}>
-                        {summaryData.outline.worldSetting}
-                      </div>
-                    </div>
-                  )}
-
-                  {summaryData.outline.coreSettings && (
-                    <div style={{ marginBottom: '24px' }}>
-                      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#faad14' }}>
-                        ⚙️ 核心设定
-                      </h3>
-                      <div style={{ 
-                        background: '#fffbe6', 
-                        padding: '16px', 
-                        borderRadius: '8px',
-                        border: '1px solid #ffe58f',
-                        whiteSpace: 'pre-wrap',
-                        color: '#333'
-                      }}>
-                        {summaryData.outline.coreSettings}
-                      </div>
-                    </div>
-                  )}
-
-                  {summaryData.outline.keyElements && (
-                    <div style={{ marginBottom: '24px' }}>
-                      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#f5222d' }}>
-                        🔑 关键元素
-                      </h3>
-                      <div style={{ 
-                        background: '#fff1f0', 
-                        padding: '16px', 
-                        borderRadius: '8px',
-                        border: '1px solid #ffa39e',
-                        whiteSpace: 'pre-wrap',
-                        color: '#333'
-                      }}>
-                        {summaryData.outline.keyElements}
-                      </div>
-                    </div>
-                  )}
-
-                  {summaryData.outline.conflictTypes && (
-                    <div style={{ marginBottom: '24px' }}>
-                      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#fa541c' }}>
-                        ⚔️ 冲突类型
-                      </h3>
-                      <div style={{ 
-                        background: '#fff2e8', 
-                        padding: '16px', 
-                        borderRadius: '8px',
-                        border: '1px solid #ffbb96',
-                        whiteSpace: 'pre-wrap',
-                        color: '#333'
-                      }}>
-                        {summaryData.outline.conflictTypes}
-                      </div>
-                    </div>
-                  )}
-
-                  {(summaryData.outline.targetWordCount || summaryData.outline.targetChapterCount) && (
-                    <div style={{ marginBottom: '24px' }}>
-                      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#2f54eb' }}>
-                        📈 目标规划
-                      </h3>
-                      <div style={{ background: '#f0f5ff', padding: '16px', borderRadius: '8px', border: '1px solid #adc6ff' }}>
-                        {summaryData.outline.targetWordCount && (
-                          <div style={{ marginBottom: '8px' }}>
-                            <span style={{ fontWeight: 500, color: '#666' }}>目标字数：</span>
-                            <span style={{ color: '#333' }}>{summaryData.outline.targetWordCount.toLocaleString()} 字</span>
-                          </div>
-                        )}
-                        {summaryData.outline.targetChapterCount && (
-                          <div>
-                            <span style={{ fontWeight: 500, color: '#666' }}>目标章节数：</span>
-                            <span style={{ color: '#333' }}>{summaryData.outline.targetChapterCount} 章</span>
-                          </div>
-                        )}
-                      </div>
+                  {(summaryData.characterCount || summaryData.eventCount || summaryData.message) && (
+                    <div style={{ marginTop: 16, background: '#fafafa', padding: 14, borderRadius: 10, border: '1px solid #f0f0f0', color: '#475569' }}>
+                      {summaryData.message && <div style={{ marginBottom: (summaryData.characterCount || summaryData.eventCount) ? 8 : 0 }}>{summaryData.message}</div>}
+                      {(summaryData.characterCount || summaryData.eventCount) && (
+                        <div>
+                          提取结果：角色 {Number(summaryData.characterCount || 0)} 个，事件 {Number(summaryData.eventCount || 0)} 个
+                        </div>
+                      )}
                     </div>
                   )}
                 </>
-              )}
-
-              {!summaryData.outline && (
-                <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
-                  暂无大纲信息
-                </div>
+              ) : (
+                <>
+                  <div style={{ background: '#fff7e6', padding: 16, borderRadius: 10, border: '1px solid #ffd591', color: '#8c5a16', marginBottom: 16 }}>
+                    {summaryData.message}
+                  </div>
+                  {summaryData.preview ? (
+                    <div>
+                      <h3 style={{ fontSize: 16, fontWeight: 600, color: '#1677ff', marginBottom: 12 }}>文档预览</h3>
+                      <div style={{ background: '#f8fafc', padding: 16, borderRadius: 10, border: '1px solid #e2e8f0', color: '#1f2937', whiteSpace: 'pre-wrap' }}>
+                        {String(summaryData.preview).slice(0, 1000)}
+                        {String(summaryData.preview).length > 1000 ? '\n\n...' : ''}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8' }}>
+                      当前文档没有可预览内容
+                    </div>
+                  )}
+                </>
               )}
             </div>
           ) : (
@@ -3750,9 +5438,23 @@ const WritingStudioPage: React.FC = () => {
         novelId={novelIdNumber}
         novelTitle={novelTitle}
         chapters={chapters}
+        initialTab={exportModalTab}
+        onImportSuccess={async () => {
+          const refreshedChapters = await getChaptersByNovel(novelIdNumber)
+          setChapters(refreshedChapters)
+
+          if (refreshedChapters.length > 0) {
+            const latestChapter = [...refreshedChapters].sort(
+              (a, b) => (b.chapterNumber || 0) - (a.chapterNumber || 0)
+            )[0]
+            const detail = await getChapterById(latestChapter.id)
+            setEditingType('chapter')
+            setSelectedChapter(detail)
+          }
+        }}
       />
 
-      {/* 章纲缺失提醒弹窗 - 美化版 */}
+      {/* 细纲缺失提醒弹窗 - 美化版 */}
       <Modal
         title={null}
         open={outlineMissingModalVisible}
@@ -3797,7 +5499,7 @@ const WritingStudioPage: React.FC = () => {
               margin: '0 0 8px 0',
               letterSpacing: '0.3px'
             }}>
-              章纲尚未生成
+              {outlineMissingSource === 'generate' ? '建议先做卷规划' : '细纲尚未生成'}
             </h3>
             <p style={{ 
               fontSize: 13, 
@@ -3805,7 +5507,7 @@ const WritingStudioPage: React.FC = () => {
               margin: 0,
               fontWeight: 400
             }}>
-              当前章节缺少写作指导
+              {outlineMissingSource === 'generate' ? '卷规划和细纲会让正文生成更稳' : '当前章节缺少写作指导'}
             </p>
           </div>
           
@@ -3834,7 +5536,15 @@ const WritingStudioPage: React.FC = () => {
               fontWeight: 500,
               paddingLeft: 8
             }}>
-              当前章节（<strong style={{ color: '#78350f' }}>第 {selectedChapter?.chapterNumber} 章</strong>）尚未生成章纲。
+              {outlineMissingSource === 'generate' ? (
+                <>
+                  当前章节（<strong style={{ color: '#78350f' }}>第 {selectedChapter?.chapterNumber} 章</strong>）还没有可用的卷规划细纲。
+                </>
+              ) : (
+                <>
+                  当前章节（<strong style={{ color: '#78350f' }}>第 {selectedChapter?.chapterNumber} 章</strong>）尚未生成细纲。
+                </>
+              )}
             </p>
             <p style={{ 
               marginBottom: 0, 
@@ -3843,7 +5553,9 @@ const WritingStudioPage: React.FC = () => {
               lineHeight: 1.7,
               paddingLeft: 8
             }}>
-              章纲可以帮助 AI 更好地理解章节的方向、情节要点和情感基调，生成更符合预期的内容。
+              {outlineMissingSource === 'generate'
+                ? '建议先打开卷规划，人设与细纲会帮助 AI 更好地把握人物关系、情节推进和节奏，通常能明显提升正文质量。你也可以跳过，继续直接生成。'
+                : '细纲可以帮助 AI 更好地理解章节的方向、情节要点和情感基调，生成更符合预期的内容。'}
             </p>
           </div>
           
@@ -3885,8 +5597,14 @@ const WritingStudioPage: React.FC = () => {
             <Button 
               type={outlineMissingSource === 'outline' ? 'primary' : 'default'}
               size="large"
-              icon={<FileTextOutlined />}
-              onClick={openOutlineGenerateModal}
+              icon={outlineMissingSource === 'generate' ? <CompassOutlined /> : <FileTextOutlined />}
+              onClick={() => {
+                if (outlineMissingSource === 'generate') {
+                  openVolumePlanningFromGeneratePrompt()
+                  return
+                }
+                openOutlineGenerateModal()
+              }}
               style={{ 
                 minWidth: 130,
                 height: 44,
@@ -3926,7 +5644,7 @@ const WritingStudioPage: React.FC = () => {
                 }
               }}
             >
-              生成章纲
+              {outlineMissingSource === 'generate' ? '打开卷规划' : '生成细纲'}
             </Button>
             {/* 仅当从“生成”按钮进入时显示“继续生成”按钮 */}
             {outlineMissingSource === 'generate' && (
@@ -3966,24 +5684,130 @@ const WritingStudioPage: React.FC = () => {
         </div>
       </Modal>
 
-      {/* 章纲生成弹窗 - 美化版 */}
+      <Modal
+        title={null}
+        open={profileGenerateModalVisible}
+        onCancel={() => !isGeneratingProfiles && setProfileGenerateModalVisible(false)}
+        closable={!isGeneratingProfiles}
+        maskClosable={!isGeneratingProfiles}
+        width={480}
+        footer={null}
+        centered
+        zIndex={VOLUME_PLANNING_GENERATE_MODAL_Z_INDEX}
+        styles={{
+          content: { borderRadius: '18px', overflow: 'hidden' },
+          body: { padding: 0 },
+        }}
+      >
+        <div style={{ padding: '24px 20px' }}>
+          <div style={{ textAlign: 'center', marginBottom: 20 }}>
+            <div style={{
+              width: 60,
+              height: 60,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 14px',
+              boxShadow: '0 8px 24px rgba(249, 115, 22, 0.16), 0 0 0 4px rgba(251, 146, 60, 0.06)'
+            }}>
+              <BookOutlined style={{ fontSize: 26, color: '#ea580c' }} />
+            </div>
+            <h3 style={{ fontSize: 18, fontWeight: 600, color: '#1f2937', margin: '0 0 6px 0' }}>
+              {profileReady ? '重新生成人设' : '生成人设'}
+            </h3>
+            <p style={{ fontSize: 13, color: '#94a3b8', margin: 0 }}>
+              可补充本次要求，不填也可以直接生成
+            </p>
+          </div>
+
+          <div style={{
+            background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+            borderRadius: 14,
+            padding: '14px 16px',
+            marginBottom: 16,
+            border: '1px solid #e2e8f0'
+          }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: '#1f2937', marginBottom: 4 }}>
+              {volumeTitle}
+            </div>
+            <div style={{ fontSize: 12, color: '#64748b' }}>{volumeRangeText}</div>
+          </div>
+
+          <div className="vpm-requirement-card" style={{ marginBottom: 20 }}>
+            <div className="vpm-requirement-head">
+              <div>
+                <div className="vpm-requirement-title">本次生成要求</div>
+                <div className="vpm-requirement-desc">可选，适合补充人物数量、人物气质、关系重点等要求。</div>
+              </div>
+              {profileGenerationRequirement.trim() ? (
+                <button
+                  className="vpm-clear-link"
+                  onClick={() => setProfileGenerationRequirement('')}
+                  type="button"
+                  disabled={isGeneratingProfiles}
+                >
+                  清空
+                </button>
+              ) : null}
+            </div>
+            <textarea
+              className="vpm-requirement-input"
+              value={profileGenerationRequirement}
+              onChange={(e) => setProfileGenerationRequirement(e.target.value)}
+              rows={4}
+              disabled={isGeneratingProfiles}
+              placeholder="例如：主角要更强势一些；核心反派必须保留压迫感；配角控制在 6 人内；突出暧昧张力。"
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+            <Button
+              size="large"
+              onClick={() => setProfileGenerateModalVisible(false)}
+              disabled={isGeneratingProfiles}
+              style={{ minWidth: 110, height: 44, borderRadius: 11 }}
+            >
+              {isGeneratingProfiles ? '请等待...' : '取消'}
+            </Button>
+            <Button
+              type="primary"
+              size="large"
+              icon={<RocketOutlined />}
+              onClick={handleGenerateVolumeProfiles}
+              loading={isGeneratingProfiles}
+              style={{ minWidth: 150, height: 44, borderRadius: 11 }}
+            >
+              {profileReady ? '开始重新生成' : '开始生成'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 细纲生成弹窗 - 美化版 */}
       <Modal
         title={null}
         open={outlineGenerateModalVisible}
         onCancel={() => !isGeneratingOutline && setOutlineGenerateModalVisible(false)}
         closable={!isGeneratingOutline}
         maskClosable={!isGeneratingOutline}
-        width={560}
+        width={500}
         footer={null}
         centered
         className="outline-generate-modal"
+        zIndex={VOLUME_PLANNING_GENERATE_MODAL_Z_INDEX}
+        styles={{
+          content: { borderRadius: '18px', overflow: 'hidden' },
+          body: { padding: 0 },
+        }}
       >
-        <div style={{ padding: '32px 24px' }}>
+        <div style={{ padding: '24px 20px' }}>
           {/* 图标和标题 */}
-          <div style={{ textAlign: 'center', marginBottom: 28 }}>
+          <div style={{ textAlign: 'center', marginBottom: 22 }}>
             <div style={{
-              width: 72,
-              height: 72,
+              width: 60,
+              height: 60,
               borderRadius: '50%',
               background: isGeneratingOutline 
                 ? 'linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%)'
@@ -3991,7 +5815,7 @@ const WritingStudioPage: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 18px',
+              margin: '0 auto 14px',
               boxShadow: isGeneratingOutline 
                 ? '0 8px 24px rgba(24, 144, 255, 0.25), 0 0 0 4px rgba(24, 144, 255, 0.08)'
                 : '0 6px 16px rgba(24, 144, 255, 0.18), 0 0 0 4px rgba(24, 144, 255, 0.06)',
@@ -4013,21 +5837,21 @@ const WritingStudioPage: React.FC = () => {
                   <Spin size="default" />
                 </>
               ) : (
-                <FileTextOutlined style={{ 
-                  fontSize: 32, 
+                <FileTextOutlined style={{
+                  fontSize: 26,
                   color: '#1890ff',
                   transition: 'all 0.3s ease'
                 }} />
               )}
             </div>
-            <h3 style={{ 
-              fontSize: 20, 
-              fontWeight: 600, 
-              color: '#1f2937', 
-              margin: '0 0 8px 0',
+            <h3 style={{
+              fontSize: 18,
+              fontWeight: 600,
+              color: '#1f2937',
+              margin: '0 0 6px 0',
               letterSpacing: '0.3px'
             }}>
-              {isGeneratingOutline ? '正在生成章纲' : '生成章纲'}
+              {isGeneratingOutline ? '正在生成细纲' : '生成细纲'}
             </h3>
             {!isGeneratingOutline && (
               <p style={{ 
@@ -4046,8 +5870,8 @@ const WritingStudioPage: React.FC = () => {
             <div style={{
               background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
               borderRadius: 14,
-              padding: '18px 22px',
-              marginBottom: 24,
+              padding: '14px 16px',
+              marginBottom: 18,
               border: '1px solid #e2e8f0',
               boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
               transition: 'all 0.3s ease'
@@ -4122,6 +5946,33 @@ const WritingStudioPage: React.FC = () => {
               </div>
             </div>
           )}
+
+          {!isGeneratingOutline && (
+            <div className="vpm-requirement-card" style={{ marginBottom: 18 }}>
+              <div className="vpm-requirement-head">
+                <div>
+                  <div className="vpm-requirement-title">本次生成要求</div>
+                  <div className="vpm-requirement-desc">可选，生成细纲时会优先参考这里的要求。</div>
+                </div>
+                {outlineGenerationRequirement.trim() ? (
+                  <button
+                    className="vpm-clear-link"
+                    onClick={() => setOutlineGenerationRequirement('')}
+                    type="button"
+                  >
+                    清空
+                  </button>
+                ) : null}
+              </div>
+              <textarea
+                className="vpm-requirement-input"
+                value={outlineGenerationRequirement}
+                onChange={(e) => setOutlineGenerationRequirement(e.target.value)}
+                rows={4}
+                placeholder="例如：前 3 章冲突拉满；少铺设新角色；强化悬念钩子；战斗节奏更快；感情线先压后扬。"
+              />
+            </div>
+          )}
           
           {/* 进度显示 */}
           {isGeneratingOutline ? (
@@ -4185,8 +6036,8 @@ const WritingStudioPage: React.FC = () => {
             <div style={{
               background: 'linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%)',
               borderRadius: 12,
-              padding: '18px 20px',
-              marginBottom: 28,
+              padding: '14px 16px',
+              marginBottom: 20,
               border: '1px solid #e8e8e8',
               position: 'relative' as const,
               overflow: 'hidden'
@@ -4206,7 +6057,7 @@ const WritingStudioPage: React.FC = () => {
                 lineHeight: 1.7,
                 paddingLeft: 8
               }}>
-                章纲将为本卷的每个章节生成<strong style={{ color: '#334155' }}>详细的写作指导</strong>，包括章节方向、情节要点、情感基调等，帮助 AI 更好地把握故事走向。
+                细纲将为本卷的每个章节生成<strong style={{ color: '#334155' }}>详细的写作指导</strong>，包括章节方向、情节要点、情感基调等，帮助 AI 更好地把握故事走向。
               </p>
             </div>
           )}
@@ -4256,7 +6107,7 @@ const WritingStudioPage: React.FC = () => {
                 type="primary"
                 size="large"
                 icon={<RocketOutlined />}
-                onClick={handleGenerateChapterOutline}
+                onClick={() => handleGenerateChapterOutline()}
                 className="outline-generate-btn"
                 style={{ 
                   minWidth: 150,

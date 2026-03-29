@@ -2,11 +2,16 @@ package com.novel.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.novel.common.security.AuthUtils;
+import com.novel.common.security.SecurityContextTaskWrapper;
 import com.novel.domain.entity.Novel;
 import com.novel.domain.entity.NovelVolume;
 import com.novel.domain.entity.NovelVolume.VolumeStatus;
 import com.novel.domain.entity.NovelOutline;
+import com.novel.domain.entity.PromptTemplate;
 import com.novel.dto.AIConfigRequest;
+import com.novel.service.prompt.ManagedPromptService;
+import com.novel.service.prompt.SystemPromptDescriptor;
 import com.novel.repository.NovelRepository;
 import com.novel.repository.NovelOutlineRepository;
 import com.novel.mapper.NovelVolumeMapper;
@@ -19,6 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.Arrays;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 小说卷管理服务
@@ -29,6 +36,9 @@ import java.util.Arrays;
 public class VolumeService {
 
     private static final Logger logger = LoggerFactory.getLogger(VolumeService.class);
+    private static final long STREAM_SNAPSHOT_MIN_INTERVAL_MS = 800L;
+    private static final int STREAM_SNAPSHOT_MIN_CHARS = 600;
+    private static final Pattern TEMPLATE_VARIABLE_PATTERN = Pattern.compile("\\{\\{\\s*([a-zA-Z0-9_]+)\\s*}}");
     
     // 并发控制：记录正在生成卷蓝图的卷ID（改为按卷控制，支持批量生成）
     private final Set<Long> generatingVolumes = Collections.synchronizedSet(new HashSet<>());
@@ -75,6 +85,25 @@ public class VolumeService {
     @Autowired
     private com.novel.repository.ForeshadowLifecycleLogRepository foreshadowLifecycleLogRepository;
 
+    @Autowired
+    private ManagedPromptService managedPromptService;
+
+    @Autowired
+    private CoreSettingsExtractionService coreSettingsExtractionService;
+
+    @Autowired
+    private PromptTemplateService promptTemplateService;
+
+    private boolean hasRequestedModel(AIConfigRequest aiConfig) {
+        return aiConfig != null
+                && aiConfig.getModel() != null
+                && !aiConfig.getModel().trim().isEmpty();
+    }
+
+    private boolean hasUsableAiConfig(AIConfigRequest aiConfig) {
+        return aiConfig != null && (aiConfig.isValid() || hasRequestedModel(aiConfig));
+    }
+
     /**
      * 流式生成卷详细大纲（SSE）
      * 
@@ -85,10 +114,8 @@ public class VolumeService {
      */
     @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public void streamGenerateVolumeOutline(Long volumeId, String userAdvice, com.novel.dto.AIConfigRequest aiConfig, java.util.function.Consumer<String> chunkConsumer) {
-        logger.info("📋 [流式] 开始为卷 {} 生成卷蓝图", volumeId);
-        
         // 验证AI配置
-        if (aiConfig == null || !aiConfig.isValid()) {
+        if (!hasUsableAiConfig(aiConfig)) {
             throw new RuntimeException("AI配置无效，请先在设置页面配置AI服务");
         }
         
@@ -113,155 +140,206 @@ public class VolumeService {
         }
         
         try {
-            // 构建提示词
-            StringBuilder prompt = new StringBuilder();
-            prompt
-                  .append("你是顶级网文总编，专门设计\"让读者欲罢不能\"的卷蓝图。你的任务是给出【方向型】的卷规划：只管大方向、阶段结构和里程碑，不抢着把故事细节写完，也不平均分配精彩度，而是为整部作品设计有高有低的节奏波浪。\n\n")
-                  .append("# 核心理念\n")
-                  .append("**蓝图不是剧本**：只给路线图和资源包，不写执行细节。让AI写作时有发挥空间，能根据实际情况灵活调整。\n")
-                  .append("**禁止写成剧情简介或片段**：不要逐段复述故事内容，不要详细描述具体场景过程，更不要出现人物对白。若写出的文字看起来像某一卷的小说节选，而不是主编给作者讲这一卷\"大概要怎么写\"的抽象规划，就说明跑题了。\n")
-                  .append("**冲突驱动一切**：围绕\"主角想要什么→遇到什么阻碍→付出什么代价→得到什么结果\"来规划每一阶段，不追求匀速推进，而是通过拉扯和迟到的兑现来制造上瘾感。\n")
-                  .append("**卷间节奏波浪**：不同卷可以承担不同节奏角色（攀升卷/高峰卷/缓冲卷/翻盘卷等），不需要平均分配爆点；重要情节可以有意跨卷铺垫和兑现，只要整体遵守超级大纲。\n\n")
-                  .append("# 小说信息\n")
-                  .append("**标题**：").append(novel.getTitle()).append("\n");
-            if (novel.getDescription() != null && !novel.getDescription().isEmpty()) {
-                prompt.append("**构思**：").append(novel.getDescription()).append("\n");
-            }
-            prompt.append("**全书大纲**：\n").append(superOutline.getPlotStructure()).append("\n\n")
-                  .append("# 本卷信息\n")
-                  .append("**卷名**：").append(volume.getTitle()).append("\n")
-                  .append("**主题**：").append(volume.getTheme()).append("\n")
-                  .append("**简述**：").append(
-                      (volume.getContentOutline() != null && !volume.getContentOutline().isEmpty())
-                          ? volume.getContentOutline()
-                          : (volume.getTheme() != null ? volume.getTheme() : "")
-                  ).append("\n");
-            if (volume.getChapterStart() != null && volume.getChapterEnd() != null) {
-                prompt.append("**章节范围**：第 ").append(volume.getChapterStart()).append("-").append(volume.getChapterEnd()).append(" 章\n");
-            }
-            if (volume.getEstimatedWordCount() != null && volume.getEstimatedWordCount() > 0) {
-                prompt.append("**目标字数**：").append(volume.getEstimatedWordCount()).append(" 字\n");
-            }
-            if (userAdvice != null && !userAdvice.trim().isEmpty()) {
-                prompt.append("**作者补充**：").append(userAdvice.trim()).append("\n");
-            }
-            prompt.append("\n【对齐约束】\n")
-                  .append("- 严格承接超级大纲与本卷信息，保留其中的核心冲突、角色定位、关键线索与设定，不得擅自重置或弱化。\n")
-                  .append("- 新增情节需解释其如何放大原有主题与冲突张力，确保因果链自洽。\n")
-                  .append("- 若超级大纲或卷简述已有具体事件/目标，须延续并深化，保持人物动机连续；允许将某些重大事件拆分为跨卷完成的多个阶段（铺垫→爆发→余波），而不是强行在一卷内全部做完。\n\n")
-                  .append("【卷内逻辑自洽】\n")
-                  .append("- 明确本卷起点状态（角色实力/地位/关系/线索/外部局势），关键事件须具备“触发→动作→结果”的因果链，不允许无因果跳跃或“天降资源”。\n")
-                  .append("- 角色动机、能力边界与世界规则前后一致；若有突破，必须给出铺垫与代价。\n")
-                  .append("- 本卷内不得出现自相矛盾的设定或前后冲突；反派不降智，行动与其资源和信息边界匹配。\n")
-                  .append("- 首尾呼应：开卷起点→关键转折→卷末状态闭环，并自然抛出下一卷钩子；如为第一卷，从初始设定起；否则默认承接上一卷卷末状态。\n\n")
-                  .append("【读者体验目标】\n")
-                  .append("- 以整部作品为单位规划期待—兑现节奏：本卷可以是持续拉升、高压爆发或短暂缓冲，但必须在全书曲线中占据清晰位置；不追求每卷、每阶段都平均好看，而是有重点地堆砌记忆点。\n")
-                  .append("- 在本卷内部设计明显的情绪起伏：紧张与放松相间、危机与逆转呼应，让读者在关键节点产生“停不下来”的冲动，尤其是本卷后半程和卷末附近。\n")
-                  .append("- 针对目标读者喜好突出市场卖点（成长、情感、爽感、悬念等），打造让人想追更的阅读体验。\n\n")
-                  .append("# 输出要求\n\n")
-                  .append("- 用编辑视角写作：像在跟作者讨论这一卷的大致写法，而不是在向读者讲故事。\n")
-                  .append("- 全文保持在适中篇幅，更偏向抽象总结和结构规划，而不是展开具体桥段经过。\n")
-                  .append("- 禁止出现引号中的人物台词（如“他冷笑着说：……”），也不要写出完整的时间线式剧情复盘。\n\n")
-                  
-                  .append("## 一、本卷核心定位\n")
-                  .append("用2-3句话说清楚：这一卷要解决什么问题？主角要达成什么目标？读者能爽到什么？\n\n")
-                  
-                  .append("## 二、主角成长轨迹\n")
-                  .append("**起点状态**：本卷开始时，主角的实力/地位/资源/心态是什么样？\n")
-                  .append("**终点状态**：本卷结束时，主角会成长到什么程度？必须根据全书大纲设定来确定，保持一致性。\n")
-                  .append("**成长路径**：大致分几个阶段？每个阶段有什么标志性突破？\n\n")
-                  
-                  .append("## 三、核心冲突与对手\n")
-                  .append("**主要对手**：谁在跟主角作对？他们的目标是什么？实力如何？\n")
-                  .append("**冲突升级路线**：矛盾怎么一步步激化？从小摩擦到大爆发的节奏是什么？\n")
-                  .append("**压力来源**：除了对手，还有什么在逼主角？（时间限制、资源短缺、规则限制等）\n")
-                  .append("**代价边界**：主角为了达成目标，最多能付出什么代价？什么是绝对不能失去的？\n\n")
-                  
-                  .append("## 四、爽点体系设计\n")
-                  .append("**基础爽点**：分布在正常推进过程中的“小爆点”类型与触发条件，列出3-5个典型场景方向，不需要严格平均间隔，但要避免长时间完全无爽点。\n")
-                  .append("**进阶爽点**：本卷中等强度爆发的事件类型与大致出现阶段（如前期/中期/后期），列出2-3个关键节点方向，而不是按固定章节间隔平均分布。\n")
-                  .append("**高潮爽点**：本卷的巅峰时刻，可以集中在卷末，也可以在本卷中后段先爆一波，再把更大的后果或揭露压到下一卷；描述1-2个巅峰设计思路，并说明与前后卷的衔接。\n\n")
-                  
-                  .append("## 五、开放事件池（≥8个）\n")
-                  .append("提供一些\"可选事件包\"，每个事件包括：\n")
-                  .append("- **事件名**：简短标题\n")
-                  .append("- **触发条件**：什么情况下可以用这个事件？\n")
-                  .append("- **核心矛盾**：这个事件的主要冲突是什么？\n")
-                  .append("- **可能结果**：成功/失败/意外，各会导向什么？\n")
-                  .append("- **爽点类型**：这个事件能给读者什么爽感？（打脸/逆袭/获得/成长/揭秘等）\n\n")
-                  .append("**注意**：这些事件不规定顺序，AI写作时可以根据剧情需要灵活选用和组合。\n\n")
-                  
-                  .append("## 六、关键里程碑（3-5个）\n")
-                  .append("本卷必须经过的几个关键节点，其中一部分可以在本卷内完成闭环，另一部分可以只做到“半步”，把最狠的后果或揭露留到下一卷；每个包括：\n")
-                  .append("- **里程碑名称**：这个节点叫什么？\n")
-                  .append("- **达成条件**：什么情况下算达成？\n")
-                  .append("- **影响范围**：达成后会改变什么？（主角能力、势力格局、剧情走向等），并标明主要影响是落在本卷，还是会强烈延续到后续卷。\n")
-                  .append("- **悬念钩子**：这个节点会引出什么新问题或新目标，是否为后续一整卷提供主线动力？\n\n")
-                  
-                  .append("## 七、支线与节奏调节\n")
-                  .append("**情感线**：本卷有哪些角色关系会发展？（友情/爱情/师徒/仇恨等）大致走向是什么？\n")
-                  .append("**探索线**：有什么谜团需要揭开？分几步揭示？\n")
-                  .append("**日常调节**：在紧张剧情之间，可以插入什么轻松场景来调节节奏？\n\n")
-                  
-                  .append("## 八、伏笔管理\n")
-                  .append("**本卷要埋的伏笔**：为后续卷做铺垫，列出2-3个关键伏笔及其埋藏方式。\n")
-                  .append("**本卷要收的伏笔**：前面埋下的哪些坑要在本卷填？怎么填才爽？\n")
-                  .append("**本卷要提的伏笔**：之前埋的伏笔，在本卷要不要提一下加深印象？\n\n")
-                  
-                  .append("## 九、卷末状态与钩子\n")
-                  .append("**主角最终状态**：本卷结束时，主角的实力/地位/资源/心态达到什么程度？\n")
-                  .append("**已解决问题**：本卷打算真正解决哪些矛盾？哪些只是阶段性缓和或“看似解决”？请避免把所有重要问题一次性做完。\n")
-                  .append("**新增悬念**：卷末要留出足够有力的钩子，让读者强烈想看下一卷，可以是新危机/新目标/新谜团，但不能只是轻描淡写的小尾巴。\n")
-                  .append("**风险结转**：明确指出有哪些隐患或代价会延续到下一卷甚至更后面的卷，形成跨卷的持续压力与期待。\n\n")
-                  
-                  .append("# 写作风格要求\n")
-                  .append("1. **人话表达**：别用术语和套话，就像老编辑跟作者聊天一样自然\n")
-                  .append("2. **具体可操作**：描述要具体明确，基于全书大纲的设定，不要编造大纲中不存在的内容\n")
-                  .append("3. **留白适度**：给出方向和资源，但不锁死具体过程，让AI有发挥空间\n")
-                  .append("4. **冲突为王**：每个部分都要体现\"想要什么→遇到什么阻碍→付出什么代价\"\n")
-                  .append("5. **爽点密集**：确保读者每隔几章就能爽一次，不能让剧情平淡\n\n")
-                  
-                  .append("# 禁止事项\n")
-                  .append("❌ 不要写具体对话和场景细节\n")
-                  .append("❌ 不要规定具体章节编号和顺序\n")
-                  .append("❌ 不要用JSON或代码块格式\n")
-                  .append("❌ 不要写成流水账式的事件列表\n")
-                  .append("❌ 不要锁死剧情发展路径\n\n")
-                  .append("只输出上述九个部分的正文内容，不要额外添加与卷蓝图无关的话语。\n\n")
-                  
-                  .append("现在，基于以上信息和要求，生成一份让读者\"欲罢不能\"的卷蓝图，用自然中文分段叙述，禁止附加解释或总结。\n");
+            String prompt = buildVolumeBlueprintGenerationPrompt(novel, superOutline, volume, userAdvice);
 
-            logger.info("📝 [流式] 调用AI生成卷蓝图，提示词长度: {}", prompt.length());
-            
             // 使用真正的流式AI调用
             StringBuilder accumulated = new StringBuilder();
+            final long[] lastPersistAt = {System.currentTimeMillis()};
+            final int[] lastPersistLength = {0};
             
             aiWritingService.streamGenerateContent(prompt.toString(), "volume_outline_generation", aiConfig, chunk -> {
                 try {
-                    // 累加内容
                     accumulated.append(chunk);
-                    
-                    // 实时更新数据库
-                    volume.setContentOutline(accumulated.toString());
-                    volume.setUpdatedAt(LocalDateTime.now());
-                    volumeMapper.updateById(volume);
-                    
-                    // 回调给SSE消费者
                     if (chunkConsumer != null) {
                         chunkConsumer.accept(chunk);
+                    }
+
+                    String currentContent = accumulated.toString();
+                    long now = System.currentTimeMillis();
+                    if (shouldPersistStreamSnapshot(currentContent.length(), lastPersistLength[0], now, lastPersistAt[0])) {
+                        persistVolumeOutlineSnapshot(volume, currentContent);
+                        lastPersistAt[0] = now;
+                        lastPersistLength[0] = currentContent.length();
                     }
                 } catch (Exception e) {
                     logger.error("处理流式内容块失败: {}", e.getMessage(), e);
                     throw new RuntimeException("处理流式内容块失败: " + e.getMessage());
                 }
             });
-            
-            logger.info("✅ [流式] 卷 {} 蓝图生成并保存成功，总长度: {}", volumeId, accumulated.length());
+
+            persistVolumeOutlineSnapshot(volume, accumulated.toString());
             
         } catch (Exception e) {
             logger.error("❌ [流式] 生成卷 {} 蓝图失败", volumeId, e);
             throw new RuntimeException("流式生成卷蓝图失败: " + e.getMessage(), e);
         }
+    }
+
+    private boolean shouldPersistStreamSnapshot(int currentLength, int lastPersistLength, long now, long lastPersistAt) {
+        return currentLength > lastPersistLength
+                && (now - lastPersistAt >= STREAM_SNAPSHOT_MIN_INTERVAL_MS
+                || currentLength - lastPersistLength >= STREAM_SNAPSHOT_MIN_CHARS);
+    }
+
+    private void persistVolumeOutlineSnapshot(NovelVolume volume, String content) {
+        volume.setContentOutline(content);
+        volume.setUpdatedAt(LocalDateTime.now());
+        volumeMapper.updateById(volume);
+    }
+
+    private String buildVolumeBlueprintGenerationPrompt(Novel novel,
+                                                        NovelOutline superOutline,
+                                                        NovelVolume volume,
+                                                        String userAdvice) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("novel_title", safeText(novel.getTitle()));
+        values.put("novel_description_block",
+                novel.getDescription() != null && !novel.getDescription().isEmpty()
+                        ? "**构思**：" + novel.getDescription() + "\n"
+                        : "");
+        values.put("plot_structure", safeText(superOutline.getPlotStructure()));
+        values.put("volume_title", safeText(volume.getTitle()));
+        values.put("volume_theme", safeText(volume.getTheme()));
+        values.put("volume_summary",
+                volume.getContentOutline() != null && !volume.getContentOutline().isEmpty()
+                        ? volume.getContentOutline()
+                        : safeText(volume.getTheme()));
+        values.put("chapter_range_block",
+                volume.getChapterStart() != null && volume.getChapterEnd() != null
+                        ? "**章节范围**：第 " + volume.getChapterStart() + "-" + volume.getChapterEnd() + " 章\n"
+                        : "");
+        values.put("target_word_count_block",
+                volume.getEstimatedWordCount() != null && volume.getEstimatedWordCount() > 0
+                        ? "**目标字数**：" + volume.getEstimatedWordCount() + " 字\n"
+                        : "");
+        values.put("user_advice_block",
+                userAdvice != null && !userAdvice.trim().isEmpty()
+                        ? "**作者补充**：" + userAdvice.trim() + "\n"
+                        : "");
+
+        return renderManagedPrompt(
+                "volume.blueprint.generation",
+                "卷蓝图生成提示词",
+                "system_chain",
+                "系统链路中的单卷蓝图生成提示词，基于全书大纲与卷信息输出九段式方向型蓝图",
+                131,
+                List.of(
+                        "novel_title", "novel_description_block", "plot_structure", "volume_title",
+                        "volume_theme", "volume_summary", "chapter_range_block",
+                        "target_word_count_block", "user_advice_block"
+                ),
+                """
+                        你是顶级网文总编，专门设计"让读者欲罢不能"的卷蓝图。你的任务是给出【方向型】的卷规划：只管大方向、阶段结构和里程碑，不抢着把故事细节写完，也不平均分配精彩度，而是为整部作品设计有高有低的节奏波浪。
+
+                        # 核心理念
+                        **蓝图不是剧本**：只给路线图和资源包，不写执行细节。让AI写作时有发挥空间，能根据实际情况灵活调整。
+                        **禁止写成剧情简介或片段**：不要逐段复述故事内容，不要详细描述具体场景过程，更不要出现人物对白。若写出的文字看起来像某一卷的小说节选，而不是主编给作者讲这一卷"大概要怎么写"的抽象规划，就说明跑题了。
+                        **冲突驱动一切**：围绕"主角想要什么→遇到什么阻碍→付出什么代价→得到什么结果"来规划每一阶段，不追求匀速推进，而是通过拉扯和迟到的兑现来制造上瘾感。
+                        **卷间节奏波浪**：不同卷可以承担不同节奏角色（攀升卷/高峰卷/缓冲卷/翻盘卷等），不需要平均分配爆点；重要情节可以有意跨卷铺垫和兑现，只要整体遵守超级大纲。
+
+                        # 小说信息
+                        **标题**：{{novel_title}}
+                        {{novel_description_block}}**全书大纲**：
+                        {{plot_structure}}
+
+                        # 本卷信息
+                        **卷名**：{{volume_title}}
+                        **主题**：{{volume_theme}}
+                        **简述**：{{volume_summary}}
+                        {{chapter_range_block}}{{target_word_count_block}}{{user_advice_block}}
+                        【对齐约束】
+                        - 严格承接超级大纲与本卷信息，保留其中的核心冲突、角色定位、关键线索与设定，不得擅自重置或弱化。
+                        - 新增情节需解释其如何放大原有主题与冲突张力，确保因果链自洽。
+                        - 若超级大纲或卷简述已有具体事件/目标，须延续并深化，保持人物动机连续；允许将某些重大事件拆分为跨卷完成的多个阶段（铺垫→爆发→余波），而不是强行在一卷内全部做完。
+
+                        【卷内逻辑自洽】
+                        - 明确本卷起点状态（角色实力/地位/关系/线索/外部局势），关键事件须具备“触发→动作→结果”的因果链，不允许无因果跳跃或“天降资源”。
+                        - 角色动机、能力边界与世界规则前后一致；若有突破，必须给出铺垫与代价。
+                        - 本卷内不得出现自相矛盾的设定或前后冲突；反派不降智，行动与其资源和信息边界匹配。
+                        - 首尾呼应：开卷起点→关键转折→卷末状态闭环，并自然抛出下一卷钩子；如为第一卷，从初始设定起；否则默认承接上一卷卷末状态。
+
+                        【读者体验目标】
+                        - 以整部作品为单位规划期待-兑现节奏：本卷可以是持续拉升、高压爆发或短暂缓冲，但必须在全书曲线中占据清晰位置；不追求每卷、每阶段都平均好看，而是有重点地堆砌记忆点。
+                        - 在本卷内部设计明显的情绪起伏：紧张与放松相间、危机与逆转呼应，让读者在关键节点产生“停不下来”的冲动，尤其是本卷后半程和卷末附近。
+                        - 针对目标读者喜好突出市场卖点（成长、情感、爽感、悬念等），打造让人想追更的阅读体验。
+
+                        # 输出要求
+                        - 用编辑视角写作：像在跟作者讨论这一卷的大致写法，而不是在向读者讲故事。
+                        - 全文保持在适中篇幅，更偏向抽象总结和结构规划，而不是展开具体桥段经过。
+                        - 禁止出现引号中的人物台词（如“他冷笑着说：……”），也不要写出完整的时间线式剧情复盘。
+
+                        ## 一、本卷核心定位
+                        用2-3句话说清楚：这一卷要解决什么问题？主角要达成什么目标？读者能爽到什么？
+
+                        ## 二、主角成长轨迹
+                        **起点状态**：本卷开始时，主角的实力/地位/资源/心态是什么样？
+                        **终点状态**：本卷结束时，主角会成长到什么程度？必须根据全书大纲设定来确定，保持一致性。
+                        **成长路径**：大致分几个阶段？每个阶段有什么标志性突破？
+
+                        ## 三、核心冲突与对手
+                        **主要对手**：谁在跟主角作对？他们的目标是什么？实力如何？
+                        **冲突升级路线**：矛盾怎么一步步激化？从小摩擦到大爆发的节奏是什么？
+                        **压力来源**：除了对手，还有什么在逼主角？（时间限制、资源短缺、规则限制等）
+                        **代价边界**：主角为了达成目标，最多能付出什么代价？什么是绝对不能失去的？
+
+                        ## 四、爽点体系设计
+                        **基础爽点**：分布在正常推进过程中的“小爆点”类型与触发条件，列出3-5个典型场景方向，不需要严格平均间隔，但要避免长时间完全无爽点。
+                        **进阶爽点**：本卷中等强度爆发的事件类型与大致出现阶段（如前期/中期/后期），列出2-3个关键节点方向，而不是按固定章节间隔平均分布。
+                        **高潮爽点**：本卷的巅峰时刻，可以集中在卷末，也可以在本卷中后段先爆一波，再把更大的后果或揭露压到下一卷；描述1-2个巅峰设计思路，并说明与前后卷的衔接。
+
+                        ## 五、开放事件池（≥8个）
+                        提供一些"可选事件包"，每个事件包括：
+                        - **事件名**：简短标题
+                        - **触发条件**：什么情况下可以用这个事件？
+                        - **核心矛盾**：这个事件的主要冲突是什么？
+                        - **可能结果**：成功/失败/意外，各会导向什么？
+                        - **爽点类型**：这个事件能给读者什么爽感？（打脸/逆袭/获得/成长/揭秘等）
+
+                        **注意**：这些事件不规定顺序，AI写作时可以根据剧情需要灵活选用和组合。
+
+                        ## 六、关键里程碑（3-5个）
+                        本卷必须经过的几个关键节点，其中一部分可以在本卷内完成闭环，另一部分可以只做到“半步”，把最狠的后果或揭露留到下一卷；每个包括：
+                        - **里程碑名称**：这个节点叫什么？
+                        - **达成条件**：什么情况下算达成？
+                        - **影响范围**：达成后会改变什么？（主角能力、势力格局、剧情走向等），并标明主要影响是落在本卷，还是会强烈延续到后续卷。
+                        - **悬念钩子**：这个节点会引出什么新问题或新目标，是否为后续一整卷提供主线动力？
+
+                        ## 七、支线与节奏调节
+                        **情感线**：本卷有哪些角色关系会发展？（友情/爱情/师徒/仇恨等）大致走向是什么？
+                        **探索线**：有什么谜团需要揭开？分几步揭示？
+                        **日常调节**：在紧张剧情之间，可以插入什么轻松场景来调节节奏？
+
+                        ## 八、伏笔管理
+                        **本卷要埋的伏笔**：为后续卷做铺垫，列出2-3个关键伏笔及其埋藏方式。
+                        **本卷要收的伏笔**：前面埋下的哪些坑要在本卷填？怎么填才爽？
+                        **本卷要提的伏笔**：之前埋的伏笔，在本卷要不要提一下加深印象？
+
+                        ## 九、卷末状态与钩子
+                        **主角最终状态**：本卷结束时，主角的实力/地位/资源/心态达到什么程度？
+                        **已解决问题**：本卷打算真正解决哪些矛盾？哪些只是阶段性缓和或“看似解决”？请避免把所有重要问题一次性做完。
+                        **新增悬念**：卷末要留出足够有力的钩子，让读者强烈想看下一卷，可以是新危机/新目标/新谜团，但不能只是轻描淡写的小尾巴。
+                        **风险结转**：明确指出有哪些隐患或代价会延续到下一卷甚至更后面的卷，形成跨卷的持续压力与期待。
+
+                        # 写作风格要求
+                        1. **人话表达**：别用术语和套话，就像老编辑跟作者聊天一样自然
+                        2. **具体可操作**：描述要具体明确，基于全书大纲的设定，不要编造大纲中不存在的内容
+                        3. **留白适度**：给出方向和资源，但不锁死具体过程，让AI有发挥空间
+                        4. **冲突为王**：每个部分都要体现"想要什么→遇到什么阻碍→付出什么代价"
+                        5. **爽点密集**：确保读者每隔几章就能爽一次，不能让剧情平淡
+
+                        # 禁止事项
+                        ❌ 不要写具体对话和场景细节
+                        ❌ 不要规定具体章节编号和顺序
+                        ❌ 不要用JSON或代码块格式
+                        ❌ 不要写成流水账式的事件列表
+                        ❌ 不要锁死剧情发展路径
+
+                        只输出上述九个部分的正文内容，不要额外添加与卷蓝图无关的话语。
+
+                        现在，基于以上信息和要求，生成一份让读者"欲罢不能"的卷蓝图，用自然中文分段叙述，禁止附加解释或总结。
+                        """,
+                values
+        );
     }
 
 
@@ -381,7 +459,19 @@ public class VolumeService {
         logger.info("📝 正在为小说 '{}' 生成 {} 个卷的规划（一次性生成策略）...", novel.getTitle(), volumeCount);
         
         // 直接使用优化后的一次性生成逻辑
-        return generateVolumePlansFromOutlineOldWay(novel, outline, volumeCount, aiConfig);
+        return generateVolumePlansFromOutline(novel, outline, volumeCount, aiConfig, null);
+    }
+
+    private List<Map<String, Object>> generateVolumePlansFromOutline(Novel novel,
+        com.novel.domain.entity.NovelOutline outline,
+        Integer volumeCount,
+        com.novel.dto.AIConfigRequest aiConfig,
+        Long volumeTemplateId) {
+        
+        logger.info("馃摑 姝ｅ湪涓哄皬璇?'{}' 鐢熸垚 {} 涓嵎鐨勮鍒掞紙涓€娆℃€х敓鎴愮瓥鐣ワ級...", novel.getTitle(), volumeCount);
+        
+        // 鐩存帴浣跨敤浼樺寲鍚庣殑涓€娆℃€х敓鎴愰€昏緫
+        return generateVolumePlansFromOutlineOldWay(novel, outline, volumeCount, aiConfig, volumeTemplateId);
     }
     
     /**
@@ -393,8 +483,11 @@ public class VolumeService {
      * 3. contentOutline详细（800-1200字），给章纲足够发挥空间
      * 4. 重点写"过程"和"细节"，而不是"目标"和"结果"
      */
-    private List<Map<String, Object>> generateVolumePlansFromOutlineOldWay(Novel novel, 
-        com.novel.domain.entity.NovelOutline outline, Integer volumeCount, com.novel.dto.AIConfigRequest aiConfig) {
+    private List<Map<String, Object>> generateVolumePlansFromOutlineOldWay(Novel novel,
+        com.novel.domain.entity.NovelOutline outline,
+        Integer volumeCount,
+        com.novel.dto.AIConfigRequest aiConfig,
+        Long volumeTemplateId) {
         
         logger.info("📝 使用V4连贯性优先逻辑为小说 '{}' 生成 {} 个卷的规划...", novel.getTitle(), volumeCount);
 
@@ -406,7 +499,12 @@ public class VolumeService {
         String escapedOutlineContent = outlineContent.replace("%", "%%");
 
         // 使用优化后的提示词框架：强制执行准则 + 三步处理流程
-        String prompt = String.format(
+        String defaultPrompt = formatManagedPrompt(
+            "volume.plan.legacy",
+            "当前分卷规划提示词",
+            "system_chain",
+            "当前生效的系统分卷规划提示词（沿用 legacy 键名兼容历史逻辑）",
+            120,
             "=== 1. 全局执行准则（铁律层） ===\n\n" +
                     "【强制执行：分卷设计核心原则】\n\n" +
                     "在处理任何分卷规划前，必须强制执行以下铁律：\n\n" +
@@ -907,6 +1005,7 @@ public class VolumeService {
             volumeCount,                // 第840行 %s - 共N个卷对象
             volumeCount                 // 第843行 %s - 必须正好是N
         );
+        String prompt = resolveVolumePlanningPrompt(volumeTemplateId, novel, outlineContent, volumeCount, defaultPrompt);
 
         try {
             logger.info("🤖 调用AI生成卷规划，提示词长度: {}", prompt.length());
@@ -960,7 +1059,12 @@ public class VolumeService {
         String escapedBasicIdea = basicIdea != null ? basicIdea.replace("%", "%%") : "";
         String escapedOutlineContent = outlineContent.replace("%", "%%");
         
-        String prompt = String.format(
+        String prompt = formatManagedPrompt(
+            "volume.plan.first_volume",
+            "第一卷规划提示词",
+            "volume_plan",
+            "基于全书大纲生成第一卷详细规划",
+            121,
             "【第一步：深度分析大纲 - 必须先完成这一步再进行创作】\n\n" +
             "在开始规划分卷之前，你必须先对用户提供的大纲进行深度分析，理解其核心内涵：\n\n" +
             "1. **剧情内核分析**（用1-2句话概括）\n" +
@@ -1197,7 +1301,7 @@ public class VolumeService {
             
             long startTime = System.currentTimeMillis();
             String response;
-            if (aiConfig != null && aiConfig.isValid()) {
+            if (hasUsableAiConfig(aiConfig)) {
                 response = aiWritingService.generateContent(prompt, "first_volume_planning", aiConfig);
             } else {
                 response = aiService.callAI("VOLUME_PLANNER", prompt);
@@ -1258,7 +1362,12 @@ public class VolumeService {
         
         String escapedFirstVolumeOutline = firstVolumeOutline.replace("%", "%%");
         
-        String prompt = String.format(
+        String prompt = formatManagedPrompt(
+            "volume.plan.remaining_volumes",
+            "后续分卷规划提示词",
+            "volume_plan",
+            "基于第一卷与全书大纲生成后续各卷规划",
+            122,
             "【第一步：理解大纲风格和第一卷基调 - 必须先完成这一步】\n\n" +
             "在规划后续卷之前，你必须先理解整个故事的风格和第一卷已经确立的基调：\n\n" +
             "1. **回顾原始大纲的核心特征**\n" +
@@ -1412,7 +1521,7 @@ public class VolumeService {
             
             long startTime = System.currentTimeMillis();
             String response;
-            if (aiConfig != null && aiConfig.isValid()) {
+            if (hasUsableAiConfig(aiConfig)) {
                 response = aiWritingService.generateContent(prompt, "remaining_volumes_planning", aiConfig);
             } else {
                 response = aiService.callAI("VOLUME_PLANNER", prompt);
@@ -1798,7 +1907,12 @@ public class VolumeService {
                 ? outline.getPlotStructure() 
                 : (outline.getBasicIdea() != null ? outline.getBasicIdea() : "");
             
-            String prompt = String.format(
+            String prompt = formatManagedPrompt(
+                "volume.plan.simplified",
+                "简化卷规划提示词",
+                "volume_plan",
+                "仅生成卷标题与主题的简化分卷规划",
+                123,
                 "你是网文结构规划师。根据以下大纲，为小说《%s》生成 %s 个卷的标题和主题。\n\n" +
                 "小说类型：%s\n\n" +
                 "大纲内容：\n%s\n\n" +
@@ -2077,7 +2191,7 @@ public class VolumeService {
     @Deprecated
     @Transactional
     public List<NovelVolume> generateVolumePlansFromConfirmedOutline(Long novelId, Integer volumeCount) {
-        return generateVolumePlansFromConfirmedOutline(novelId, volumeCount, null);
+        return generateVolumePlansFromConfirmedOutline(novelId, volumeCount, null, null);
     }
     
     /**
@@ -2086,6 +2200,14 @@ public class VolumeService {
      */
     @Transactional
     public List<NovelVolume> generateVolumePlansFromConfirmedOutline(Long novelId, Integer volumeCount, com.novel.dto.AIConfigRequest aiConfig) {
+        return generateVolumePlansFromConfirmedOutline(novelId, volumeCount, aiConfig, null);
+    }
+
+    @Transactional
+    public List<NovelVolume> generateVolumePlansFromConfirmedOutline(Long novelId,
+                                                                     Integer volumeCount,
+                                                                     com.novel.dto.AIConfigRequest aiConfig,
+                                                                     Long volumeTemplateId) {
         logger.info("📝 基于确认的大纲生成卷规划，小说ID: {}, 卷数: {}", novelId, volumeCount);
         
         try {
@@ -2109,12 +2231,12 @@ public class VolumeService {
             
             // 传递AI配置到卷规划生成方法
             List<Map<String, Object>> volumePlans;
-            if (aiConfig != null && aiConfig.isValid()) {
+            if (hasUsableAiConfig(aiConfig)) {
                 logger.info("✅ 使用AI配置生成卷规划");
-                volumePlans = generateVolumePlansFromOutline(novel, outlineOpt.get(), volumeCount, aiConfig);
+                volumePlans = generateVolumePlansFromOutline(novel, outlineOpt.get(), volumeCount, aiConfig, volumeTemplateId);
             } else {
                 logger.warn("⚠️ 未提供有效AI配置，使用默认方式生成卷规划");
-                volumePlans = generateVolumePlansFromOutline(novel, outlineOpt.get(), volumeCount);
+                volumePlans = generateVolumePlansFromOutline(novel, outlineOpt.get(), volumeCount, null, volumeTemplateId);
             }
             
             // 4. 覆盖式重建：先查询现有卷，删除卷及其派生数据，再插入新卷
@@ -2224,6 +2346,7 @@ public class VolumeService {
                 logger.warn("⚠️ 更新小说创作阶段失败: {}", e.getMessage());
             }
 
+            triggerCoreSettingsRefreshAfterVolumePlanning(outlineOpt.get(), aiConfig);
             return savedVolumes;
 
         } catch (Exception e) {
@@ -2238,13 +2361,20 @@ public class VolumeService {
      */
     @Deprecated
     public com.novel.domain.entity.AITask generateVolumePlansFromConfirmedOutlineAsync(Long novelId, Integer volumeCount) {
-        return generateVolumePlansFromConfirmedOutlineAsync(novelId, volumeCount, null);
+        return generateVolumePlansFromConfirmedOutlineAsync(novelId, volumeCount, null, null);
     }
     
     /**
      * 基于确认的大纲异步生成卷规划（支持AI配置）
      */
     public com.novel.domain.entity.AITask generateVolumePlansFromConfirmedOutlineAsync(Long novelId, Integer volumeCount, com.novel.dto.AIConfigRequest aiConfig) {
+        return generateVolumePlansFromConfirmedOutlineAsync(novelId, volumeCount, aiConfig, null);
+    }
+
+    public com.novel.domain.entity.AITask generateVolumePlansFromConfirmedOutlineAsync(Long novelId,
+                                                                                        Integer volumeCount,
+                                                                                        com.novel.dto.AIConfigRequest aiConfig,
+                                                                                        Long volumeTemplateId) {
         logger.info("🚀 提交基于确认大纲的卷规划生成任务，小说ID: {}, 卷数: {}", novelId, volumeCount);
         
         try {
@@ -2254,12 +2384,18 @@ public class VolumeService {
             aiTask.setType(com.novel.domain.entity.AITask.AITaskType.STORY_OUTLINE);
             aiTask.setStatus(com.novel.domain.entity.AITask.AITaskStatus.PENDING);
             aiTask.setNovelId(novelId);
+            if (aiTask.getUserId() == null) {
+                aiTask.setUserId(AuthUtils.getCurrentUserId());
+            }
             
             // 构建任务参数
             Map<String, Object> params = new HashMap<>();
             params.put("novelId", novelId);
             params.put("volumeCount", volumeCount);
             params.put("operationType", "GENERATE_VOLUMES_FROM_CONFIRMED_OUTLINE");
+            if (volumeTemplateId != null) {
+                params.put("volumeTemplateId", volumeTemplateId);
+            }
             
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
@@ -2271,7 +2407,7 @@ public class VolumeService {
             aiTask.setMaxRetries(3);
             
             // 提交异步任务，传递AI配置
-            Long taskId = submitVolumePlansFromConfirmedOutlineTask(aiTask, novelId, volumeCount, aiConfig);
+            Long taskId = submitVolumePlansFromConfirmedOutlineTask(aiTask, novelId, volumeCount, aiConfig, volumeTemplateId);
             aiTask.setId(taskId);
             
             return aiTask;
@@ -2285,7 +2421,11 @@ public class VolumeService {
     /**
      * 提交基于确认大纲的卷规划生成任务（支持AI配置）
      */
-    private Long submitVolumePlansFromConfirmedOutlineTask(com.novel.domain.entity.AITask aiTask, Long novelId, Integer volumeCount, com.novel.dto.AIConfigRequest aiConfig) {
+    private Long submitVolumePlansFromConfirmedOutlineTask(com.novel.domain.entity.AITask aiTask,
+                                                           Long novelId,
+                                                           Integer volumeCount,
+                                                           com.novel.dto.AIConfigRequest aiConfig,
+                                                           Long volumeTemplateId) {
         logger.info("📋 提交基于确认大纲的卷规划生成任务到异步队列，小说ID: {}", novelId);
         
         try {
@@ -2294,7 +2434,7 @@ public class VolumeService {
             Long taskId = Long.valueOf(taskDto.getId());
             
             // 启动异步生成任务
-            java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            java.util.concurrent.CompletableFuture.supplyAsync(SecurityContextTaskWrapper.wrapSupplier(() -> {
                 try {
                     logger.info("🤖 开始异步生成小说 {} 的卷规划（基于确认大纲）", novelId);
                     
@@ -2302,7 +2442,7 @@ public class VolumeService {
                     aiTaskService.updateTaskProgress(taskId, 10, "RUNNING", "准备基于确认大纲生成卷规划");
                     
                     // 调用基于确认大纲的生成方法，传递AI配置
-                    List<NovelVolume> volumes = generateVolumePlansFromConfirmedOutline(novelId, volumeCount, aiConfig);
+                    List<NovelVolume> volumes = generateVolumePlansFromConfirmedOutline(novelId, volumeCount, aiConfig, volumeTemplateId);
                     
                     // 更新任务状态为完成
                     aiTaskService.updateTaskProgress(taskId, 100, "COMPLETED", "卷规划生成完成");
@@ -2331,7 +2471,7 @@ public class VolumeService {
                     }
                     throw new RuntimeException(e.getMessage());
                 }
-            }).exceptionally(ex -> {
+            })).exceptionally(ex -> {
                 // 处理异步任务异常
                 logger.error("❌ 异步任务执行异常: {}", ex.getMessage(), ex);
                 try {
@@ -2369,9 +2509,170 @@ public class VolumeService {
      * AI优化卷大纲（流式）
      * 注意：使用@Transactional(propagation = Propagation.NOT_SUPPORTED)禁用事务，因为流式处理是渐进式的
      */
+    private String buildVolumeOutlineOptimizationPrompt(Novel novel,
+                                                        NovelVolume volume,
+                                                        String currentOutline,
+                                                        String suggestion,
+                                                        Map<String, Object> volumeInfo) {
+        String volumeInfoBlock;
+        if (volumeInfo != null) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("- 卷序号：第").append(volumeInfo.get("volumeNumber")).append("卷\n");
+            sb.append("- 章节范围：第").append(volumeInfo.get("chapterStart"))
+                    .append("-").append(volumeInfo.get("chapterEnd")).append("章\n");
+            if (volumeInfo.get("description") != null) {
+                sb.append("- 卷简介：").append(volumeInfo.get("description")).append("\n");
+            }
+            volumeInfoBlock = sb.toString();
+        } else {
+            volumeInfoBlock = "- 卷序号：第" + volume.getVolumeNumber() + "卷\n"
+                    + "- 章节范围：第" + volume.getChapterStart() + "-" + volume.getChapterEnd() + "章\n";
+        }
+        return renderManagedPrompt(
+                "volume.outline.optimization",
+                "卷蓝图优化提示词",
+                "volume",
+                "根据用户建议优化当前卷蓝图，保持核心框架不变并直接输出完整优化结果",
+                340,
+                List.of("novel_title", "novel_genre", "volume_info_block", "current_outline", "suggestion"),
+                """
+                        你是一位资深网文编辑，现在需要根据用户的建议优化卷大纲。
+
+                        **小说信息：**
+                        - 标题：{{novel_title}}
+                        - 类型：{{novel_genre}}
+
+                        **卷信息：**
+                        {{volume_info_block}}
+                        **当前大纲：**
+                        {{current_outline}}
+
+                        **优化建议：**
+                        {{suggestion}}
+
+                        **优化要求：**
+                        1. 在保持原有大纲核心框架的基础上，根据用户建议进行改进
+                        2. 确保优化后的大纲逻辑连贯、情节合理、节奏紧凑
+                        3. 保持大纲的结构清晰，使用小标题组织内容
+                        4. 不要列出具体的章节编号，只描述剧情流程和发展脉络
+                        5. 使用生动的语言，让大纲充满画面感和吸引力
+                        6. 直接输出优化后的完整大纲，不要添加"根据建议"等元话语
+
+                        请直接输出优化后的大纲：
+                        """,
+                Map.of(
+                        "novel_title", novel.getTitle() == null ? "" : novel.getTitle(),
+                        "novel_genre", novel.getGenre() == null ? "" : novel.getGenre(),
+                        "volume_info_block", volumeInfoBlock,
+                        "current_outline", currentOutline == null ? "" : currentOutline,
+                        "suggestion", suggestion == null ? "" : suggestion
+                )
+        );
+    }
+
+    private String buildVolumeBlueprintModificationPrompt(Novel novel,
+                                                          NovelOutline superOutline,
+                                                          NovelVolume currentVolume,
+                                                          NovelVolume previousVolume,
+                                                          NovelVolume nextVolume,
+                                                          String userRequirement) {
+        String previousVolumeBlock;
+        if (previousVolume != null) {
+            String prevOutline = previousVolume.getContentOutline();
+            if (prevOutline != null && prevOutline.length() > 1000) {
+                prevOutline = "..." + prevOutline.substring(prevOutline.length() - 1000);
+            }
+            previousVolumeBlock = "# 前一卷信息（第" + previousVolume.getVolumeNumber() + "卷）\n"
+                    + "**卷名**：" + safeText(previousVolume.getTitle()) + "\n"
+                    + "**主题**：" + safeText(previousVolume.getTheme()) + "\n"
+                    + "**简述**：" + safeText(previousVolume.getDescription()) + "\n"
+                    + (prevOutline != null && !prevOutline.isEmpty() ? "**前一卷末尾状态（参考）**：\n" + prevOutline + "\n" : "")
+                    + "\n";
+        } else {
+            previousVolumeBlock = "# 前一卷信息\n本卷是第一卷，没有前置卷。\n\n";
+        }
+
+        String currentVolumeBlock = "# 当前卷信息（第" + currentVolume.getVolumeNumber() + "卷）- 需要修改的卷\n"
+                + "**卷名**：" + safeText(currentVolume.getTitle()) + "\n"
+                + "**主题**：" + safeText(currentVolume.getTheme()) + "\n"
+                + "**简述**：" + safeText(currentVolume.getDescription()) + "\n"
+                + (currentVolume.getChapterStart() != null && currentVolume.getChapterEnd() != null
+                ? "**章节范围**：第 " + currentVolume.getChapterStart() + "-" + currentVolume.getChapterEnd() + " 章\n"
+                : "")
+                + "**当前蓝图内容**：\n" + safeText(currentVolume.getContentOutline()) + "\n\n";
+
+        String nextVolumeBlock;
+        if (nextVolume != null) {
+            String nextOutline = nextVolume.getContentOutline();
+            if (nextOutline != null && nextOutline.length() > 1000) {
+                nextOutline = nextOutline.substring(0, 1000) + "...";
+            }
+            nextVolumeBlock = "# 后一卷信息（第" + nextVolume.getVolumeNumber() + "卷）\n"
+                    + "**卷名**：" + safeText(nextVolume.getTitle()) + "\n"
+                    + "**主题**：" + safeText(nextVolume.getTheme()) + "\n"
+                    + "**简述**：" + safeText(nextVolume.getDescription()) + "\n"
+                    + (nextOutline != null && !nextOutline.isEmpty() ? "**后一卷开头状态（参考）**：\n" + nextOutline + "\n" : "")
+                    + "\n";
+        } else {
+            nextVolumeBlock = "# 后一卷信息\n本卷是最后一卷，没有后续卷。\n\n";
+        }
+
+        return renderManagedPrompt(
+                "volume.blueprint.modification.context",
+                "卷蓝图上下文修改提示词",
+                "volume",
+                "根据用户需求修改当前卷蓝图，并结合前后卷上下文保持承接、伏笔和角色状态连续",
+                341,
+                List.of(
+                        "novel_title", "novel_genre", "novel_description_block", "plot_structure",
+                        "previous_volume_block", "current_volume_block", "next_volume_block", "user_requirement"
+                ),
+                """
+                        你是顶级网文总编，现在需要根据用户需求修改卷蓝图。你必须确保修改后的内容与前后卷保持一致，避免出现跳跃、矛盾或不连贯的问题。
+
+                        # 核心原则
+                        **连贯性第一**：修改时必须考虑前后卷的情节走向、角色状态、世界观设定，确保无缝衔接。
+                        **保持整体框架**：只针对用户提出的具体需求进行修改，不要擅自改动其他部分。
+                        **尊重设定**：严格遵守超级大纲和前后卷已建立的设定、伏笔、角色关系。
+
+                        # 小说信息
+                        **标题**：{{novel_title}}
+                        **类型**：{{novel_genre}}
+                        {{novel_description_block}}**全书大纲**：
+                        {{plot_structure}}
+
+                        {{previous_volume_block}}{{current_volume_block}}{{next_volume_block}}# 用户修改需求
+                        {{user_requirement}}
+
+                        # 修改要求
+                        1. **针对性修改**：只修改用户要求修改的部分，保持其他部分不变
+                        2. **前后衔接**：确保修改后的内容能够承接前一卷的结尾状态，并为后一卷做好铺垫
+                        3. **角色状态连续**：主角和关键角色的实力、地位、心态变化必须符合前后卷的设定
+                        4. **伏笔对齐**：如果前一卷埋下伏笔，本卷要延续；如果本卷为后一卷埋伏笔，修改后仍要保留
+                        5. **冲突升级合理**：修改后的冲突强度要在前后卷之间形成合理的梯度
+                        6. **保持结构**：仍然按照原有的九个部分输出（核心定位、成长轨迹、冲突对手、爽点体系、开放事件池、关键里程碑、支线节奏、伏笔管理、卷末状态）
+                        7. **直接输出**：只输出修改后的完整卷蓝图，不要添加"根据您的要求"等元话语
+
+                        现在，请根据用户需求修改当前卷的蓝图，确保与前后卷无缝衔接：
+                        """,
+                Map.of(
+                        "novel_title", novel.getTitle() == null ? "" : novel.getTitle(),
+                        "novel_genre", novel.getGenre() == null ? "" : novel.getGenre(),
+                        "novel_description_block",
+                        novel.getDescription() != null && !novel.getDescription().isEmpty()
+                                ? "**构思**：" + novel.getDescription() + "\n"
+                                : "",
+                        "plot_structure", superOutline.getPlotStructure() == null ? "" : superOutline.getPlotStructure(),
+                        "previous_volume_block", previousVolumeBlock,
+                        "current_volume_block", currentVolumeBlock,
+                        "next_volume_block", nextVolumeBlock,
+                        "user_requirement", userRequirement == null ? "" : userRequirement
+                )
+        );
+    }
+
     @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public void optimizeVolumeOutlineStream(Long volumeId, String currentOutline, String suggestion, Map<String, Object> volumeInfo, com.novel.dto.AIConfigRequest aiConfig, java.util.function.Consumer<String> chunkConsumer) {
-        logger.info("🎨 开始流式优化卷 {} 的大纲", volumeId);
         
         try {
             // 获取卷信息
@@ -2382,46 +2683,11 @@ public class VolumeService {
             
             // 获取小说信息
             Novel novel = novelService.getNovelById(volume.getNovelId());
-            
-            // 构建优化提示词
-            StringBuilder prompt = new StringBuilder();
-            prompt.append("你是一位资深网文编辑，现在需要根据用户的建议优化卷大纲。\n\n");
-            prompt.append("**小说信息：**\n");
-            prompt.append("- 标题：").append(novel.getTitle()).append("\n");
-            prompt.append("- 类型：").append(novel.getGenre()).append("\n");
-            
-            prompt.append("\n**卷信息：**\n");
-            if (volumeInfo != null) {
-                prompt.append("- 卷序号：第").append(volumeInfo.get("volumeNumber")).append("卷\n");
-                prompt.append("- 章节范围：第").append(volumeInfo.get("chapterStart"))
-                      .append("-").append(volumeInfo.get("chapterEnd")).append("章\n");
-                if (volumeInfo.get("description") != null) {
-                    prompt.append("- 卷简介：").append(volumeInfo.get("description")).append("\n");
-                }
-            } else {
-                prompt.append("- 卷序号：第").append(volume.getVolumeNumber()).append("卷\n");
-                prompt.append("- 章节范围：第").append(volume.getChapterStart())
-                      .append("-").append(volume.getChapterEnd()).append("章\n");
-            }
-            
-            prompt.append("\n**当前大纲：**\n");
-            prompt.append(currentOutline).append("\n\n");
-            
-            prompt.append("**优化建议：**\n");
-            prompt.append(suggestion).append("\n\n");
-            
-            prompt.append("**优化要求：**\n");
-            prompt.append("1. 在保持原有大纲核心框架的基础上，根据用户建议进行改进\n");
-            prompt.append("2. 确保优化后的大纲逻辑连贯、情节合理、节奏紧凑\n");
-            prompt.append("3. 保持大纲的结构清晰，使用小标题组织内容\n");
-            prompt.append("4. 不要列出具体的章节编号，只描述剧情流程和发展脉络\n");
-            prompt.append("5. 使用生动的语言，让大纲充满画面感和吸引力\n");
-            prompt.append("6. 直接输出优化后的完整大纲，不要添加\"根据建议\"等元话语\n\n");
-            prompt.append("请直接输出优化后的大纲：\n");
+            String prompt = buildVolumeOutlineOptimizationPrompt(novel, volume, currentOutline, suggestion, volumeInfo);
             
             // 使用流式生成
             StringBuilder accumulated = new StringBuilder();
-            aiWritingService.streamGenerateContent(prompt.toString(), "volume_outline_optimization", aiConfig, chunk -> {
+            aiWritingService.streamGenerateContent(prompt, "volume_outline_optimization", aiConfig, chunk -> {
                 accumulated.append(chunk);
                 chunkConsumer.accept(chunk);
             });
@@ -2431,7 +2697,6 @@ public class VolumeService {
             volume.setLastModifiedByAi(java.time.LocalDateTime.now());
             volumeMapper.updateById(volume);
             
-            logger.info("✅ 卷大纲流式优化完成");
             
         } catch (Exception e) {
             logger.error("❌ 卷大纲流式优化失败", e);
@@ -2454,45 +2719,10 @@ public class VolumeService {
             
             // 获取小说信息
             Novel novel = novelService.getNovelById(volume.getNovelId());
-            
-            // 构建优化提示词
-            StringBuilder prompt = new StringBuilder();
-            prompt.append("你是一位资深网文编辑，现在需要根据用户的建议优化卷大纲。\n\n");
-            prompt.append("**小说信息：**\n");
-            prompt.append("- 标题：").append(novel.getTitle()).append("\n");
-            prompt.append("- 类型：").append(novel.getGenre()).append("\n");
-            
-            prompt.append("\n**卷信息：**\n");
-            if (volumeInfo != null) {
-                prompt.append("- 卷序号：第").append(volumeInfo.get("volumeNumber")).append("卷\n");
-                prompt.append("- 章节范围：第").append(volumeInfo.get("chapterStart"))
-                      .append("-").append(volumeInfo.get("chapterEnd")).append("章\n");
-                if (volumeInfo.get("description") != null) {
-                    prompt.append("- 卷简介：").append(volumeInfo.get("description")).append("\n");
-                }
-            } else {
-                prompt.append("- 卷序号：第").append(volume.getVolumeNumber()).append("卷\n");
-                prompt.append("- 章节范围：第").append(volume.getChapterStart())
-                      .append("-").append(volume.getChapterEnd()).append("章\n");
-            }
-            
-            prompt.append("\n**当前大纲：**\n");
-            prompt.append(currentOutline).append("\n\n");
-            
-            prompt.append("**优化建议：**\n");
-            prompt.append(suggestion).append("\n\n");
-            
-            prompt.append("**优化要求：**\n");
-            prompt.append("1. 在保持原有大纲核心框架的基础上，根据用户建议进行改进\n");
-            prompt.append("2. 确保优化后的大纲逻辑连贯、情节合理、节奏紧凑\n");
-            prompt.append("3. 保持大纲的结构清晰，使用小标题组织内容\n");
-            prompt.append("4. 不要列出具体的章节编号，只描述剧情流程和发展脉络\n");
-            prompt.append("5. 使用生动的语言，让大纲充满画面感和吸引力\n");
-            prompt.append("6. 直接输出优化后的完整大纲，不要添加\"根据建议\"等元话语\n\n");
-            prompt.append("请直接输出优化后的大纲：\n");
+            String prompt = buildVolumeOutlineOptimizationPrompt(novel, volume, currentOutline, suggestion, volumeInfo);
             
             // 调用AI生成优化后的大纲
-            String optimizedOutline = aiService.callAI("OUTLINE_OPTIMIZER", prompt.toString());
+            String optimizedOutline = aiService.callAI("OUTLINE_OPTIMIZER", prompt);
             
             // 更新数据库
             volume.setContentOutline(optimizedOutline);
@@ -2522,7 +2752,7 @@ public class VolumeService {
         
         try {
             // 验证AI配置
-            if (aiConfig == null || !aiConfig.isValid()) {
+            if (!hasUsableAiConfig(aiConfig)) {
                 throw new RuntimeException("AI配置无效，请先在设置页面配置AI服务");
             }
             
@@ -2571,96 +2801,20 @@ public class VolumeService {
                     break;
                 }
             }
-            
-            // 构建提示词
-            StringBuilder prompt = new StringBuilder();
-            prompt.append("你是顶级网文总编，现在需要根据用户需求修改卷蓝图。你必须确保修改后的内容与前后卷保持一致，避免出现跳跃、矛盾或不连贯的问题。\n\n");
-            
-            prompt.append("# 核心原则\n");
-            prompt.append("**连贯性第一**：修改时必须考虑前后卷的情节走向、角色状态、世界观设定，确保无缝衔接。\n");
-            prompt.append("**保持整体框架**：只针对用户提出的具体需求进行修改，不要擅自改动其他部分。\n");
-            prompt.append("**尊重设定**：严格遵守超级大纲和前后卷已建立的设定、伏笔、角色关系。\n\n");
-            
-            prompt.append("# 小说信息\n");
-            prompt.append("**标题**：").append(novel.getTitle()).append("\n");
-            prompt.append("**类型**：").append(novel.getGenre()).append("\n");
-            if (novel.getDescription() != null && !novel.getDescription().isEmpty()) {
-                prompt.append("**构思**：").append(novel.getDescription()).append("\n");
-            }
-            prompt.append("**全书大纲**：\n").append(superOutline.getPlotStructure()).append("\n\n");
-            
-            // 添加前一卷信息
-            if (previousVolume != null) {
-                prompt.append("# 前一卷信息（第").append(previousVolume.getVolumeNumber()).append("卷）\n");
-                prompt.append("**卷名**：").append(previousVolume.getTitle()).append("\n");
-                prompt.append("**主题**：").append(previousVolume.getTheme()).append("\n");
-                prompt.append("**简述**：").append(previousVolume.getDescription()).append("\n");
-                if (previousVolume.getContentOutline() != null && !previousVolume.getContentOutline().isEmpty()) {
-                    String prevOutline = previousVolume.getContentOutline();
-                    // 提取卷末状态相关信息（取最后1000字符）
-                    if (prevOutline.length() > 1000) {
-                        prevOutline = "..." + prevOutline.substring(prevOutline.length() - 1000);
-                    }
-                    prompt.append("**前一卷末尾状态（参考）**：\n").append(prevOutline).append("\n");
-                }
-                prompt.append("\n");
-            } else {
-                prompt.append("# 前一卷信息\n");
-                prompt.append("本卷是第一卷，没有前置卷。\n\n");
-            }
-            
-            // 当前卷信息
-            prompt.append("# 当前卷信息（第").append(currentVolume.getVolumeNumber()).append("卷）- 需要修改的卷\n");
-            prompt.append("**卷名**：").append(currentVolume.getTitle()).append("\n");
-            prompt.append("**主题**：").append(currentVolume.getTheme()).append("\n");
-            prompt.append("**简述**：").append(currentVolume.getDescription()).append("\n");
-            if (currentVolume.getChapterStart() != null && currentVolume.getChapterEnd() != null) {
-                prompt.append("**章节范围**：第 ").append(currentVolume.getChapterStart()).append("-").append(currentVolume.getChapterEnd()).append(" 章\n");
-            }
-            prompt.append("**当前蓝图内容**：\n").append(currentVolume.getContentOutline()).append("\n\n");
-            
-            // 添加后一卷信息
-            if (nextVolume != null) {
-                prompt.append("# 后一卷信息（第").append(nextVolume.getVolumeNumber()).append("卷）\n");
-                prompt.append("**卷名**：").append(nextVolume.getTitle()).append("\n");
-                prompt.append("**主题**：").append(nextVolume.getTheme()).append("\n");
-                prompt.append("**简述**：").append(nextVolume.getDescription()).append("\n");
-                if (nextVolume.getContentOutline() != null && !nextVolume.getContentOutline().isEmpty()) {
-                    String nextOutline = nextVolume.getContentOutline();
-                    // 提取开头相关信息（取前1000字符）
-                    if (nextOutline.length() > 1000) {
-                        nextOutline = nextOutline.substring(0, 1000) + "...";
-                    }
-                    prompt.append("**后一卷开头状态（参考）**：\n").append(nextOutline).append("\n");
-                }
-                prompt.append("\n");
-            } else {
-                prompt.append("# 后一卷信息\n");
-                prompt.append("本卷是最后一卷，没有后续卷。\n\n");
-            }
-            
-            // 用户修改需求
-            prompt.append("# 用户修改需求\n");
-            prompt.append(userRequirement).append("\n\n");
-            
-            // 修改要求
-            prompt.append("# 修改要求\n");
-            prompt.append("1. **针对性修改**：只修改用户要求修改的部分，保持其他部分不变\n");
-            prompt.append("2. **前后衔接**：确保修改后的内容能够承接前一卷的结尾状态，并为后一卷做好铺垫\n");
-            prompt.append("3. **角色状态连续**：主角和关键角色的实力、地位、心态变化必须符合前后卷的设定\n");
-            prompt.append("4. **伏笔对齐**：如果前一卷埋下伏笔，本卷要延续；如果本卷为后一卷埋伏笔，修改后仍要保留\n");
-            prompt.append("5. **冲突升级合理**：修改后的冲突强度要在前后卷之间形成合理的梯度\n");
-            prompt.append("6. **保持结构**：仍然按照原有的九个部分输出（核心定位、成长轨迹、冲突对手、爽点体系、开放事件池、关键里程碑、支线节奏、伏笔管理、卷末状态）\n");
-            prompt.append("7. **直接输出**：只输出修改后的完整卷蓝图，不要添加\"根据您的要求\"等元话语\n\n");
-            
-            prompt.append("现在，请根据用户需求修改当前卷的蓝图，确保与前后卷无缝衔接：\n");
-            
-            logger.info("📝 [流式修改] 调用AI修改卷蓝图，提示词长度: {}", prompt.length());
+            String prompt = buildVolumeBlueprintModificationPrompt(
+                    novel,
+                    superOutline,
+                    currentVolume,
+                    previousVolume,
+                    nextVolume,
+                    userRequirement
+            );
+
             
             // 使用流式AI调用
             StringBuilder accumulated = new StringBuilder();
             
-            aiWritingService.streamGenerateContent(prompt.toString(), "volume_blueprint_modification", aiConfig, chunk -> {
+            aiWritingService.streamGenerateContent(prompt, "volume_blueprint_modification", aiConfig, chunk -> {
                 try {
                     // 累加内容
                     accumulated.append(chunk);
@@ -2681,11 +2835,163 @@ public class VolumeService {
                 }
             });
             
-            logger.info("✅ [流式修改] 卷 {} 蓝图修改完成，总长度: {}", volumeId, accumulated.length());
             
         } catch (Exception e) {
             logger.error("❌ [流式修改] 修改卷 {} 蓝图失败", volumeId, e);
             throw new RuntimeException("修改卷蓝图失败: " + e.getMessage(), e);
         }
+    }
+
+    private String formatManagedPrompt(String promptKey,
+                                       String name,
+                                       String category,
+                                       String description,
+                                       int sortOrder,
+                                       String template,
+                                       Object... args) {
+        return managedPromptService.format(SystemPromptDescriptor.builder()
+                        .promptKey(promptKey)
+                        .name(name)
+                        .category(category)
+                        .description(description)
+                        .sortOrder(sortOrder)
+                        .defaultContent(template)
+                        .build(),
+                args);
+    }
+
+    private String renderManagedPrompt(String promptKey,
+                                       String name,
+                                       String category,
+                                       String description,
+                                       int sortOrder,
+                                       List<String> variables,
+                                       String template,
+                                       Map<String, ?> values) {
+        return managedPromptService.render(SystemPromptDescriptor.builder()
+                        .promptKey(promptKey)
+                        .name(name)
+                        .category(category)
+                        .description(description)
+                        .variables(variables)
+                        .sortOrder(sortOrder)
+                        .defaultContent(template)
+                        .build(),
+                values);
+    }
+
+    private String resolveVolumePlanningPrompt(Long volumeTemplateId,
+                                               Novel novel,
+                                               String outlineContent,
+                                               Integer volumeCount,
+                                               String defaultPrompt) {
+        if (volumeTemplateId == null) {
+            return defaultPrompt;
+        }
+
+        try {
+            PromptTemplate template = promptTemplateService.getById(volumeTemplateId);
+            if (template == null || !Boolean.TRUE.equals(template.getIsActive())) {
+                logger.warn("拆分卷模板不存在或已禁用，回退系统默认模板: templateId={}", volumeTemplateId);
+                return defaultPrompt;
+            }
+
+            if (!isVolumeTemplateCategory(template.getCategory())) {
+                logger.warn("拆分卷模板分类不匹配，回退系统默认模板: templateId={}, category={}",
+                        volumeTemplateId, template.getCategory());
+                return defaultPrompt;
+            }
+
+            String templateContent = promptTemplateService.getTemplateContent(volumeTemplateId);
+            if (templateContent == null || templateContent.trim().isEmpty()) {
+                logger.warn("拆分卷模板内容为空，回退系统默认模板: templateId={}", volumeTemplateId);
+                return defaultPrompt;
+            }
+
+            int safeVolumeCount = volumeCount == null ? 0 : volumeCount;
+            String safeTitle = safeText(novel != null ? novel.getTitle() : "");
+            String safeOutline = safeText(outlineContent);
+
+            Map<String, Object> variables = new LinkedHashMap<>();
+            variables.put("novel_title", safeTitle);
+            variables.put("title", safeTitle);
+            variables.put("outline_content", safeOutline);
+            variables.put("outline", safeOutline);
+            variables.put("plot_structure", safeOutline);
+            variables.put("volume_count", safeVolumeCount);
+            variables.put("planned_volume_count", safeVolumeCount);
+
+            String rendered = applyPromptTemplateVariables(templateContent, variables);
+            try {
+                rendered = String.format(
+                        rendered,
+                        safeTitle.replace("%", "%%"),
+                        safeOutline.replace("%", "%%"),
+                        safeVolumeCount,
+                        safeVolumeCount,
+                        safeTitle.replace("%", "%%"),
+                        safeOutline.replace("%", "%%"),
+                        safeVolumeCount,
+                        safeVolumeCount,
+                        safeVolumeCount
+                );
+            } catch (Exception formatError) {
+                logger.debug("拆分卷模板未使用 legacy 格式化占位符或格式不匹配，保留变量渲染结果: templateId={}, error={}",
+                        volumeTemplateId, formatError.getMessage());
+            }
+
+            logger.info("使用拆分卷模板生成卷规划: templateId={}, templateName={}", volumeTemplateId, template.getName());
+            return rendered;
+        } catch (Exception e) {
+            logger.warn("解析拆分卷模板失败，回退系统默认模板: templateId={}, error={}", volumeTemplateId, e.getMessage());
+            return defaultPrompt;
+        }
+    }
+
+    private boolean isVolumeTemplateCategory(String category) {
+        if (category == null) {
+            return false;
+        }
+        String normalized = category.trim().toLowerCase(Locale.ROOT);
+        return "volume_split".equals(normalized);
+    }
+
+    private String applyPromptTemplateVariables(String template, Map<String, ?> variables) {
+        if (template == null || template.isEmpty() || variables == null || variables.isEmpty()) {
+            return template;
+        }
+
+        Matcher matcher = TEMPLATE_VARIABLE_PATTERN.matcher(template);
+        StringBuffer buffer = new StringBuffer();
+        while (matcher.find()) {
+            String variableName = matcher.group(1);
+            Object value = variables.get(variableName);
+            String replacement = value == null ? "" : String.valueOf(value);
+            matcher.appendReplacement(buffer, Matcher.quoteReplacement(replacement));
+        }
+        matcher.appendTail(buffer);
+        return buffer.toString();
+    }
+
+    private void triggerCoreSettingsRefreshAfterVolumePlanning(NovelOutline superOutline,
+                                                               AIConfigRequest aiConfig) {
+        if (superOutline == null || superOutline.getId() == null) {
+            return;
+        }
+        try {
+            if (hasUsableAiConfig(aiConfig)) {
+                logger.info("🔄 拆卷完成后使用前端AI配置刷新核心设定: outlineId={}", superOutline.getId());
+            } else {
+                logger.info("🔄 拆卷完成后使用系统AI配置刷新核心设定: outlineId={}", superOutline.getId());
+            }
+            logger.info("🔄 拆卷完成后触发核心设定刷新: outlineId={}", superOutline.getId());
+            coreSettingsExtractionService.extractCoreSettingsAsync(superOutline.getId(), aiConfig);
+        } catch (Exception e) {
+            logger.error("❌ 拆卷完成后触发核心设定刷新失败（不影响主流程）: {}", e.getMessage(), e);
+        }
+    }
+
+    private String safeText(String value) {
+        return value == null ? "" : value;
     }
 }

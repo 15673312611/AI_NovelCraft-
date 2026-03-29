@@ -14,6 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -64,7 +66,7 @@ public class CreditRechargeOrderService {
     @Autowired
     private SystemAIConfigService configService;
 
-    public Map<String, Object> createOrder(Long userId, Long packageId, String payType, HttpServletRequest request) {
+    public Map<String, Object> createOrder(Long userId, Long packageId, String payType, String redirectPath, HttpServletRequest request) {
         CreditPackage creditPackage = creditPackageService.getById(packageId);
         if (creditPackage == null || !Boolean.TRUE.equals(creditPackage.getIsActive())) {
             throw new RuntimeException("充值套餐不可用");
@@ -93,12 +95,14 @@ public class CreditRechargeOrderService {
         String notifyUrl = hasText(yiPayConfig.notifyUrl)
                 ? yiPayConfig.notifyUrl
                 : baseUrl + "/auth/pay/yipay/notify";
+        String frontendReturnUrl = buildFrontendReturnUrl(request, baseUrl, redirectPath);
         String returnUrl = hasText(yiPayConfig.returnUrl)
                 ? yiPayConfig.returnUrl
-                : buildDefaultReturnUrl(request, baseUrl);
+                : buildDefaultReturnUrl(baseUrl, frontendReturnUrl);
+        logger.info("创建易支付订单, orderNo={}, notifyUrl={}, returnUrl={}", orderNo, notifyUrl, returnUrl);
 
         BigDecimal amount = creditPackage.getPrice().setScale(2, RoundingMode.HALF_UP);
-        String payUrl = buildYiPayUrl(
+        YiPaySubmitRequest submitRequest = buildYiPaySubmitRequest(
                 yiPayConfig,
                 orderNo,
                 normalizedPayType,
@@ -108,6 +112,7 @@ public class CreditRechargeOrderService {
                 returnUrl,
                 userId
         );
+        String payUrl = buildYiPayUrl(submitRequest.action, submitRequest.params);
 
         CreditRechargeOrder order = new CreditRechargeOrder();
         order.setOrderNo(orderNo);
@@ -124,7 +129,7 @@ public class CreditRechargeOrderService {
         order.setExpiredAt(LocalDateTime.now().plusMinutes(expireMinutes));
         orderRepository.insert(order);
 
-        return buildOrderResponse(order);
+        return buildOrderResponse(order, submitRequest);
     }
 
     public Map<String, Object> getOrderForUser(Long userId, String orderNo) {
@@ -134,7 +139,7 @@ public class CreditRechargeOrderService {
         }
         closeIfExpired(order);
         CreditRechargeOrder latest = orderRepository.findByOrderNo(orderNo);
-        return buildOrderResponse(latest == null ? order : latest);
+        return buildOrderResponse(latest == null ? order : latest, null);
     }
 
     public Map<String, Object> getRechargeConfigForUser() {
@@ -217,13 +222,12 @@ public class CreditRechargeOrderService {
             return false;
         }
 
+        String orderType = trimToEmpty(order.getPaymentType()).toLowerCase(Locale.ROOT);
         String callbackType = trimToEmpty(params.get("type")).toLowerCase(Locale.ROOT);
-        if (!hasText(callbackType)) {
+        if (!hasText(callbackType) && !PAY_TYPE_CASHIER.equals(orderType)) {
             logger.warn("易支付回调支付方式缺失, orderNo={}", orderNo);
             return false;
         }
-
-        String orderType = trimToEmpty(order.getPaymentType()).toLowerCase(Locale.ROOT);
         if (hasText(callbackType) && hasText(orderType) && !PAY_TYPE_CASHIER.equals(orderType) && !orderType.equals(callbackType)) {
             logger.warn("易支付回调支付方式不匹配, orderNo={}, callbackType={}, orderType={}", orderNo, callbackType, orderType);
             return false;
@@ -283,7 +287,7 @@ public class CreditRechargeOrderService {
         return true;
     }
 
-    private Map<String, Object> buildOrderResponse(CreditRechargeOrder order) {
+    private Map<String, Object> buildOrderResponse(CreditRechargeOrder order, YiPaySubmitRequest submitRequest) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("orderNo", order.getOrderNo());
         data.put("packageId", order.getPackageId());
@@ -296,6 +300,11 @@ public class CreditRechargeOrderService {
         data.put("paidAt", order.getPaidAt());
         data.put("expiredAt", order.getExpiredAt());
         data.put("createdAt", order.getCreatedAt());
+        if (submitRequest != null) {
+            data.put("payAction", submitRequest.action);
+            data.put("payMethod", submitRequest.method);
+            data.put("payParams", submitRequest.params);
+        }
         return data;
     }
 
@@ -328,14 +337,14 @@ public class CreditRechargeOrderService {
                 + String.format("%04d", ThreadLocalRandom.current().nextInt(10000));
     }
 
-    private String buildYiPayUrl(YiPayConfig config,
-                                 String orderNo,
-                                 String payType,
-                                 BigDecimal amount,
-                                 String packageName,
-                                 String notifyUrl,
-                                 String returnUrl,
-                                 Long userId) {
+    private YiPaySubmitRequest buildYiPaySubmitRequest(YiPayConfig config,
+                                                       String orderNo,
+                                                       String payType,
+                                                       BigDecimal amount,
+                                                       String packageName,
+                                                       String notifyUrl,
+                                                       String returnUrl,
+                                                       Long userId) {
         Map<String, String> params = new LinkedHashMap<>();
         params.put("pid", config.pid);
         if (hasText(payType) && !PAY_TYPE_CASHIER.equals(payType)) {
@@ -350,13 +359,17 @@ public class CreditRechargeOrderService {
         params.put("sign_type", "MD5");
         params.put("sign", generateSign(params, config.key));
 
+        return new YiPaySubmitRequest(config.gatewayUrl, "POST", params);
+    }
+
+    private String buildYiPayUrl(String action, Map<String, String> params) {
         String query = params.entrySet()
                 .stream()
                 .filter(entry -> hasText(entry.getValue()))
                 .map(entry -> urlEncode(entry.getKey()) + "=" + urlEncode(entry.getValue()))
                 .collect(Collectors.joining("&"));
 
-        return config.gatewayUrl + (config.gatewayUrl.contains("?") ? "&" : "?") + query;
+        return action + (action.contains("?") ? "&" : "?") + query;
     }
 
     private boolean verifySign(Map<String, String> params, String key) {
@@ -431,6 +444,9 @@ public class CreditRechargeOrderService {
         if (!config.gatewayUrl.startsWith("http://") && !config.gatewayUrl.startsWith("https://")) {
             throw new RuntimeException("支付网关地址格式错误");
         }
+        if (!config.gatewayUrl.toLowerCase(Locale.ROOT).endsWith("/submit.php")) {
+            throw new RuntimeException("支付网关地址必须指向 submit.php");
+        }
         if (config.supportedTypes == null || config.supportedTypes.isEmpty()) {
             throw new RuntimeException("支付方式未配置，请联系管理员");
         }
@@ -439,28 +455,57 @@ public class CreditRechargeOrderService {
     private String buildBaseUrl(HttpServletRequest request) {
         String forwardedProto = trimToEmpty(request.getHeader("X-Forwarded-Proto"));
         String forwardedHost = trimToEmpty(request.getHeader("X-Forwarded-Host"));
+        String forwardedPort = trimToEmpty(request.getHeader("X-Forwarded-Port"));
+        String hostHeader = trimToEmpty(request.getHeader("Host"));
 
-        if (hasText(forwardedProto) && hasText(forwardedHost)) {
-            String proto = forwardedProto.split(",")[0].trim();
-            String host = forwardedHost.split(",")[0].trim();
-            return proto + "://" + host + request.getContextPath();
+        String proto = firstHeaderValue(forwardedProto);
+        if (!hasText(proto)) {
+            proto = trimToEmpty(request.getScheme());
+        }
+        if (!hasText(proto)) {
+            proto = "http";
         }
 
-        String scheme = request.getScheme();
-        String serverName = request.getServerName();
-        int serverPort = request.getServerPort();
-        boolean defaultPort = ("http".equalsIgnoreCase(scheme) && serverPort == 80)
-                || ("https".equalsIgnoreCase(scheme) && serverPort == 443);
-        String port = defaultPort ? "" : ":" + serverPort;
-        return scheme + "://" + serverName + port + request.getContextPath();
+        String host = firstHeaderValue(forwardedHost);
+        if (!hasText(host)) {
+            host = firstHeaderValue(hostHeader);
+        }
+        if (!hasText(host)) {
+            host = trimToEmpty(request.getServerName());
+        }
+
+        if (!host.contains(":")) {
+            String portValue = firstHeaderValue(forwardedPort);
+            if (!hasText(portValue)) {
+                int serverPort = request.getServerPort();
+                if (serverPort > 0 && serverPort != 80 && serverPort != 443) {
+                    portValue = String.valueOf(serverPort);
+                }
+            }
+            if (hasText(portValue) && !isDefaultPort(proto, portValue)) {
+                host = host + ":" + portValue;
+            }
+        }
+
+        return proto + "://" + host + request.getContextPath();
     }
 
-    private String buildDefaultReturnUrl(HttpServletRequest request, String baseUrl) {
+    private String buildFrontendReturnUrl(HttpServletRequest request, String baseUrl, String redirectPath) {
+        String safePath = sanitizeFrontendRedirectPath(redirectPath);
         String origin = trimToEmpty(request.getHeader("Origin"));
         if (hasText(origin) && (origin.startsWith("http://") || origin.startsWith("https://"))) {
-            return origin + "/settings";
+            return origin + safePath;
         }
-        return baseUrl;
+
+        String contextPath = trimToEmpty(request.getContextPath());
+        if (hasText(contextPath) && baseUrl.endsWith(contextPath)) {
+            return baseUrl.substring(0, baseUrl.length() - contextPath.length()) + safePath;
+        }
+        return baseUrl + safePath;
+    }
+
+    private String buildDefaultReturnUrl(String baseUrl, String frontendReturnUrl) {
+        return baseUrl + "/auth/pay/yipay/return?redirect=" + urlEncode(frontendReturnUrl);
     }
 
     private String resolveClientIp(HttpServletRequest request) {
@@ -495,6 +540,17 @@ public class CreditRechargeOrderService {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
+    private String sanitizeFrontendRedirectPath(String redirectPath) {
+        String path = trimToEmpty(redirectPath);
+        if (!hasText(path)) {
+            return "/settings";
+        }
+        if (!path.startsWith("/") || path.startsWith("//") || path.contains("\r") || path.contains("\n")) {
+            return "/settings";
+        }
+        return path;
+    }
+
     private String trimToEmpty(String value) {
         return value == null ? "" : value.trim();
     }
@@ -507,15 +563,76 @@ public class CreditRechargeOrderService {
         return value != null && !value.trim().isEmpty();
     }
 
+    private String firstHeaderValue(String value) {
+        if (!hasText(value)) {
+            return "";
+        }
+        return value.split(",")[0].trim();
+    }
+
+    private boolean isDefaultPort(String proto, String port) {
+        if (!hasText(port)) {
+            return true;
+        }
+        return ("http".equalsIgnoreCase(proto) && "80".equals(port))
+                || ("https".equalsIgnoreCase(proto) && "443".equals(port));
+    }
+
     private String normalizeGatewayUrl(String url) {
         String value = trimToEmpty(url);
         if (!hasText(value)) {
             return "";
         }
-        if (value.endsWith("/")) {
-            return value.substring(0, value.length() - 1);
+        try {
+            URI uri = new URI(value);
+            if (!hasText(uri.getScheme()) || !hasText(uri.getRawAuthority())) {
+                return value;
+            }
+            String rawPath = trimToEmpty(uri.getPath());
+            String normalizedPath = normalizeGatewayPath(rawPath);
+            URI normalized = new URI(uri.getScheme(), uri.getRawAuthority(), normalizedPath, null, null);
+            return normalized.toASCIIString();
+        } catch (URISyntaxException ex) {
+            return normalizeGatewayUrlFallback(value);
         }
-        return value;
+    }
+
+    private String normalizeGatewayPath(String rawPath) {
+        String path = hasText(rawPath) ? rawPath : "/";
+        String lowerPath = path.toLowerCase(Locale.ROOT);
+        if ("/".equals(path)) {
+            return "/submit.php";
+        }
+        if (lowerPath.endsWith("/submit.php")) {
+            return path.substring(0, path.length() - "/submit.php".length()) + "/submit.php";
+        }
+        if (lowerPath.endsWith("/mapi.php")) {
+            return path.substring(0, path.length() - "/mapi.php".length()) + "/submit.php";
+        }
+        if (lowerPath.endsWith("/doc.html")) {
+            return path.substring(0, path.length() - "/doc.html".length()) + "/submit.php";
+        }
+        if (path.endsWith("/")) {
+            return path + "submit.php";
+        }
+        if (!lowerPath.endsWith(".php")) {
+            return path + "/submit.php";
+        }
+        return path;
+    }
+
+    private String normalizeGatewayUrlFallback(String value) {
+        String normalized = value;
+        if (normalized.endsWith("/")) {
+            normalized = normalized + "submit.php";
+        } else if (normalized.toLowerCase(Locale.ROOT).endsWith("/mapi.php")) {
+            normalized = normalized.substring(0, normalized.length() - "/mapi.php".length()) + "/submit.php";
+        } else if (normalized.toLowerCase(Locale.ROOT).endsWith("/doc.html")) {
+            normalized = normalized.substring(0, normalized.length() - "/doc.html".length()) + "/submit.php";
+        } else if (!normalized.toLowerCase(Locale.ROOT).endsWith("/submit.php") && !normalized.toLowerCase(Locale.ROOT).endsWith(".php")) {
+            normalized = normalized + "/submit.php";
+        }
+        return normalized;
     }
 
     private List<String> parseSupportedTypes(String value) {
@@ -547,5 +664,17 @@ public class CreditRechargeOrderService {
         private String returnUrl;
         private int orderExpireMinutes;
         private List<String> supportedTypes = new ArrayList<>();
+    }
+
+    private static class YiPaySubmitRequest {
+        private final String action;
+        private final String method;
+        private final Map<String, String> params;
+
+        private YiPaySubmitRequest(String action, String method, Map<String, String> params) {
+            this.action = action;
+            this.method = method;
+            this.params = params;
+        }
     }
 }

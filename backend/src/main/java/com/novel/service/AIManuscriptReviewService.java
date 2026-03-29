@@ -1,6 +1,8 @@
 package com.novel.service;
 
 import com.novel.dto.AIConfigRequest;
+import com.novel.service.prompt.ManagedPromptService;
+import com.novel.service.prompt.SystemPromptDescriptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -26,7 +28,8 @@ public class AIManuscriptReviewService {
 
     private static final Logger logger = LoggerFactory.getLogger(AIManuscriptReviewService.class);
 
-    private static final String REVIEW_SYSTEM_PROMPT = buildReviewSystemPrompt();
+    @org.springframework.beans.factory.annotation.Autowired
+    private ManagedPromptService managedPromptService;
 
     private static String buildReviewSystemPrompt() {
         StringBuilder sb = new StringBuilder();
@@ -299,6 +302,18 @@ public class AIManuscriptReviewService {
         return sb.toString();
     }
 
+    private String getReviewSystemPrompt() {
+        return managedPromptService.getContent(SystemPromptDescriptor.builder()
+                .promptKey("editing.manuscript_review.system")
+                .name("AI审稿系统提示词")
+                .category("system_chain")
+                .description("对稿件进行结构化审稿分析")
+                .variables(List.of("content"))
+                .sortOrder(811)
+                .defaultContent(buildReviewSystemPrompt())
+                .build());
+    }
+
     /**
      * AI审稿（流式）- 完全重写，确保正确处理换行符
      */
@@ -327,14 +342,12 @@ public class AIManuscriptReviewService {
         }
 
         try {
-            logger.info("🔍 开始AI审稿，内容长度: {}", content.length());
-            
             // 构建消息
             List<Map<String, String>> messages = new ArrayList<>();
             
             Map<String, String> systemMsg = new HashMap<>();
             systemMsg.put("role", "system");
-            systemMsg.put("content", REVIEW_SYSTEM_PROMPT);
+            systemMsg.put("content", getReviewSystemPrompt());
             messages.add(systemMsg);
             
             Map<String, String> userMsg = new HashMap<>();
@@ -351,7 +364,6 @@ public class AIManuscriptReviewService {
             requestBody.put("messages", messages);
             
             String url = aiConfig.getApiUrl();
-            logger.info("📡 调用AI接口: {}, model: {}, stream: true", url, model);
             
             // 使用OkHttp或者原生HttpURLConnection来精确控制流式读取
             SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
@@ -404,7 +416,6 @@ public class AIManuscriptReviewService {
                                 if (line.startsWith("data: ")) {
                                     String data = line.substring(6);
                                     if ("[DONE]".equals(data)) {
-                                        logger.info("📨 收到流式结束标记 [DONE]，共处理 {} 个chunk，总字符数: {}", chunkCount, totalChars);
                                         inputStream.close();
                                         emitter.complete();
                                         return null;
@@ -442,21 +453,11 @@ public class AIManuscriptReviewService {
                                                         chunkCount++;
                                                         totalChars += contentChunk.length();
                                                         
-                                                        if (chunkCount == 1) {
-                                                            logger.info("✅ 开始接收流式数据");
-                                                        }
-                                                        
-                                                        // 调试：记录换行符数量
-                                                        if (chunkCount % 50 == 0) {
-                                                            int newlineCount = contentChunk.length() - contentChunk.replace("\n", "").length();
-                                                            logger.info("📊 Chunk #{}: 长度={}, 换行符数量={}", chunkCount, contentChunk.length(), newlineCount);
-                                                        }
                                                     }
                                                 }
                                             }
                                         }
                                     } catch (Exception e) {
-                                        logger.warn("⚠️ 解析流式响应失败: {}", e.getMessage());
                                     }
                                 }
                             }
@@ -464,8 +465,6 @@ public class AIManuscriptReviewService {
                         
                         inputStream.close();
                         emitter.complete();
-                        logger.info("✅ AI审稿完成，总chunk数: {}, 总字符数: {}", chunkCount, totalChars);
-                        
                     } catch (IOException e) {
                         logger.error("❌ 读取流式响应失败", e);
                         try {

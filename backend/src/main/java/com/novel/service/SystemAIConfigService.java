@@ -111,12 +111,37 @@ public class SystemAIConfigService {
         if (modelId == null || modelId.isEmpty()) {
             return getDefaultModel();
         }
+        AIModel exactModel = getExactAvailableModel(modelId);
+        return exactModel != null ? exactModel : getDefaultModel();
+    }
+
+    /**
+     * 精确获取指定可用模型，不做默认模型回退。
+     */
+    public AIModel getExactAvailableModel(String modelId) {
+        if (modelId == null || modelId.trim().isEmpty()) {
+            return null;
+        }
+        String trimmedModelId = modelId.trim();
         List<AIModel> models = aiModelRepository.selectList(
             new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<AIModel>()
-                .eq("model_id", modelId)
+                .eq("model_id", trimmedModelId)
                 .eq("available", true)
         );
-        return models.isEmpty() ? getDefaultModel() : models.get(0);
+        if (!models.isEmpty()) {
+            return models.get(0);
+        }
+
+        try {
+            Long internalId = Long.parseLong(trimmedModelId);
+            AIModel model = aiModelRepository.selectById(internalId);
+            if (model != null && Boolean.TRUE.equals(model.getAvailable())) {
+                return model;
+            }
+        } catch (NumberFormatException ignored) {
+        }
+
+        return null;
     }
 
     /**
@@ -190,12 +215,17 @@ public class SystemAIConfigService {
      * @return 消费的字数点（灵感点）
      */
     public BigDecimal calculateCost(String modelId, int inputTokens, int outputTokens) {
-        AIModel model = getModel(modelId);
+        AIModel model;
+        if (modelId != null && !modelId.trim().isEmpty()) {
+            model = getExactAvailableModel(modelId);
+        } else {
+            model = getDefaultModel();
+        }
         BigDecimal multiplier = BigDecimal.ONE;
         
         if (model != null && model.getCostMultiplier() != null) {
             multiplier = model.getCostMultiplier();
-        } else if (model == null) {
+        } else {
             logger.warn("模型{}不存在，使用默认倍率1.0", modelId);
         }
         
@@ -204,6 +234,29 @@ public class SystemAIConfigService {
         BigDecimal adjustedInputTokens = new BigDecimal(inputTokens).divide(new BigDecimal(10), 2, RoundingMode.HALF_UP);
         BigDecimal totalTokens = adjustedInputTokens.add(new BigDecimal(outputTokens));
         return totalTokens.multiply(multiplier).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    public BigDecimal resolveCostMultiplier(String modelId) {
+        AIModel model;
+        if (modelId != null && !modelId.trim().isEmpty()) {
+            model = getExactAvailableModel(modelId);
+        } else {
+            model = getDefaultModel();
+        }
+
+        if (model != null && model.getCostMultiplier() != null) {
+            return model.getCostMultiplier();
+        }
+
+        logger.warn("妯″瀷{}涓嶅瓨鍦紝浣跨敤榛樿鍊嶇巼1.0", modelId);
+        return BigDecimal.ONE;
+    }
+
+    public BigDecimal calculateCostByMultiplier(BigDecimal multiplier, int inputTokens, int outputTokens) {
+        BigDecimal safeMultiplier = multiplier != null ? multiplier : BigDecimal.ONE;
+        BigDecimal adjustedInputTokens = new BigDecimal(inputTokens).divide(new BigDecimal(10), 2, RoundingMode.HALF_UP);
+        BigDecimal totalTokens = adjustedInputTokens.add(new BigDecimal(outputTokens));
+        return totalTokens.multiply(safeMultiplier).setScale(2, RoundingMode.HALF_UP);
     }
 
     /**

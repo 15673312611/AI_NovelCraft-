@@ -449,7 +449,7 @@ const NovelCraftStudio: React.FC<NovelCraftStudioProps> = () => {
             const outlineId = outlineRes?.id || outlineRes?.data?.id
             if (outlineId) {
               console.log('[confirmOutline] confirming outlineId=', outlineId)
-              await api.put(`/outline/${outlineId}/confirm`)
+              await api.put(`/outline/${outlineId}/confirm`, withAIConfig({}))
               message.success('已触发卷规划生成任务（通过大纲确认）')
               triggered = true
             }

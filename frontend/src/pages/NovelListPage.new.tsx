@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Button, Input, Empty, Spin, Modal, message, Tag, Form } from 'antd'
+import { Button, Input, Empty, Spin, Modal, message, Tag, Form, Select } from 'antd'
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, FileTextOutlined, DownOutlined, ClockCircleOutlined, NodeIndexOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
@@ -242,28 +242,23 @@ const NovelListPage: React.FC = () => {
         </div>
 
         <div className="actions-section">
-          {/* 排序下拉（使用原生 select 覆盖，避免自定义下拉在某些浏览器/布局下无法展开） */}
-          <div className="sort-native-wrapper">
-            <select
-              className="sort-native-select"
+          {/* 排序下拉 */}
+          <div className="sort-select-shell">
+            <Select
+              className="sort-select-modern"
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
+              onChange={setSortBy}
+              popupClassName="sort-select-dropdown"
+              suffixIcon={<DownOutlined className="sort-select-caret" />}
+              getPopupContainer={(triggerNode) => triggerNode.parentElement ?? triggerNode}
               aria-label="排序方式"
             >
               {sortOptions.map(({ key, label }) => (
-                <option key={key} value={key}>
+                <Select.Option key={key} value={key}>
                   {label}
-                </option>
+                </Select.Option>
               ))}
-            </select>
-
-            <div className="sort-trigger-modern">
-              <span className="sort-icon">
-                {sortBy === 'updatedAt' || sortBy === 'createdAt' ? <ClockCircleOutlined /> : <NodeIndexOutlined />}
-              </span>
-              <span className="sort-label">{sortOptions.find(o => o.key === sortBy)?.label || '排序'}</span>
-              <DownOutlined className="dropdown-arrow" style={{ fontSize: 10, marginLeft: 4 }} />
-            </div>
+            </Select>
           </div>
 
           {/* 新建按钮 */}
@@ -521,4 +516,3 @@ const NovelListPage: React.FC = () => {
 }
 
 export default NovelListPage
-

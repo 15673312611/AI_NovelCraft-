@@ -1,22 +1,23 @@
-import api from './api'
+﻿import api from './api'
 
-export interface ReferenceFile {
+export interface ReferenceFileSummary {
   id: number
   novelId: number
   fileName: string
   fileType: 'txt' | 'docx'
-  fileContent: string
   fileSize: number
-  originalPath?: string | null
   wordCount: number
   createdAt: string
   updatedAt: string
 }
 
-/**
- * 获取小说的参考文件
- */
-export const getReferenceFiles = async (novelId: number): Promise<ReferenceFile[]> => {
+export interface ReferenceFileDetail extends ReferenceFileSummary {
+  fileContent: string
+}
+
+export type ReferenceFile = ReferenceFileSummary
+
+export const getReferenceFiles = async (novelId: number): Promise<ReferenceFileSummary[]> => {
   const response = await api.get(`/novels/${novelId}/references`)
   if (!response.success) {
     throw new Error(response.message || '获取参考文件失败')
@@ -24,13 +25,10 @@ export const getReferenceFiles = async (novelId: number): Promise<ReferenceFile[
   return response.data
 }
 
-/**
- * 上传参考文件
- */
 export const uploadReferenceFile = async (
   novelId: number,
   file: File
-): Promise<ReferenceFile> => {
+): Promise<ReferenceFileSummary> => {
   const formData = new FormData()
   formData.append('file', file)
 
@@ -46,9 +44,6 @@ export const uploadReferenceFile = async (
   return response.data
 }
 
-/**
- * 删除参考文件
- */
 export const deleteReferenceFile = async (novelId: number, id: number): Promise<void> => {
   const response = await api.delete(`/novels/${novelId}/references/${id}`)
   if (!response.success) {
@@ -56,14 +51,10 @@ export const deleteReferenceFile = async (novelId: number, id: number): Promise<
   }
 }
 
-/**
- * 根据ID查询参考文件
- */
-export const getReferenceFileById = async (novelId: number, id: number): Promise<ReferenceFile> => {
+export const getReferenceFileById = async (novelId: number, id: number): Promise<ReferenceFileDetail> => {
   const response = await api.get(`/novels/${novelId}/references/${id}`)
   if (!response.success) {
     throw new Error(response.message || '获取参考文件失败')
   }
   return response.data
 }
-

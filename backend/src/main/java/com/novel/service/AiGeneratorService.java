@@ -32,6 +32,19 @@ public class AiGeneratorService {
      */
     public AiGenerator getGeneratorById(Long id) {
         log.info("Get generator by ID: {}", id);
+        AiGenerator generator = aiGeneratorMapper.findPublicById(id);
+        if (generator == null) {
+            log.warn("Generator not found, id: {}", id);
+            throw new RuntimeException("Generator not found");
+        }
+        return generator;
+    }
+
+    /**
+     * Get generator by ID with internal prompt content
+     */
+    public AiGenerator getGeneratorWithPromptById(Long id) {
+        log.info("Get generator with prompt by ID: {}", id);
         AiGenerator generator = aiGeneratorMapper.findById(id);
         if (generator == null) {
             log.warn("Generator not found, id: {}", id);

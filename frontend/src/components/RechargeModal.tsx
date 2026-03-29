@@ -115,6 +115,45 @@ const RechargeModal: React.FC<RechargeModalProps> = ({ visible, onCancel, onSucc
     }, 3000)
   }
 
+  const submitPayForm = (order: RechargeOrder, target: string) => {
+    if (!order.payAction || !order.payParams || Object.keys(order.payParams).length === 0) {
+      return false
+    }
+
+    const form = document.createElement('form')
+    form.method = (order.payMethod || 'POST').toUpperCase()
+    form.action = order.payAction
+    form.target = target
+    form.style.display = 'none'
+
+    Object.entries(order.payParams).forEach(([key, value]) => {
+      const input = document.createElement('input')
+      input.type = 'hidden'
+      input.name = key
+      input.value = value ?? ''
+      form.appendChild(input)
+    })
+
+    document.body.appendChild(form)
+    form.submit()
+    document.body.removeChild(form)
+    return true
+  }
+
+  const openPaymentWindow = (order: RechargeOrder, popup: Window, target: string) => {
+    if (submitPayForm(order, target)) {
+      return true
+    }
+
+    if (order.payUrl) {
+      popup.location.href = order.payUrl
+      return true
+    }
+
+    popup.close()
+    return false
+  }
+
   const handleRecharge = async () => {
     if (!config?.enabled) {
       message.warning(config?.reason || '充值功能未开启')
@@ -137,20 +176,29 @@ const RechargeModal: React.FC<RechargeModalProps> = ({ visible, onCancel, onSucc
       return
     }
 
+    const paymentTarget = `yipay_${Date.now()}`
+    const popup = window.open('', paymentTarget)
+    if (!popup) {
+      message.warning('支付页面被浏览器拦截，请允许弹窗后重试')
+      return
+    }
+
     try {
       setSubmitting(true)
-      const order = await creditService.createRechargeOrder(selectedPackageId, payType)
+      const redirectPath = `${window.location.pathname}${window.location.search}`
+      const order = await creditService.createRechargeOrder(selectedPackageId, payType, redirectPath)
       setCurrentOrder(order)
 
-      const popup = window.open(order.payUrl, '_blank', 'noopener,noreferrer')
-      if (!popup) {
-        message.warning('支付页面被浏览器拦截，请允许弹窗后重试')
-      } else {
-        message.info('已打开支付页面，请完成支付后返回本页')
+      if (!openPaymentWindow(order, popup, paymentTarget)) {
+        popup.close()
+        message.error('支付参数异常，请重试')
+        return
       }
 
+      message.info('已打开支付页面，请完成支付后返回本页')
       startPolling(order.orderNo)
     } catch (error: any) {
+      popup.close()
       message.error(error?.message || '创建充值订单失败')
     } finally {
       setSubmitting(false)

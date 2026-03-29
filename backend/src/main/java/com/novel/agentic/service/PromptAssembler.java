@@ -21,6 +21,7 @@ public class PromptAssembler {
 
     private static final Logger logger = LoggerFactory.getLogger(PromptAssembler.class);
     private static final String CONFIG_PATH = "classpath:prompts_output/promptModules.json";
+    private static final String DEFAULT_CHAPTER_WRITING_PROMPT_KEY = "agentic.chapter_writing.default";
 
     private final PromptTemplateService templateService;
     private final com.novel.service.PromptTemplateService dbTemplateService;
@@ -64,10 +65,35 @@ public class PromptAssembler {
             }
             logger.warn("数据库模板内容为空，回退到文件模板: templateId={}", promptTemplateId);
         }
-        
+
+        if (StringUtils.isBlank(stylePromptFile)) {
+            String managedDefault = dbTemplateService.getTemplateContentByPromptKey(DEFAULT_CHAPTER_WRITING_PROMPT_KEY);
+            if (StringUtils.isNotBlank(managedDefault)) {
+                logger.info("使用系统链路默认正文提示词: promptKey={}", DEFAULT_CHAPTER_WRITING_PROMPT_KEY);
+                return managedDefault;
+            }
+        }
+
         String base = assembleBaseRules(stylePromptFile);
         String style = assembleStylePrompt(stylePromptFile);
+        String fallbackPrompt = mergePromptSections(base, style);
 
+        if (StringUtils.isBlank(stylePromptFile) && StringUtils.isNotBlank(fallbackPrompt)) {
+            dbTemplateService.ensureOfficialTemplate(
+                    DEFAULT_CHAPTER_WRITING_PROMPT_KEY,
+                    "系统链路默认正文提示词",
+                    "system_chain",
+                    "正文生成主系统提示词默认模板（未指定模板ID时使用）",
+                    null,
+                    360,
+                    fallbackPrompt
+            );
+        }
+
+        return fallbackPrompt;
+    }
+
+    private String mergePromptSections(String base, String style) {
         if (StringUtils.isBlank(base)) {
             return style;
         }
@@ -219,4 +245,3 @@ public class PromptAssembler {
     }
 
 }
-

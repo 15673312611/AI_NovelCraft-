@@ -25,7 +25,7 @@ public interface NovelRepository extends BaseMapper<Novel> {
     @Select("SELECT id, title, subtitle, description, cover_image_url, status, genre, tags, " +
             "target_audience, word_count, chapter_count, estimated_completion, started_at, " +
             "completed_at, is_public, rating, rating_count, target_total_chapters, " +
-            "words_per_chapter, planned_volume_count, total_word_target, creation_stage, " +
+            "words_per_chapter, planned_volume_count, total_word_target, outline_context_mode, creation_stage, " +
             "created_by, created_at, updated_at " +
             "FROM novels WHERE created_by = #{authorId} ORDER BY updated_at DESC")
     IPage<Novel> findListByAuthorId(@Param("authorId") Long authorId, Page<Novel> page);

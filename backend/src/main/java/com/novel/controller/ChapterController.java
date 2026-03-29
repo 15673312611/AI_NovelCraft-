@@ -2,7 +2,9 @@ package com.novel.controller;
 
 import com.novel.domain.entity.Chapter;
 import com.novel.domain.entity.Novel;
+import com.novel.service.ChapterImportService;
 import com.novel.service.ChapterService;
+import com.novel.service.ChapterSummaryService;
 import com.novel.service.NovelService;
 import com.novel.service.LongNovelMemoryManager;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,8 +13,11 @@ import org.slf4j.LoggerFactory;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -34,6 +39,12 @@ public class ChapterController {
     @Autowired
     private LongNovelMemoryManager longNovelMemoryManager;
 
+    @Autowired
+    private ChapterImportService chapterImportService;
+
+    @Autowired
+    private ChapterSummaryService chapterSummaryService;
+
     /**
      * 获取章节详情
      */
@@ -49,6 +60,35 @@ public class ChapterController {
         } catch (Exception e) {
             logger.error("获取章节失败: chapterId={}", id, e);
             return ResponseEntity.status(500).build();
+        }
+    }
+
+    @GetMapping("/{id}/summary")
+    public ResponseEntity<?> getChapterSummary(@PathVariable Long id) {
+        try {
+            Chapter chapter = chapterService.getChapter(id);
+            if (chapter == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            String summary = chapter.getSummary();
+            if ((summary == null || summary.trim().isEmpty())
+                    && chapter.getNovelId() != null
+                    && chapter.getChapterNumber() != null) {
+                summary = chapterSummaryService.getChapterSummary(chapter.getNovelId(), chapter.getChapterNumber());
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("chapterId", id);
+            response.put("hasSummary", summary != null && !summary.trim().isEmpty());
+            response.put("summary", summary == null ? "" : summary);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("鑾峰彇绔犺妭姒傛嫭澶辫触: chapterId={}", id, e);
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("error", "鑾峰彇绔犺妭姒傛嫭澶辫触");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(500).body(errorResponse);
         }
     }
 
@@ -72,6 +112,120 @@ public class ChapterController {
     /**
      * 创建章节
      */
+    /**
+     * 导入章节预解析
+     */
+    @PostMapping("/novel/{novelId}/import/preview")
+    public ResponseEntity<?> previewImport(@PathVariable Long novelId,
+                                           @RequestParam("file") MultipartFile file) {
+        try {
+            ResponseEntity<?> authResponse = validateNovelOwnership(novelId);
+            if (authResponse != null) {
+                return authResponse;
+            }
+
+            if (file == null || file.isEmpty()) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("error", "文件不能为空");
+                return ResponseEntity.badRequest().body(error);
+            }
+
+            return ResponseEntity.ok(chapterImportService.previewImport(file));
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        } catch (Exception e) {
+            logger.error("章节导入预解析失败: novelId={}", novelId, e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "章节导入预解析失败");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(500).body(error);
+        }
+    }
+
+    /**
+     * 正式导入章节
+     */
+    @PostMapping("/novel/{novelId}/import")
+    @SuppressWarnings("unchecked")
+    public ResponseEntity<?> importChapters(@PathVariable Long novelId,
+                                            @RequestBody Map<String, Object> requestBody) {
+        try {
+            ResponseEntity<?> authResponse = validateNovelOwnership(novelId);
+            if (authResponse != null) {
+                return authResponse;
+            }
+
+            List<Map<String, Object>> chapters = requestBody.get("chapters") instanceof List
+                    ? (List<Map<String, Object>>) requestBody.get("chapters")
+                    : new ArrayList<>();
+            boolean autoSplitLongChapters = Boolean.TRUE.equals(requestBody.get("autoSplitLongChapters"));
+
+            return ResponseEntity.ok(chapterImportService.importChapters(novelId, chapters, autoSplitLongChapters));
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        } catch (Exception e) {
+            logger.error("章节导入失败: novelId={}", novelId, e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "章节导入失败");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(500).body(error);
+        }
+    }
+
+    /**
+     * 导入后执行摘要/记忆/图谱抽取
+     */
+    @PostMapping("/novel/{novelId}/import/post-process")
+    public ResponseEntity<?> postProcessImportedChapters(@PathVariable Long novelId,
+                                                         @RequestBody Map<String, Object> requestBody) {
+        try {
+            ResponseEntity<?> authResponse = validateNovelOwnership(novelId);
+            if (authResponse != null) {
+                return authResponse;
+            }
+
+            List<Long> chapterIds = new ArrayList<>();
+            Object rawIds = requestBody.get("chapterIds");
+            if (rawIds instanceof List) {
+                for (Object item : (List<?>) rawIds) {
+                    if (item instanceof Number) {
+                        chapterIds.add(((Number) item).longValue());
+                    }
+                }
+            }
+
+            boolean buildMemory = !Boolean.FALSE.equals(requestBody.get("buildMemory"));
+            boolean buildGraph = !Boolean.FALSE.equals(requestBody.get("buildGraph"));
+            String preferredModel = requestBody.get("preferredModel") == null
+                    ? null
+                    : String.valueOf(requestBody.get("preferredModel"));
+
+            return ResponseEntity.ok(
+                    chapterImportService.postProcessImportedChapters(
+                            novelId,
+                            chapterIds,
+                            buildMemory,
+                            buildGraph,
+                            preferredModel
+                    )
+            );
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        } catch (Exception e) {
+            logger.error("导入后抽取失败: novelId={}", novelId, e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "导入后抽取失败");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(500).body(error);
+        }
+    }
+
     @PostMapping
     public ResponseEntity<?> createChapter(@RequestBody Chapter chapter) {
         try {
@@ -331,5 +485,29 @@ public class ChapterController {
             return ((java.util.List<?>) value).size();
         }
         return 0;
+    }
+
+    private ResponseEntity<?> validateNovelOwnership(Long novelId) {
+        Long userId = com.novel.common.security.AuthUtils.getCurrentUserId();
+        if (userId == null) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "请先登录");
+            return ResponseEntity.status(401).body(error);
+        }
+
+        Novel novel = novelService.getNovel(novelId);
+        if (novel == null) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "指定小说不存在");
+            return ResponseEntity.badRequest().body(error);
+        }
+
+        if (novel.getAuthorId() == null || !novel.getAuthorId().equals(userId)) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "无权操作该小说");
+            return ResponseEntity.status(403).body(error);
+        }
+
+        return null;
     }
 }

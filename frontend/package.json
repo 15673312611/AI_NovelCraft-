@@ -4,7 +4,7 @@
   "description": "AI辅助小说创作系统前端",
   "private": true,
   "scripts": {
-    "dev": "vite --port 3200 --strictPort",
+    "dev": "vite --port 3200",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
@@ -23,6 +23,7 @@
     "axios": "^1.4.0",
     "dayjs": "^1.11.7",
     "docx": "^9.5.1",
+    "dompurify": "^3.3.3",
     "file-saver": "^2.0.5",
     "highlight.js": "^11.11.1",
     "lodash": "^4.17.21",

@@ -5,22 +5,27 @@ import com.novel.common.Result;
 import com.novel.common.security.AuthUtils;
 import com.novel.domain.entity.AIModel;
 import com.novel.domain.entity.CreditTransaction;
-import com.novel.domain.entity.User;
 import com.novel.domain.entity.UserCredit;
+import com.novel.dto.PublicAIModelDto;
+import com.novel.dto.RedeemCodeRequest;
+import com.novel.service.CreditRedeemCodeService;
 import com.novel.service.CreditService;
 import com.novel.service.SystemAIConfigService;
-import com.novel.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
-/**
- * 灵感点控制器
- */
 @RestController
 @RequestMapping("/credits")
 @CrossOrigin(originPatterns = {"http://localhost:*", "http://127.0.0.1:*"}, allowCredentials = "true")
@@ -30,14 +35,11 @@ public class CreditController {
     private CreditService creditService;
 
     @Autowired
-    private SystemAIConfigService systemAIConfigService;
+    private CreditRedeemCodeService creditRedeemCodeService;
 
     @Autowired
-    private UserService userService;
+    private SystemAIConfigService systemAIConfigService;
 
-    /**
-     * 获取当前用户灵感点信息
-     */
     @GetMapping("/balance")
     public Result<Map<String, Object>> getBalance() {
         Long userId = AuthUtils.getCurrentUserId();
@@ -50,7 +52,6 @@ public class CreditController {
         BigDecimal monthConsumption = creditService.getMonthConsumption(userId);
         BigDecimal warningThreshold = systemAIConfigService.getMinBalanceWarning();
 
-        // 每日免费字数相关
         boolean dailyFreeEnabled = creditService.isDailyFreeCreditsEnabled();
         BigDecimal dailyFreeAmount = creditService.getDailyFreeCreditsAmount();
 
@@ -65,22 +66,15 @@ public class CreditController {
         data.put("monthConsumption", monthConsumption);
         data.put("lowBalance", credit.getBalance().compareTo(warningThreshold) <= 0);
         data.put("warningThreshold", warningThreshold);
-        
-        // 每日免费字数信息
         data.put("dailyFreeEnabled", dailyFreeEnabled);
         data.put("dailyFreeBalance", credit.getDailyFreeBalance());
         data.put("dailyFreeAmount", dailyFreeAmount);
         data.put("dailyFreeLastReset", credit.getDailyFreeLastReset());
-        
-        // 总可用余额（每日免费 + 字数包）
         data.put("totalAvailableBalance", credit.getTotalAvailableBalance());
 
         return Result.success(data);
     }
 
-    /**
-     * 获取交易记录
-     */
     @GetMapping("/transactions")
     public Result<Map<String, Object>> getTransactions(
             @RequestParam(defaultValue = "0") int page,
@@ -91,15 +85,14 @@ public class CreditController {
         }
 
         IPage<CreditTransaction> transactions = creditService.getTransactions(userId, page, size);
-        
-        // 将modelId转换为displayName，避免暴露真实模型名称
+
         for (CreditTransaction tx : transactions.getRecords()) {
             if (tx.getModelId() != null && !tx.getModelId().isEmpty()) {
                 AIModel model = systemAIConfigService.getModel(tx.getModelId());
                 if (model != null && model.getDisplayName() != null) {
                     tx.setModelId(model.getDisplayName());
                 } else {
-                    tx.setModelId("AI模型"); // 默认显示名称
+                    tx.setModelId("AI模型");
                 }
             }
         }
@@ -114,14 +107,22 @@ public class CreditController {
         return Result.success(data);
     }
 
+    @PostMapping("/redeem")
+    public Result<Map<String, Object>> redeem(@RequestBody RedeemCodeRequest request) {
+        Long userId = AuthUtils.getCurrentUserId();
+        if (userId == null) {
+            return Result.error("请先登录");
+        }
 
-    /**
-     * 获取可用模型列表
-     */
-    @GetMapping("/models")
-    public Result<List<AIModel>> getAvailableModels() {
-        List<AIModel> models = systemAIConfigService.getAvailableModels();
-        return Result.success(models);
+        return Result.success(creditRedeemCodeService.redeem(userId, request.getCode()));
     }
 
+    @GetMapping("/models")
+    public Result<List<PublicAIModelDto>> getAvailableModels() {
+        return Result.success(
+                systemAIConfigService.getAvailableModels().stream()
+                        .map(PublicAIModelDto::from)
+                        .collect(Collectors.toList())
+        );
+    }
 }

@@ -308,6 +308,26 @@ public class CreditService {
     }
 
     /**
+     * 兑换码到账
+     */
+    @Transactional
+    public boolean redeemCode(Long userId, BigDecimal amount, String description) {
+        UserCredit credit = getOrCreateAccount(userId);
+        BigDecimal balanceBefore = credit.getBalance();
+
+        int rows = userCreditRepository.addGift(userId, amount);
+        if (rows > 0) {
+            BigDecimal balanceAfter = balanceBefore.add(amount);
+            recordTransaction(userId, TransactionType.REDEEM_CODE, amount,
+                balanceBefore, balanceAfter, null, null, null, null,
+                description, null, SOURCE_PACKAGE);
+            logger.info("用户{}兑换码到账{}字数", userId, amount);
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * 管理员调整余额
      */
     @Transactional

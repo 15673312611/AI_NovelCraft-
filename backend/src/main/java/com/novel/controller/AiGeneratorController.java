@@ -1,5 +1,6 @@
 package com.novel.controller;
 
+import com.novel.dto.AiGeneratorResponse;
 import com.novel.entity.AiGenerator;
 import com.novel.service.AiGeneratorService;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * AI Generator Controller
@@ -32,7 +34,9 @@ public class AiGeneratorController {
     public ResponseEntity<Map<String, Object>> getAllActiveGenerators() {
         log.info("API: list active generators");
         try {
-            List<AiGenerator> generators = aiGeneratorService.getAllActiveGenerators();
+            List<AiGeneratorResponse> generators = aiGeneratorService.getAllActiveGenerators().stream()
+                    .map(AiGeneratorResponse::from)
+                    .collect(Collectors.toList());
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -61,7 +65,7 @@ public class AiGeneratorController {
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
-            response.put("data", generator);
+            response.put("data", AiGeneratorResponse.from(generator));
             response.put("message", "Fetched generator successfully");
             
             return ResponseEntity.ok(response);

@@ -16,6 +16,9 @@ import java.time.LocalDateTime;
 @TableName("novels")
 public class Novel {
 
+    public static final String OUTLINE_CONTEXT_MODE_SIMPLIFIED = "SIMPLIFIED";
+    public static final String OUTLINE_CONTEXT_MODE_FULL = "FULL";
+
     @TableId(type = IdType.AUTO)
     private Long id;
 
@@ -78,6 +81,9 @@ public class Novel {
     // 新增：整书大纲字段（确认后的大纲直接存放于此）
     @TableField("outline")
     private String outline;
+
+    @TableField("outline_context_mode")
+    private String outlineContextMode = OUTLINE_CONTEXT_MODE_SIMPLIFIED;
 
     // 新增：创作阶段状态字段
     @TableField("creation_stage")
@@ -268,6 +274,14 @@ public class Novel {
 
     public void setOutline(String outline) {
         this.outline = outline;
+    }
+
+    public String getOutlineContextMode() {
+        return outlineContextMode;
+    }
+
+    public void setOutlineContextMode(String outlineContextMode) {
+        this.outlineContextMode = outlineContextMode;
     }
 
     public CreationStage getCreationStage() {

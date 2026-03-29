@@ -3,7 +3,12 @@
     "allow": [
       "Bash(mvn clean:*)",
       "Bash(mv:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(mvn compile:*)",
+      "Bash(curl:*)",
+      "Read(//c/Users/10540/.m2/**)",
+      "Bash(mvn --version)",
+      "Bash(mvn help:effective-settings)"
     ]
   }
 }

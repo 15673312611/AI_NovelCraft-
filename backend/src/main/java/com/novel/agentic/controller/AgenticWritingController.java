@@ -57,9 +57,6 @@ public class AgenticWritingController {
         // 解析并验证请求参数
         ChapterGenerationRequest request = parseAndValidateRequest(requestMap);
         
-        logger.info("📝 代理式AI写作请求: novelId={}, 起始章节={}, 数量={}, 风格提示词={}", 
-            request.getNovelId(), request.getStartChapter(), request.getCount(), 
-            request.getStylePromptFile() != null ? request.getStylePromptFile() : "默认");
         
         // 创建SSE发射器并设置心跳
         SseEmitter emitter = new SseEmitter(0L);
@@ -105,6 +102,7 @@ public class AgenticWritingController {
         request.setUserAdjustment((String) requestMap.get("userAdjustment"));
         request.setStylePromptFile((String) requestMap.get("stylePromptFile"));
         request.setPromptTemplateId(extractPromptTemplateId(requestMap));
+        request.setOutlineContextMode(extractOutlineContextMode(requestMap));
         request.setReferenceContents(extractReferenceContents(requestMap));
         request.setAiConfig(extractAIConfig(requestMap));
         
@@ -120,6 +118,11 @@ public class AgenticWritingController {
             return ((Number) templateIdObj).longValue();
         }
         return null;
+    }
+
+    private String extractOutlineContextMode(Map<String, Object> requestMap) {
+        Object modeObj = requestMap.get("outlineContextMode");
+        return modeObj == null ? null : String.valueOf(modeObj).trim();
     }
     
     /**
@@ -166,7 +169,6 @@ public class AgenticWritingController {
         
         // 设置SSE事件处理器
         emitter.onTimeout(() -> {
-            logger.warn("SSE连接超时: novelId={}", novelId);
             stopHeartbeat.run();
             emitter.complete();
         });
@@ -204,6 +206,7 @@ public class AgenticWritingController {
                         request.getAiConfig(),
                         request.getStylePromptFile(),
                         request.getPromptTemplateId(),
+                        request.getOutlineContextMode(),
                         request.getReferenceContents(),
                         emitter
                     );
@@ -215,6 +218,7 @@ public class AgenticWritingController {
                         request.getAiConfig(),
                         request.getStylePromptFile(),
                         request.getPromptTemplateId(),
+                        request.getOutlineContextMode(),
                         request.getReferenceContents(),
                         emitter
                     );
@@ -346,7 +350,6 @@ public class AgenticWritingController {
         try {
             emitter.send(event);
         } catch (IllegalStateException ex) {
-            logger.warn("SSE已关闭，忽略事件");
         } catch (IOException ex) {
             logger.error("SSE发送失败", ex);
         }

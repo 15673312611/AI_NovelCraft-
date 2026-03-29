@@ -13,6 +13,7 @@ public class ChapterGenerationRequest {
     private String userAdjustment;
     private String stylePromptFile;
     private Long promptTemplateId;
+    private String outlineContextMode;
     private Map<String, String> referenceContents;
     private AIConfigRequest aiConfig;
 
@@ -62,6 +63,14 @@ public class ChapterGenerationRequest {
 
     public void setPromptTemplateId(Long promptTemplateId) {
         this.promptTemplateId = promptTemplateId;
+    }
+
+    public String getOutlineContextMode() {
+        return outlineContextMode;
+    }
+
+    public void setOutlineContextMode(String outlineContextMode) {
+        this.outlineContextMode = outlineContextMode;
     }
 
     public Map<String, String> getReferenceContents() {

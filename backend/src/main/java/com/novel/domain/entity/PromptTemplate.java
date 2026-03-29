@@ -55,12 +55,17 @@ public class PromptTemplate {
      * - anti_ai: 去AI味模板
      * - chapter: 章节写作模板（用于AI辅助写作）
      * - outline: 大纲生成模板
+     * - volume: 卷蓝图/卷级流程模板
+     * - volume_split: 确认大纲后拆分卷模板
      * - character: 角色设定模板
      * - worldbuilding: 世界设定模板
      * - tool: 工具类模板
      * - brainstorm: 脑洞创意模板
      * - title_synopsis: 书名简介模板
      * - cover: 封面模板
+     * - system_chain: 系统链路模板
+     * - short_story: 短篇专用模板
+     * - script: 剧本专用模板
      * - other: 其他类型
      */
     private String category;
@@ -69,6 +74,16 @@ public class PromptTemplate {
      * 模板描述
      */
     private String description;
+
+    /**
+     * 业务绑定键，用于系统按固定场景查找提示词
+     */
+    private String promptKey;
+
+    /**
+     * 模板变量说明，使用逗号分隔
+     */
+    private String variables;
     
     /**
      * 是否启用：true-启用，false-禁用
@@ -108,4 +123,3 @@ public class PromptTemplate {
     @TableField(exist = false)
     private Boolean isFavorited;
 }
-

@@ -46,6 +46,9 @@ public class NovelService {
         if (novel.getStartedAt() == null) {
             novel.setStartedAt(LocalDateTime.now());
         }
+        if (!StringUtils.hasText(novel.getOutlineContextMode())) {
+            novel.setOutlineContextMode(Novel.OUTLINE_CONTEXT_MODE_SIMPLIFIED);
+        }
 
         // 设置作者ID为当前登录用户
         novel.setAuthorId(userId);
@@ -99,6 +102,9 @@ public class NovelService {
             if (novelData.getOutline() != null) {
                 existingNovel.setOutline(novelData.getOutline());
             }
+            if (StringUtils.hasText(novelData.getOutlineContextMode())) {
+                existingNovel.setOutlineContextMode(novelData.getOutlineContextMode());
+            }
             // 新增：支持更新计划卷数
             if (novelData.getPlannedVolumeCount() != null) {
                 existingNovel.setPlannedVolumeCount(novelData.getPlannedVolumeCount());
@@ -148,7 +154,7 @@ public class NovelService {
         "id", "title", "subtitle", "description", "cover_image_url", "status", "genre", "tags",
         "target_audience", "word_count", "chapter_count", "estimated_completion", "started_at",
         "completed_at", "is_public", "rating", "rating_count", "target_total_chapters",
-        "words_per_chapter", "planned_volume_count", "total_word_target", "creation_stage",
+        "words_per_chapter", "planned_volume_count", "total_word_target", "outline_context_mode", "creation_stage",
         "created_by", "created_at", "updated_at"
     };
 

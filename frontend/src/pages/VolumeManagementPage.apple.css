@@ -372,6 +372,8 @@
   justify-content: space-between;
   background: white;
   transition: all 0.2s;
+  gap: 12px;
+  min-width: 0;
 }
 
 .apple-select-trigger:hover {
@@ -385,17 +387,28 @@
 
 .apple-select-placeholder {
   color: #94a3b8;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .apple-select-value {
   color: #0f172a;
   font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .apple-select-arrow {
   font-size: 10px;
   color: #94a3b8;
   transition: transform 0.2s;
+  flex-shrink: 0;
 }
 
 .apple-select-trigger.open .apple-select-arrow {
@@ -425,6 +438,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
 .apple-select-option:hover {
@@ -442,12 +456,23 @@
 .apple-select-option-name {
   font-weight: 500;
   color: #0f172a;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .apple-select-option-desc {
   font-size: 12px;
   color: #94a3b8;
   margin-left: auto;
+  flex: 0 1 45%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
 }
 
 /* ==========================================

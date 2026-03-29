@@ -1,5 +1,7 @@
 import api from './api'
 
+export type OutlineContextMode = 'SIMPLIFIED' | 'FULL'
+
 export interface Novel {
   id: number
   title: string
@@ -7,6 +9,8 @@ export interface Novel {
   genre?: string
   status: string
   creationStage?: string
+  outline?: string
+  outlineContextMode?: OutlineContextMode
   wordCount: number
   chapterCount: number
   createdBy: number
@@ -22,6 +26,7 @@ export interface Novel {
 interface CreateNovelRequest {
   title: string
   description: string
+  outlineContextMode?: OutlineContextMode
   // 新增创作配置字段
   targetTotalChapters?: number
   wordsPerChapter?: number
@@ -34,6 +39,7 @@ interface UpdateNovelRequest {
   description?: string
   genre?: string
   status?: string
+  outlineContextMode?: OutlineContextMode
   // 新增创作配置字段
   targetTotalChapters?: number
   wordsPerChapter?: number

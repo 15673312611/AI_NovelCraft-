@@ -20,7 +20,7 @@ import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github.css';
 import './AIChatPage.css';
 
-import { getGeneratorById, getAllGenerators, AiGenerator } from '../services/aiGeneratorService';
+import { getGeneratorById, AiGenerator } from '../services/aiGeneratorService';
 import { creditService, AIModel } from '../services/creditService';
 
 const { TextArea } = Input;
@@ -50,7 +50,6 @@ const AIChatPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [models, setModels] = useState<AIModel[]>([]);
   const [currentModel, setCurrentModel] = useState<string>('');
-  const [generators, setGenerators] = useState<AiGenerator[]>([]);
   const [currentGenerator, setCurrentGenerator] = useState<AiGenerator | null>(null);
   
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -62,7 +61,6 @@ const AIChatPage: React.FC = () => {
   useEffect(() => {
     loadSessions();
     loadModels();
-    loadGenerators();
   }, []);
 
   // Handle URL params for generator
@@ -120,19 +118,10 @@ const AIChatPage: React.FC = () => {
         // Use saved model or default
         const savedModel = localStorage.getItem('ai_chat_model');
         const defaultModel = data.find(m => m.isDefault) || data[0];
-        setCurrentModel(savedModel && data.find(m => m.modelId === savedModel) ? savedModel : defaultModel.modelId);
+        setCurrentModel(savedModel && data.find(m => String(m.id) === savedModel) ? savedModel : String(defaultModel.id));
       }
     } catch (e) {
       console.error('Failed to load models', e);
-    }
-  };
-
-  const loadGenerators = async () => {
-    try {
-      const data = await getAllGenerators();
-      setGenerators(data);
-    } catch (e) {
-      console.error('Failed to load generators', e);
     }
   };
 
@@ -252,23 +241,11 @@ const AIChatPage: React.FC = () => {
       const session = updatedSessionsWithUser.find(s => s.id === sessionId);
       if (!session) return;
 
-      // Construct payload
-      let messagesPayload = [];
-      // Add system prompt if generator exists
-      if (currentGenerator) {
-        messagesPayload.push({ role: 'system', content: currentGenerator.prompt });
-      } else if (session.generatorId) {
-         // Try to find the generator if it was set on session creation but currentGenerator changed
-         const gen = generators.find(g => g.id === session.generatorId);
-         if (gen) messagesPayload.push({ role: 'system', content: gen.prompt });
-      }
+      const messagesPayload = session.messages
+        .filter(m => m.role === 'user' || m.role === 'assistant')
+        .map(m => ({ role: m.role, content: m.content }));
 
-      // Add history
-      messagesPayload = [
-        ...messagesPayload,
-        ...session.messages.map(m => ({ role: m.role, content: m.content })),
-        { role: 'user', content: userMsg.content }
-      ];
+      const generatorId = session.generatorId || currentGenerator?.id;
 
       abortControllerRef.current = new AbortController();
 
@@ -281,7 +258,7 @@ const AIChatPage: React.FC = () => {
         body: JSON.stringify({
           model: currentModel,
           messages: messagesPayload,
-          generatorId: session.generatorId || currentGenerator?.id
+          generatorId
         }),
         signal: abortControllerRef.current.signal
       });
@@ -291,40 +268,56 @@ const AIChatPage: React.FC = () => {
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let fullContent = '';
+      let buffer = '';
+
+      const processSSELine = (rawLine: string) => {
+        const line = rawLine.trim();
+        if (!line.startsWith('data:')) {
+          return;
+        }
+
+        const data = line.slice(5).trim();
+        if (data === '[DONE]') {
+          return;
+        }
+
+        try {
+          const json = JSON.parse(data);
+          const delta = json.choices?.[0]?.delta?.content || json.content || '';
+          fullContent += delta;
+
+          // Update UI incrementally
+          setSessions(prev => prev.map(s =>
+            s.id === sessionId
+              ? {
+                  ...s,
+                  messages: s.messages.map(m => m.id === aiMsgId ? { ...m, content: fullContent } : m)
+                }
+              : s
+          ));
+        } catch (e) {
+          // Ignore parse errors for incomplete SSE payloads
+        }
+      };
 
       if (reader) {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n');
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
 
           for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim();
-              if (data === '[DONE]') continue;
-              
-              try {
-                const json = JSON.parse(data);
-                const delta = json.choices?.[0]?.delta?.content || json.content || '';
-                fullContent += delta;
-
-                // Update UI incrementally
-                setSessions(prev => prev.map(s => 
-                  s.id === sessionId 
-                    ? {
-                        ...s,
-                        messages: s.messages.map(m => m.id === aiMsgId ? { ...m, content: fullContent } : m)
-                      }
-                    : s
-                ));
-              } catch (e) {
-                // Ignore parse errors for partial chunks
-              }
-            }
+            processSSELine(line);
           }
         }
+
+        buffer += decoder.decode();
+        if (buffer.trim()) {
+          processSSELine(buffer);
+          }
       }
     } catch (error: any) {
       if (error.name !== 'AbortError') {
@@ -444,7 +437,7 @@ const AIChatPage: React.FC = () => {
               className="topbar-model-select"
               style={{ width: 220 }} 
               onChange={setCurrentModel}
-              options={models.map(m => ({ label: m.displayName, value: m.modelId }))}
+              options={models.map(m => ({ label: m.displayName, value: String(m.id) }))}
               variant="borderless"
             />
             {currentGenerator && (

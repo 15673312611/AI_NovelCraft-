@@ -1,12 +1,33 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Typography, Space, Divider, Table, Tag, Statistic, Row, Col, Spin, Empty, message } from 'antd'
 import { ThunderboltOutlined, HistoryOutlined } from '@ant-design/icons'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { creditService, UserCreditInfo, CreditTransaction } from '../services/creditService'
 import './SettingsPage.css'
 
 const { Title, Text } = Typography
 
+const formatTransactionDescription = (record: CreditTransaction) => {
+	const description = record.description?.trim()
+	if (!description) {
+		return '-'
+	}
+
+	if (record.type !== 'REDEEM_CODE') {
+		return description
+	}
+
+	const codeInBrackets = description.match(/\(([^()]+)\)\s*$/)
+	if (codeInBrackets?.[1]) {
+		return codeInBrackets[1].trim()
+	}
+
+	return description.replace(/^兑换码兑换:\s*/u, '').trim() || '-'
+}
+
 const SettingsPage: React.FC = () => {
+	const location = useLocation()
+	const navigate = useNavigate()
 	const [creditInfo, setCreditInfo] = useState<UserCreditInfo | null>(null)
 	const [transactions, setTransactions] = useState<CreditTransaction[]>([])
 	const [loading, setLoading] = useState(true)
@@ -16,6 +37,32 @@ const SettingsPage: React.FC = () => {
 	useEffect(() => {
 		loadData()
 	}, [])
+
+	useEffect(() => {
+		const params = new URLSearchParams(location.search)
+		const payStatus = params.get('payStatus')
+		if (!payStatus) {
+			return
+		}
+
+		if (payStatus === 'success') {
+			message.success('支付成功，正在刷新充值记录')
+			loadData()
+		} else {
+			message.warning('支付结果未确认，请稍后刷新余额或交易记录')
+		}
+
+		params.delete('payStatus')
+		params.delete('orderNo')
+		const nextSearch = params.toString()
+		navigate(
+			{
+				pathname: location.pathname,
+				search: nextSearch ? `?${nextSearch}` : ''
+			},
+			{ replace: true }
+		)
+	}, [location.pathname, location.search, navigate])
 
 	const loadData = async () => {
 		setLoading(true)
@@ -73,6 +120,9 @@ const SettingsPage: React.FC = () => {
 					REFUND: { color: 'orange', text: '退款' },
 					ADMIN_ADJUST: { color: 'purple', text: '调整' }
 				}
+				if (type === 'REDEEM_CODE') {
+					return <Tag color="cyan">兑换码</Tag>
+				}
 				const info = typeMap[type] || { color: 'default', text: type }
 				return <Tag color={info.color}>{info.text}</Tag>
 			}
@@ -119,9 +169,9 @@ const SettingsPage: React.FC = () => {
 		},
 		{
 			title: '描述',
-			dataIndex: 'description',
 			key: 'description',
-			ellipsis: true
+			ellipsis: true,
+			render: (_: any, record: CreditTransaction) => formatTransactionDescription(record)
 		}
 	]
 

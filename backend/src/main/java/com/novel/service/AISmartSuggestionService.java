@@ -3,6 +3,8 @@ package com.novel.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.novel.dto.AIConfigRequest;
+import com.novel.service.prompt.ManagedPromptService;
+import com.novel.service.prompt.SystemPromptDescriptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpEntity;
@@ -23,6 +25,12 @@ public class AISmartSuggestionService {
 
     private static final Logger logger = LoggerFactory.getLogger(AISmartSuggestionService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private ManagedPromptService managedPromptService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private AIWritingService aiWritingService;
 
     /**
      * 建议类型枚举
@@ -121,7 +129,14 @@ public class AISmartSuggestionService {
      * 构建AI智能建议的系统提示词
      */
     private String buildSystemPrompt() {
-        return "你是一名资深的网络小说编辑AI，负责对小说内容进行全面诊断并提供改进建议。\n" +
+        return managedPromptService.getContent(SystemPromptDescriptor.builder()
+                .promptKey("editing.smart_suggestion.system")
+                .name("AI智能建议系统提示词")
+                .category("system_chain")
+                .description("诊断文本问题并输出结构化改进建议")
+                .variables(List.of("content"))
+                .sortOrder(814)
+                .defaultContent("你是一名资深的网络小说编辑AI，负责对小说内容进行全面诊断并提供改进建议。\n" +
                 "你的核心任务是：让AI生成的文本更像人类写的，避免被AI检测工具识别。\n" +
                 "\n" +
                 "【诊断范围】\n" +
@@ -220,7 +235,8 @@ public class AISmartSuggestionService {
                 "- 每次诊断都要主动检查是否存在对同一情绪/气氛进行连续多句渲染但几乎不推进剧情的段落，尽量在不影响转折和关键信息的前提下合并为1-2句\n" +
                 "- 这些修改的severity都设为\"low\"，因为它们不影响阅读，但能有效消除AI痕迹\n" +
                 "- 如果没有建议，返回空数组 []\n" +
-                "- 只输出JSON数组，不要添加任何其他文字说明。";
+                "- 只输出JSON数组，不要添加任何其他文字说明。")
+                .build());
     }
 
     /**
@@ -241,8 +257,27 @@ public class AISmartSuggestionService {
             userBuilder.append("\n\n");
             userBuilder.append("请仔细分析上述文本，找出所有问题并提供改进建议，以JSON数组格式返回。");
 
-            // 调用AI
-            String aiResponse = callAI(aiConfig, buildSystemPrompt(), userBuilder.toString());
+            AIConfigRequest requestConfig = new AIConfigRequest();
+            if (aiConfig != null) {
+                requestConfig.setProvider(aiConfig.getProvider());
+                requestConfig.setApiKey(aiConfig.getApiKey());
+                requestConfig.setModel(aiConfig.getModel());
+                requestConfig.setBaseUrl(aiConfig.getBaseUrl());
+            }
+            requestConfig.setTemperature(0.7);
+
+            List<Map<String, String>> messages = new ArrayList<>();
+            Map<String, String> systemMessage = new HashMap<>();
+            systemMessage.put("role", "system");
+            systemMessage.put("content", buildSystemPrompt());
+            messages.add(systemMessage);
+
+            Map<String, String> userMessage = new HashMap<>();
+            userMessage.put("role", "user");
+            userMessage.put("content", userBuilder.toString());
+            messages.add(userMessage);
+
+            String aiResponse = aiWritingService.generateContentWithMessages(messages, "ai_smart_suggestion", requestConfig);
             
             // 解析AI返回的JSON
             List<SmartSuggestion> suggestions = parseAIResponse(aiResponse, content);

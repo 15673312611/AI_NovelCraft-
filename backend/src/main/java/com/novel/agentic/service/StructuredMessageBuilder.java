@@ -36,9 +36,11 @@ public class StructuredMessageBuilder {
     private String buildGraphContextForDirectWriting(WritingContext context) {
         StringBuilder body = new StringBuilder();
         boolean hasContent = false;
+        boolean includeHistoricalEventsInDirectWriting = false;
 
         // 历史事件
-        if (context.getRelevantEvents() != null && !context.getRelevantEvents().isEmpty()) {
+        // Historical events stay in reasoning/outline, not direct writing prompts.
+        if (includeHistoricalEventsInDirectWriting && context.getRelevantEvents() != null && !context.getRelevantEvents().isEmpty()) {
             body.append("【历史事件】\n");
             context.getRelevantEvents().stream().limit(10).forEach(event -> {
                 Map<String, Object> props = event.getProperties();
@@ -106,25 +108,27 @@ public class StructuredMessageBuilder {
 
         // Message 1: System - 基础写作规则 + 风格
         String systemPrompt = buildSystemPrompt(null, chapterNumber, stylePromptFile, promptTemplateId);
+        String writingRequirementsPrompt = buildWritingRequirementsPrompt(context);
         if (systemPrompt == null || systemPrompt.trim().isEmpty()) {
             logger.warn("系统提示词为空！使用默认提示词");
             systemPrompt = "你是一位专业的网文小说家AI助手。请根据章节意图和上下文创作高质量的小说章节内容。";
         }
         logger.info("系统提示词长度: {}字 (使用: {})", systemPrompt.length(),
             stylePromptFile != null ? stylePromptFile : "默认");
-        messages.add(createMessage("user", systemPrompt));
 
 
 
         // Message 2: 小说基础信息
-        String basicInfo = buildBasicInfo(novel, chapterNumber);
-        messages.add(createMessage("system", basicInfo));
+//        String basicInfo = buildBasicInfo(novel, chapterNumber);
+//        messages.add(createMessage("system", basicInfo));
 
         // Message 3: 整体大纲（仅做参考，禁止开天眼）
         // 原“核心设定”消息暂时改为输出整体大纲，帮助AI理解全局走向，但不能提前写后面章节内容
-        if (false) {
+        if (context != null
+                && Novel.OUTLINE_CONTEXT_MODE_FULL.equalsIgnoreCase(context.getOutlineContextMode())
+                && StringUtils.isNotBlank(context.getOutline())) {
 //        if (novel != null && StringUtils.isNotBlank(novel.getOutline())) {
-            String outline = novel.getOutline();
+            String outline = context.getOutline();
             StringBuilder sb = new StringBuilder();
             sb.append("【整体大纲（仅供参考，禁止开天眼）】\n");
             sb.append("下面是全书的整体大纲，用于帮助你理解全局剧情节奏和后续大致走向。\n");
@@ -155,6 +159,11 @@ public class StructuredMessageBuilder {
 
         // Message 5: 最近章节完整内容和概要
         if (context != null) {
+            String volumeProfiles = buildVolumeCharacterProfilesMessageV2(context);
+            if (StringUtils.isNotBlank(volumeProfiles)) {
+                messages.add(createMessage("system", volumeProfiles));
+                logger.info("已添加本卷人设卡");
+            }
             addRecentChapterMessages(context, messages);
         }
 
@@ -193,9 +202,35 @@ public class StructuredMessageBuilder {
             }
         }
 
-        // Message 9: 章节意图（来自推理或预生成章纲）
+        // 用户提供的关联素材也视为上下文，放在执行指令之前，避免冲淡最后的写作要求。
+        if (context != null && context.getReferenceContents() != null && !context.getReferenceContents().isEmpty()) {
+            String refMessage = buildUserReferenceMessage(context.getReferenceContents());
+            if (StringUtils.isNotBlank(refMessage)) {
+                messages.add(createMessage("system", refMessage));
+                logger.info("已添加用户关联素材（{}项）", context.getReferenceContents().size());
+            }
+        }
+
+        // Message 9: 系统提示词下移到上下文之后，减少被长上下文冲淡。
+        if (StringUtils.isNotBlank(writingRequirementsPrompt)) {
+            messages.add(createMessage("user", writingRequirementsPrompt));
+        }
+        messages.add(createMessage("user", "【正文创作要求】"+systemPrompt));
+
+        // Message 10: 章节意图（来自推理或预生成章纲）
+        if (context != null) {
+            String currentChapterOutline = buildCurrentChapterOutlineMessage(context);
+            if (StringUtils.isNotBlank(currentChapterOutline)) {
+                messages.add(createMessage("system", currentChapterOutline));
+                logger.info("已添加当前章节细纲");
+            }
+        }
+
         StringBuilder intentMsg = new StringBuilder();
         intentMsg.append("【本章创作方向】\n");
+        if (context != null && StringUtils.isNotBlank(context.getCurrentChapterOutline())) {
+            intentMsg.append("如果下面的创作方向与【当前章节细纲（优先遵守）】冲突，以当前章节细纲为准。\n\n");
+        }
         if (intent != null) {
             // 使用 direction 作为本章剧情方向（包含关键剧情点）
             Object direction = intent.get("direction");
@@ -218,7 +253,9 @@ public class StructuredMessageBuilder {
                 intentMsg.append("\n");
             }
         }
-        messages.add(createMessage("user", intentMsg.toString()));
+        if (intent != null && !intent.isEmpty() && (context == null || StringUtils.isBlank(context.getCurrentChapterOutline()))) {
+            messages.add(createMessage("user", intentMsg.toString()));
+        }
 
 //        //开篇提速
 //        String openingBooster = buildOpeningBooster(chapterNumber);
@@ -227,10 +264,13 @@ public class StructuredMessageBuilder {
 //            messages.add(createMessage("system", openingBooster));
 //        }
 
-        // Message 10: 写作任务说明
+        // Message 11: 写作任务说明
         StringBuilder taskDesc = new StringBuilder();
         taskDesc.append("请开始创作第").append(chapterNumber).append("章。 \n");
 //        taskDesc.append("遵循上面的指令,按照前面的上下文信息开始写作,保证逻辑通畅,衔接上一章剧情;如果上一章结尾和【本章创作方向】有出入 还要衔接上章为主 在慢慢按【本章创作方向】去编写;同时需要考虑逻辑性; 不能机械降神 不能引入超脱剧本的支线和设定 按照现有剧情设定去推理。");
+        if (context != null && StringUtils.isNotBlank(context.getCurrentChapterOutline())) {
+            taskDesc.append("优先按照当前章节细纲展开正文，确保计划中的事件、基调和伏笔节奏真正落到文本里。\n");
+        }
         messages.add(createMessage("user",taskDesc.toString()));
         //字数限制
         String wordCountLimit = buildWordCountLimitSimple(novel);
@@ -251,15 +291,6 @@ public class StructuredMessageBuilder {
             }
         }
 
-        // 用户提供的关联素材（参考文件和关联文档）
-        if (context != null && context.getReferenceContents() != null && !context.getReferenceContents().isEmpty()) {
-            String refMessage = buildUserReferenceMessage(context.getReferenceContents());
-            if (StringUtils.isNotBlank(refMessage)) {
-                messages.add(createMessage("system", refMessage));
-                logger.info("已添加用户关联素材（{}项）", context.getReferenceContents().size());
-            }
-        }
-
         logger.info("意图驱动写作消息构建完成: 共{}条消息", messages.size());
 
         // 详细日志
@@ -274,6 +305,19 @@ public class StructuredMessageBuilder {
         }
 
         return messages;
+    }
+
+    private String buildWritingRequirementsPrompt(WritingContext context) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("【正文创作要求】\n");
+        sb.append("- 直接输出小说正文，不要解释计划、提纲或创作思路。\n");
+        sb.append("- 严格承接现有上下文，保证人物状态、设定、时间线和因果关系一致。\n");
+        sb.append("- 用场景、动作、对白和必要心理活动推进，不要写成摘要或大纲复述。\n");
+        if (context != null && StringUtils.isNotBlank(context.getCurrentChapterOutline())) {
+            sb.append("- 当前章节细纲优先，已明确的事件顺序、目标、基调和伏笔安排不要改写。\n");
+        }
+        sb.append("- 结尾保留自然钩子，但不要为了制造钩子硬拗逻辑。\n");
+        return sb.toString();
     }
 
 
@@ -315,14 +359,9 @@ public class StructuredMessageBuilder {
         }
         logger.info("系统提示词长度: {}字 (使用: {})", systemPrompt.length(),
             stylePromptFile != null ? stylePromptFile : "默认");
-        messages.add(createMessage("system", budget.truncate(systemPrompt, budget.getMaxSystemPrompt())));
 
         // Message 2: 开篇提速指令（前三章专用）
         String openingBooster = buildOpeningBooster(chapterNumber);
-        if (StringUtils.isNotBlank(openingBooster)) {
-            logger.info("添加开篇提速指令（第{}章）", chapterNumber);
-            messages.add(createMessage("system", openingBooster));
-        }
 
         // Message 3: 小说基础信息（前三章包含简介）
         String basicInfo = buildBasicInfo(novel, chapterNumber);
@@ -356,6 +395,13 @@ public class StructuredMessageBuilder {
 //
         // Message 9+: 最近章节内容（每章一个独立message，不截断）
         addRecentChapterMessages(context, messages);
+
+        // 将系统提示词和开篇提速下移到长上下文之后，避免被大纲和最近章节稀释。
+        messages.add(createMessage("system", budget.truncate(systemPrompt, budget.getMaxSystemPrompt())));
+        if (StringUtils.isNotBlank(openingBooster)) {
+            logger.info("添加开篇提速指令（第{}章）", chapterNumber);
+            messages.add(createMessage("system", openingBooster));
+        }
 
         // Message N: 本章任务与执行要求
         String taskAndRequirements = buildTaskAndRequirements(context, chapterNumber);
@@ -443,6 +489,128 @@ public class StructuredMessageBuilder {
             sb.append("当前位置：").append(progress).append("\n");
         }
 
+        return sb.toString();
+    }
+
+    private String buildVolumeCharacterProfilesMessageV2(WritingContext context) {
+        if (context.getVolumeCharacterProfiles() == null || context.getVolumeCharacterProfiles().isEmpty()) {
+            return "";
+        }
+
+        List<Map<String, Object>> matchedProfiles = filterVolumeCharacterProfiles(context);
+        if (matchedProfiles.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("【本卷人设卡】\n");
+        sb.append("以下内容是当前卷阶段的人设约束，写作本章时优先遵守，确保角色状态、动机和关系一致。\n");
+        sb.append("- 优先遵守当前卷的人设状态，不要把角色写回前期旧状态。\n");
+        sb.append("- 角色行为必须同时符合其当前人设、核心动机、立场关系、未完成目标与行为底线。\n");
+        sb.append("- 若要制造反差，必须先给出足够铺垫，不能无因失真。\n\n");
+
+        for (Map<String, Object> profile : matchedProfiles) {
+            if (profile == null) {
+                continue;
+            }
+            String name = safeString(profile.get("characterName"), "未知角色");
+            sb.append(name).append("\n");
+            appendProfileLine(sb, "当前人设", profile.get("currentPersona"));
+            appendProfileLine(sb, "核心动机", profile.get("coreMotivation"));
+            appendProfileLine(sb, "立场关系", profile.get("stanceRelationships"));
+            appendProfileLine(sb, "未完成目标", profile.get("unfinishedGoals"));
+            appendProfileLine(sb, "行为底线", profile.get("behaviorBottomLine"));
+            sb.append("\n");
+        }
+
+        return sb.toString().trim();
+    }
+
+    private String buildVolumeCharacterProfilesMessage(WritingContext context) {
+        if (context.getVolumeCharacterProfiles() == null || context.getVolumeCharacterProfiles().isEmpty()) {
+            return "";
+        }
+
+        List<Map<String, Object>> matchedProfiles = filterVolumeCharacterProfiles(context);
+        if (matchedProfiles.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("【本卷人设卡】\n");
+        sb.append("以下内容是当前卷阶段的人设约束，写作本章时优先遵守，确保角色状态、动机和关系一致。\n");
+        sb.append("- 优先遵守当前卷的人设状态，不要把角色写回前期旧状态。\n");
+        sb.append("- 角色行为必须符合其本卷动机、关系站位、未完成目标与行为底线。\n");
+        sb.append("- 若要制造反差，必须先给出足够铺垫，不能无因失真。\n\n");
+
+        for (Map<String, Object> profile : matchedProfiles) {
+            if (profile == null) {
+                continue;
+            }
+            String name = safeString(profile.get("characterName"), "未知角色");
+            sb.append(name).append("\n");
+            appendProfileLine(sb, "当前人设", profile.get("currentPersona"));
+            appendProfileLine(sb, "核心动机", profile.get("coreMotivation"));
+            appendProfileLine(sb, "立场关系", profile.get("stanceRelationships"));
+            appendProfileLine(sb, "未完成目标", profile.get("unfinishedGoals"));
+            appendProfileLine(sb, "行为底线", profile.get("behaviorBottomLine"));
+            sb.append("\n");
+        }
+
+        return sb.toString().trim();
+    }
+
+    private List<Map<String, Object>> filterVolumeCharacterProfiles(WritingContext context) {
+        List<Map<String, Object>> profiles = context.getVolumeCharacterProfiles();
+        if (profiles == null || profiles.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        String currentChapterOutline = context.getCurrentChapterOutline();
+        if (StringUtils.isBlank(currentChapterOutline)) {
+            logger.info("当前章节无细纲，本卷人设卡不过滤，保留{}个角色", profiles.size());
+            return profiles;
+        }
+
+        String normalizedOutline = normalizeNameMatchText(currentChapterOutline);
+        List<Map<String, Object>> matchedProfiles = profiles.stream()
+            .filter(profile -> isVolumeProfileMentionedInOutline(profile, normalizedOutline))
+            .collect(Collectors.toList());
+
+        logger.info("按当前章节细纲过滤本卷人设卡：原始{}个，命中{}个", profiles.size(), matchedProfiles.size());
+        return matchedProfiles;
+    }
+
+    private boolean isVolumeProfileMentionedInOutline(Map<String, Object> profile, String normalizedOutline) {
+        if (profile == null || StringUtils.isBlank(normalizedOutline)) {
+            return false;
+        }
+
+        String characterName = safeString(profile.get("characterName"), "");
+        if (StringUtils.isBlank(characterName)) {
+            return false;
+        }
+
+        String normalizedName = normalizeNameMatchText(characterName);
+        return StringUtils.isNotBlank(normalizedName) && normalizedOutline.contains(normalizedName);
+    }
+
+    private String normalizeNameMatchText(String text) {
+        if (text == null) {
+            return "";
+        }
+        return StringUtils.deleteWhitespace(text).trim();
+    }
+
+    private String buildCurrentChapterOutlineMessage(WritingContext context) {
+        if (context == null || StringUtils.isBlank(context.getCurrentChapterOutline())) {
+            return "";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(context.getCurrentChapterOutline().trim()).append("\n\n");
+        sb.append("【写作规则】\n");
+        sb.append("优先遵守这份当前章节细纲。可以补充场景、动作、对话和节奏，但不要替换掉细纲原定的主事件，也不要改动细纲已明确的顺序、目标、基调和伏笔安排。");
         return sb.toString();
     }
 
@@ -608,9 +776,14 @@ public class StructuredMessageBuilder {
                 merged.computeIfAbsent(a, k -> new LinkedHashMap<>());
                 merged.computeIfAbsent(b, k -> new LinkedHashMap<>());
 
-                String type = safeString(rel.get("type"), "");
-                String ab = StringUtils.isNotBlank(type) ? b + "（" + type + "）" : b;
-                String ba = StringUtils.isNotBlank(type) ? a + "（" + type + "）" : a;
+                String relationSummary = StringUtils.normalizeSpace(
+                    safeString(rel.get("description"), safeString(rel.get("type"), ""))
+                );
+                if (relationSummary.length() > 24) {
+                    relationSummary = relationSummary.substring(0, 24) + "...";
+                }
+                String ab = StringUtils.isNotBlank(relationSummary) ? b + "（" + relationSummary + "）" : b;
+                String ba = StringUtils.isNotBlank(relationSummary) ? a + "（" + relationSummary + "）" : a;
                 relations.computeIfAbsent(a, k -> new ArrayList<>()).add(ab);
                 relations.computeIfAbsent(b, k -> new ArrayList<>()).add(ba);
             }
@@ -709,10 +882,15 @@ public class StructuredMessageBuilder {
                 if (StringUtils.isBlank(a) || StringUtils.isBlank(b)) {
                     continue;
                 }
-                String type = safeString(rel.get("type"), "");
+                String relationSummary = StringUtils.normalizeSpace(
+                    safeString(rel.get("description"), safeString(rel.get("type"), ""))
+                );
+                if (relationSummary.length() > 40) {
+                    relationSummary = relationSummary.substring(0, 40) + "...";
+                }
                 sb.append("- ").append(a);
-                if (StringUtils.isNotBlank(type)) {
-                    sb.append(" —").append(type).append("→ ");
+                if (StringUtils.isNotBlank(relationSummary)) {
+                    sb.append(" —").append(relationSummary).append("→ ");
                 } else {
                     sb.append(" → ");
                 }
@@ -1139,6 +1317,13 @@ public class StructuredMessageBuilder {
         return message;
     }
 
+    private void appendProfileLine(StringBuilder sb, String label, Object value) {
+        String text = safeString(value, "");
+        if (StringUtils.isNotBlank(text)) {
+            sb.append("- ").append(label).append("：").append(text).append("\n");
+        }
+    }
+
     private String safeString(Object value, String fallback) {
         if (value == null) {
             return fallback;
@@ -1236,8 +1421,13 @@ public class StructuredMessageBuilder {
             for (Map<String, Object> rel : relationships) {
                 String a = (String) rel.get("a");
                 String b = (String) rel.get("b");
-                String type = (String) rel.get("type");
-                sb.append("- ").append(a).append(" ↔ ").append(b).append("：").append(type);
+                String relationSummary = StringUtils.normalizeSpace(
+                    safeString(rel.get("description"), safeString(rel.get("type"), ""))
+                );
+                sb.append("- ").append(a).append(" ↔ ").append(b);
+                if (StringUtils.isNotBlank(relationSummary)) {
+                    sb.append("：").append(relationSummary);
+                }
                 sb.append("\n");
             }
             sb.append("\n");

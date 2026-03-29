@@ -1,30 +1,25 @@
 package com.novel.mapper;
 
 import com.novel.entity.ReferenceFile;
-import org.apache.ibatis.annotations.*;
+import org.apache.ibatis.annotations.Delete;
+import org.apache.ibatis.annotations.Insert;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Options;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+
 import java.util.List;
 
-/**
- * 参考文件Mapper
- */
 @Mapper
 public interface ReferenceFileMapper {
 
-    /**
-     * 根据小说ID获取所有参考文件
-     */
-    @Select("SELECT * FROM reference_file WHERE novel_id = #{novelId} ORDER BY created_at DESC")
+    @Select("SELECT id, novel_id, file_name, file_type, file_size, word_count, created_at, updated_at " +
+            "FROM reference_file WHERE novel_id = #{novelId} ORDER BY created_at DESC")
     List<ReferenceFile> findByNovelId(@Param("novelId") Long novelId);
 
-    /**
-     * 根据ID获取参考文件
-     */
     @Select("SELECT * FROM reference_file WHERE id = #{id}")
     ReferenceFile findById(@Param("id") Long id);
 
-    /**
-     * 创建参考文件
-     */
     @Insert("INSERT INTO reference_file (novel_id, file_name, file_type, file_content, " +
             "file_size, original_path, word_count) " +
             "VALUES (#{novelId}, #{fileName}, #{fileType}, #{fileContent}, #{fileSize}, " +
@@ -32,15 +27,9 @@ public interface ReferenceFileMapper {
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(ReferenceFile referenceFile);
 
-    /**
-     * 删除参考文件
-     */
     @Delete("DELETE FROM reference_file WHERE id = #{id}")
     int delete(@Param("id") Long id);
 
-    /**
-     * 根据ID列表批量查询
-     */
     @Select("<script>" +
             "SELECT * FROM reference_file WHERE id IN " +
             "<foreach collection='ids' item='id' open='(' separator=',' close=')'>" +
@@ -49,4 +38,3 @@ public interface ReferenceFileMapper {
             "</script>")
     List<ReferenceFile> findByIds(@Param("ids") List<Long> ids);
 }
-

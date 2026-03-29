@@ -2,6 +2,7 @@ package com.novel.service;
 
 import com.novel.domain.entity.AIModel;
 import com.novel.exception.InsufficientCreditsException;
+import com.novel.service.ai.AIModelCallLogService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,12 +21,16 @@ import java.util.function.Consumer;
 public class AICallService {
 
     private static final Logger logger = LoggerFactory.getLogger(AICallService.class);
+    private static final String TASK_TYPE = "ai_call_service";
 
     @Autowired
     private CreditService creditService;
 
     @Autowired
     private SystemAIConfigService systemAIConfigService;
+
+    @Autowired
+    private AIModelCallLogService aiModelCallLogService;
 
     private final RestTemplate restTemplate;
 
@@ -86,6 +91,8 @@ public class AICallService {
      */
     public AICallResult callAI(String prompt, String modelId, Integer maxTokens, Double temperature, Long userId, String taskDescription) {
         AICallResult result = new AICallResult();
+        long startTime = 0L;
+        boolean requestStarted = false;
         
         try {
             // 获取模型配置
@@ -151,10 +158,21 @@ public class AICallService {
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
             // 调用API - 使用 String 接收响应以便处理非JSON响应
+            startTime = System.currentTimeMillis();
+            requestStarted = true;
             ResponseEntity<String> rawResponse = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
             String responseText = rawResponse.getBody();
             
             if (responseText == null || responseText.isEmpty()) {
+                aiModelCallLogService.recordFailure(
+                    TASK_TYPE,
+                    null,
+                    taskDescription,
+                    model.getModelId(),
+                    null,
+                    System.currentTimeMillis() - startTime,
+                    new RuntimeException("AI服务返回空响应")
+                );
                 result.setSuccess(false);
                 result.setErrorMessage("AI服务返回空响应");
                 return result;
@@ -222,6 +240,14 @@ public class AICallService {
                 logger.warn("扣费失败，用户ID: {}, 金额: {}", userId, actualCost);
             }
 
+            aiModelCallLogService.recordSuccess(
+                TASK_TYPE,
+                null,
+                taskDescription,
+                model.getModelId(),
+                null,
+                System.currentTimeMillis() - startTime
+            );
             result.setSuccess(true);
             logger.info("AI调用成功，用户: {}, 模型: {}, 输入字数: {}, 输出字数: {}, 消费: {}",
                 userId, model.getModelId(), result.getInputChars(), result.getOutputChars(), actualCost);

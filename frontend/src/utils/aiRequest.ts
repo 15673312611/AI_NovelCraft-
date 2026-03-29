@@ -24,7 +24,7 @@ export const withAIConfig = (body: any = {}, overrides?: { model?: string; tempe
   return {
     ...body,
     // 可选：传递模型偏好，后端会验证
-    ...(overrides?.model ? { preferredModel: overrides.model } : {}),
+    ...(overrides?.model ? { preferredModel: overrides.model, model: overrides.model } : {}),
     // 可选：传递温度参数
     ...(overrides?.temperature !== undefined ? { temperature: overrides.temperature } : {})
   };

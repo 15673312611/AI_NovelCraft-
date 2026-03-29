@@ -95,6 +95,7 @@ public class StoryContextOptimizer {
             .coreNarrativeSummary(coreSummary)
             .prioritizedEvents(filteredEvents)
             .characterProfiles(original.getCharacterProfiles())
+            .volumeCharacterProfiles(original.getVolumeCharacterProfiles())
             .characterStates(original.getCharacterStates())
             .relationshipStates(original.getRelationshipStates())
             .openQuests(original.getOpenQuests())
@@ -429,4 +430,3 @@ public class StoryContextOptimizer {
         return value != null ? value.toString() : null;
     }
 }
-

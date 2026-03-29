@@ -13,6 +13,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import novelVolumeService, { NovelVolume, VolumeGuidanceRequest } from '../services/novelVolumeService';
 import { withAIConfig, checkAIConfig, AI_CONFIG_ERROR_MESSAGE } from '../utils/aiRequest';
+import { extractSseEvents } from '../utils/sse';
 import './VolumeWritingStudio.css';
 
 const { Title, Text, Paragraph } = Typography;
@@ -706,6 +707,8 @@ const VolumeWritingStudio: React.FC = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+          'Cache-Control': 'no-cache',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify(requestBody),
@@ -725,23 +728,12 @@ const VolumeWritingStudio: React.FC = () => {
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const events = buffer.split('\n\n');
-        buffer = events.pop() || '';
+        const parsed = extractSseEvents(buffer);
+        buffer = parsed.remaining;
 
-        for (const event of events) {
-          if (!event.trim()) continue;
-
-          const lines = event.split('\n');
-          let eventName = '';
-          let data = '';
-
-          for (const line of lines) {
-            if (line.startsWith('event:')) {
-              eventName = line.substring(6).trim();
-            } else if (line.startsWith('data:')) {
-              data = line.substring(5).trim();
-            }
-          }
+        for (const event of parsed.events) {
+          const eventName = event.event;
+          const data = event.data;
 
           if (eventName === 'chunk') {
             streamedContent += data;
@@ -854,6 +846,8 @@ const VolumeWritingStudio: React.FC = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+          'Cache-Control': 'no-cache',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify(requestBody),
@@ -873,23 +867,12 @@ const VolumeWritingStudio: React.FC = () => {
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const events = buffer.split('\n\n');
-        buffer = events.pop() || '';
+        const parsed = extractSseEvents(buffer);
+        buffer = parsed.remaining;
 
-        for (const event of events) {
-          if (!event.trim()) continue;
-
-          const lines = event.split('\n');
-          let eventName = '';
-          let data = '';
-
-          for (const line of lines) {
-            if (line.startsWith('event:')) {
-              eventName = line.substring(6).trim();
-            } else if (line.startsWith('data:')) {
-              data = line.substring(5).trim();
-            }
-          }
+        for (const event of parsed.events) {
+          const eventName = event.event;
+          const data = event.data;
 
           if (eventName === 'chunk') {
             streamedContent += data;
@@ -2493,11 +2476,120 @@ const VolumeWritingStudio: React.FC = () => {
                       // 读取流式响应
                       let buffer = '';
                       let accumulatedContent = ''; // 用于累积内容
-                      let currentEventType = ''; // 当前事件类型
 
                       console.log('开始读取流式响应...');
 
                       try {
+                        const appendGeneratedContent = (content: string) => {
+                          if (!content) {
+                            return;
+                          }
+
+                          if (progressHint && accumulatedContent.length === 0) {
+                            setProgressHint('');
+                          }
+
+                          accumulatedContent += content;
+                          const displayContent = formatChineseSentences(accumulatedContent);
+                          setCurrentContent(displayContent);
+                        };
+
+                        const handleStreamPayload = (eventType: string, data: string) => {
+                          if (!data || data === '[DONE]') {
+                            return;
+                          }
+
+                          if (eventType === 'title') {
+                            setChapterTitle(data);
+                            return;
+                          }
+
+                          let shouldAddContent = false;
+                          let contentToAdd = '';
+
+                          try {
+                            const parsed = JSON.parse(data);
+
+                            if (typeof parsed === 'string' || typeof parsed === 'number') {
+                              shouldAddContent = true;
+                              contentToAdd = String(parsed);
+                            } else if (Array.isArray(parsed)) {
+                              const joined = parsed
+                                .map((value) => (typeof value === 'string' || typeof value === 'number') ? String(value) : '')
+                                .join('');
+
+                              if (joined) {
+                                shouldAddContent = true;
+                                contentToAdd = joined;
+                              }
+                            } else if (parsed && typeof parsed === 'object') {
+                              if (parsed.message && parsed.step) {
+                                if (parsed.step === 'saving_chapter') {
+                                  message.loading({ content: 'Saving chapter...', key: 'saving' });
+                                  setProgressHint('[ Saving chapter... ]');
+                                } else if (parsed.step === 'updating_memory') {
+                                  message.loading({ content: 'Updating memory...', key: 'memory' });
+                                  setProgressHint('[ Updating memory... ]');
+                                } else if (parsed.step === 'final_coherence_check') {
+                                  message.loading({ content: 'Checking coherence...', key: 'coherence' });
+                                  setProgressHint('[ Checking coherence... ]');
+                                } else if (parsed.step !== 'generating_summary') {
+                                  message.loading({ content: parsed.message, key: 'progress' });
+                                  setProgressHint(`[ ${parsed.message} ]`);
+                                }
+                              } else if (parsed.type === 'content') {
+                                shouldAddContent = true;
+                                contentToAdd = parsed.content || '';
+                              } else if (parsed.type === 'complete' && parsed.generatedContent) {
+                                shouldAddContent = true;
+                                contentToAdd = parsed.generatedContent || '';
+                              } else if (parsed.generatedContent) {
+                                shouldAddContent = true;
+                                contentToAdd = parsed.generatedContent || '';
+                              } else if (parsed.content) {
+                                shouldAddContent = true;
+                                contentToAdd = parsed.content || '';
+                              }
+                            }
+                          } catch (err) {
+                            const trimmedData = data.trim();
+                            const loweredData = trimmedData.toLowerCase();
+                            const isProgress = trimmedData && [
+                              'preparing',
+                              'writing',
+                              'context_ready',
+                              'memory_updated',
+                              'memory_stats',
+                              'updating_memory',
+                              'complete',
+                              'saving',
+                              'summary',
+                              'coherence'
+                            ].some((keyword) => loweredData.includes(keyword));
+
+                            if (isProgress) {
+                              setProgressHint(`[ ${trimmedData} ]`);
+                            } else if (
+                              trimmedData &&
+                              !loweredData.includes('preparing') &&
+                              !loweredData.includes('writing') &&
+                              !loweredData.includes('saving') &&
+                              !loweredData.includes('summary') &&
+                              !loweredData.includes('memory') &&
+                              !loweredData.includes('coherence')
+                            ) {
+                              shouldAddContent = true;
+                              contentToAdd = data;
+                            } else if (trimmedData) {
+                              setProgressHint(`[ ${trimmedData} ]`);
+                            }
+                          }
+
+                          if (shouldAddContent && contentToAdd) {
+                            appendGeneratedContent(contentToAdd);
+                          }
+                        };
+
                         while (true) {
                           const { done, value } = await reader.read();
                           
@@ -2514,187 +2606,62 @@ const VolumeWritingStudio: React.FC = () => {
                           console.log('接收到数据块:', chunk);
                           buffer += chunk;
 
-                          // 处理事件流格式
-                          const lines = buffer.split('\n');
-                          buffer = lines.pop() || ''; // 保留不完整的行
+                          const parsed = extractSseEvents(buffer);
+                          buffer = parsed.remaining;
 
-                          for (const line of lines) {
-                            console.log('处理行:', line);
-                            console.log('当前content长度:', currentContent.length);
-                            
-                            if (line.startsWith('data:')) {
-                              // 处理 'data:' 或 'data: ' 两种格式
-                              const data = line.startsWith('data: ') ? line.slice(6) : line.slice(5);
-                              console.log('🔍 提取的数据:', data);
-                              console.log('🔍 数据长度:', data.length);
-                              console.log('🔍 数据类型:', typeof data);
-                              console.log('🔍 当前事件类型:', currentEventType);
-                              
-                              if (data === '[DONE]') {
-                                console.log('🔍 检测到结束标记');
-                                currentEventType = ''; // 重置事件类型
-                                continue;
+                          for (const event of parsed.events) {
+                            const eventType = event.event;
+                            const data = event.data;
+
+                            if (eventType === 'keepalive' || data === '[DONE]') {
+                              continue;
+                            }
+
+                            if (eventType === 'preparing') {
+                              message.loading({ content: '正在准备写作环境...', key: 'preparing' });
+                              setProgressHint(`[ ${data.trim() || '正在准备写作环境...'} ]`);
+                              continue;
+                            }
+
+                            if (eventType === 'progress') {
+                              if (data.trim()) {
+                                message.loading({ content: data.trim(), key: 'progress' });
+                                setProgressHint(`[ ${data.trim()} ]`);
                               }
-                              
-                              // 如果是title事件的数据，直接设置标题
-                              if (currentEventType === 'title') {
-                                console.log('✅ 后端提取的章节标题:', data);
-                                setChapterTitle(data);
-                                currentEventType = ''; // 重置事件类型
-                                continue;
-                              }
+                              continue;
+                            }
 
-                              // 先尝试作为内容处理，无论是否能解析JSON
-                              let shouldAddContent = false;
-                              let contentToAdd = '';
-
-                              try {
-                                const parsed = JSON.parse(data);
-                                console.log('🔍 成功解析JSON:', parsed);
-
-                                // 直接文本/数字/数组，作为内容追加（修复数字被屏蔽）
-                                if (typeof parsed === 'string' || typeof parsed === 'number') {
-                                  shouldAddContent = true;
-                                  contentToAdd = String(parsed);
-                                } else if (Array.isArray(parsed)) {
-                                  const joined = parsed
-                                    .map((v) => (typeof v === 'string' || typeof v === 'number') ? String(v) : '')
-                                    .join('');
-                                  if (joined) {
-                                    shouldAddContent = true;
-                                    contentToAdd = joined;
-                                  }
-                                } else if (parsed && typeof parsed === 'object') {
-                                  // 处理进度消息
-                                  if (parsed.message && parsed.step) {
-                                    console.log('🔍 进度消息:', parsed.message, parsed.step);
-                                    if (parsed.step === 'generating_summary') {
-                                      // 跳过摘要生成提示
-                                    } else if (parsed.step === 'saving_chapter') {
-                                      message.loading({ content: '正在保存章节...', key: 'saving' });
-                                      setProgressHint('[ 正在保存章节... ]');
-                                    } else if (parsed.step === 'updating_memory') {
-                                      message.loading({ content: '正在更新记忆库...', key: 'memory' });
-                                      setProgressHint('[ 正在更新记忆库... ]');
-                                    } else if (parsed.step === 'final_coherence_check') {
-                                      message.loading({ content: '正在进行连贯性检查...', key: 'coherence' });
-                                      setProgressHint('[ 正在进行连贯性检查... ]');
-                                    } else {
-                                      message.loading({ content: parsed.message, key: 'progress' });
-                                      setProgressHint(`[ ${parsed.message} ]`);
-                                    }
-                                    shouldAddContent = false;
-                                  } else if (parsed.type === 'content') {
-                                    shouldAddContent = true;
-                                    contentToAdd = parsed.content || '';
-                                  } else if (parsed.type === 'complete') {
-                                    if (parsed.generatedContent) {
-                                      shouldAddContent = true;
-                                      contentToAdd = parsed.generatedContent || '';
-                                    }
-                                  } else {
-                                    if (parsed.generatedContent) {
-                                      shouldAddContent = true;
-                                      contentToAdd = parsed.generatedContent || '';
-                                    } else if (parsed.content) {
-                                      shouldAddContent = true;
-                                      contentToAdd = parsed.content || '';
-                                    }
-                                  }
-                                }
-                              } catch (err) {
-                                console.log('🔍 JSON解析失败，作为纯文本处理');
-                                // 识别进度消息并设置提示，其他都当作内容
-                                const isProgress = data && /构建完整上下文|上下文消息|开始增强AI写作|更新记忆管理系统|记忆库已更新|记忆系统更新失败|写作完成|preparing|writing|context_ready|memory_updated|memory_stats|updating_memory|complete|正在装配记忆库|正在分析前置章节|正在进行连贯性预检查|正在构建AI写作提示词|AI开始创作中|正在保存章节|正在生成章节概括|正在更新记忆库|🧠|📚|🔍|⚡|🤖|💾|📝/.test(data);
-                                if (isProgress) {
-                                  // 将进度消息显示为提示
-                                  setProgressHint(`[ ${data.trim()} ]`);
-                                  shouldAddContent = false;
-                                } else if (data && data.trim() !== '' &&
-                                    !data.includes('开始写作章节') &&
-                                    !data.includes('准备写作环境') &&
-                                    !data.includes('开始AI写作') &&
-                                    !data.includes('正在装配') &&
-                                    !data.includes('正在分析') &&
-                                    !data.includes('正在构建') &&
-                                    !data.includes('正在进行') &&
-                                    !data.includes('正在保存') &&
-                                    !data.includes('正在生成') &&
-                                    !data.includes('正在更新')) {
-                                  shouldAddContent = true;
-                                  contentToAdd = data;
-                                  console.log('🔍 纯文本内容:', contentToAdd);
-                                } else if (data && data.trim() !== '') {
-                                  // 其他"正在..."类消息也显示为提示
-                                  setProgressHint(`[ ${data.trim()} ]`);
-                                  shouldAddContent = false;
-                                }
-                              }
-
-                              // 如果需要添加内容，直接累积显示
-                              if (shouldAddContent && contentToAdd) {
-                                console.log('✅ 准备添加内容:', contentToAdd);
-                                console.log('✅ 内容长度:', contentToAdd.length);
-                                console.log('✅ 前50字符:', contentToAdd.substring(0, 50));
-
-                                // 正文开始生成，清除进度提示
-                                if (progressHint && accumulatedContent.length === 0) {
-                                  setProgressHint('');
-                                }
-
-                                // 直接累积内容，保持原始格式（Markdown）
-                                accumulatedContent += contentToAdd;
-                                
-                                // 处理格式化显示（统一复用一键格式化逻辑，兼容跨块标点/引号规则）
-                                const displayContent = formatChineseSentences(accumulatedContent);
-
-                                console.log('✅ 即将设置内容，累积长度:', displayContent.length);
-                                
-                                // 立即更新state，触发React重新渲染
-                                setCurrentContent(displayContent);
-                                
-                                console.log('✅ setCurrentContent已调用');
-                              } else {
-                                console.log('🔍 跳过内容，data:', data);
-                              }
-                            } else if (line.startsWith('event:')) {
-                              // 处理 'event:' 或 'event: ' 两种格式
-                              const eventType = line.startsWith('event: ') ? line.slice(7) : line.slice(6);
-                              console.log('事件类型:', eventType);
-                              currentEventType = eventType; // 记录当前事件类型
-                              
-                              if (eventType === 'preparing') {
-                                message.loading({ content: '正在准备写作环境...', key: 'preparing' });
-                                setProgressHint('[ 正在准备写作环境... ]');
-                              } else if (eventType === 'progress') {
-                                // 处理进度事件，显示弹出提示但不显示在文本框中
-                                console.log('收到进度事件');
-                                // 下一行的data中包含进度信息，先等待解析
-                              } else if (eventType === 'writing') {
-                                message.destroy('preparing');
-                                message.loading({ content: '正在AI写作中...', key: 'writing' });
+                            if (eventType === 'writing') {
+                              message.destroy('preparing');
+                              message.loading({ content: '正在AI写作中...', key: 'writing' });
+                              if (!data.trim() || data.trim() === 'writing') {
                                 setProgressHint('[ 正在生成章节内容... ]');
-                              } else if (eventType === 'chunk') {
-                                // chunk事件的数据在下一行的data:中，这里只是标记
-                                console.log('检测到chunk事件，等待数据...');
-                              } else if (eventType === 'title') {
-                                // title事件：后端提取的章节标题
-                                // 标题在下一行的data:中，标记等待提取
-                                console.log('检测到title事件，等待标题数据...');
-                              } else if (eventType === 'complete') {
-                                message.destroy('writing');
-                                message.destroy('summary');
-                                message.destroy('saving');
-                                message.destroy('memory');
-                                message.destroy('coherence');
-                                message.destroy('progress');
-                                message.success('章节写作完成！');
-                                streamingCompleteRef.current = true; // 设置完成标志
-                                setProgressHint(''); // 清除进度提示
-                              } else if (eventType === 'error') {
-                                throw new Error('写作过程中出现错误');
+                                continue;
                               }
                             }
+
+                            if (eventType === 'complete') {
+                              if (data.trim() && data.trim() !== 'completed') {
+                                handleStreamPayload(eventType, data);
+                              }
+
+                              message.destroy('writing');
+                              message.destroy('summary');
+                              message.destroy('saving');
+                              message.destroy('memory');
+                              message.destroy('coherence');
+                              message.destroy('progress');
+                              message.success('章节写作完成！');
+                              streamingCompleteRef.current = true;
+                              setProgressHint('');
+                              continue;
+                            }
+
+                            if (eventType === 'error') {
+                              throw new Error(data || '写作过程中出现错误');
+                            }
+
+                            handleStreamPayload(eventType, data);
                           }
                         }
 

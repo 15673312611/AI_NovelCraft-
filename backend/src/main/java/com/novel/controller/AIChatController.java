@@ -1,24 +1,29 @@
 package com.novel.controller;
 
-import com.novel.dto.AIConfigRequest;
+import com.novel.common.security.SecurityContextTaskWrapper;
 import com.novel.domain.entity.AIModel;
+import com.novel.dto.AIConfigRequest;
+import com.novel.entity.AiGenerator;
 import com.novel.service.AIWritingService;
+import com.novel.service.AiGeneratorService;
 import com.novel.service.SystemAIConfigService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-/**
- * AI 聊天控制器
- * 提供通用的 AI 聊天流式接口
- */
 @RestController
 @RequestMapping("/ai")
 @CrossOrigin(originPatterns = {"http://localhost:*", "http://127.0.0.1:*"}, allowCredentials = "true")
@@ -32,110 +37,169 @@ public class AIChatController {
     @Autowired
     private SystemAIConfigService systemAIConfigService;
 
-    /**
-     * 流式聊天接口
-     */
+    @Autowired
+    private AiGeneratorService aiGeneratorService;
+
     @PostMapping(value = "/chat-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chatStream(@RequestBody Map<String, Object> request) {
-        SseEmitter emitter = new SseEmitter(300000L); // 5分钟超时
+        SseEmitter emitter = new SseEmitter(300000L);
 
         try {
-            // 获取请求参数
-            String modelId = (String) request.get("model");
+            String modelId = request.get("preferredModel") == null
+                    ? (String) request.get("model")
+                    : String.valueOf(request.get("preferredModel"));
+            Long generatorId = parseLong(request.get("generatorId"));
+
             @SuppressWarnings("unchecked")
             List<Map<String, String>> messages = (List<Map<String, String>>) request.get("messages");
-            
-            if (messages == null || messages.isEmpty()) {
-                emitter.send(SseEmitter.event().name("error").data("消息不能为空"));
+
+            List<Map<String, String>> sanitizedMessages = sanitizeMessages(messages, generatorId);
+            if (sanitizedMessages.isEmpty()) {
+                emitter.send(SseEmitter.event().name("error").data("Messages cannot be empty"));
                 emitter.complete();
                 return emitter;
             }
 
-            // 获取模型配置
             AIModel aiModel = systemAIConfigService.getModel(modelId);
-            
             if (aiModel == null) {
-                emitter.send(SseEmitter.event().name("error").data("没有可用的 AI 模型，请联系管理员配置"));
+                emitter.send(SseEmitter.event().name("error").data("No available AI model is configured"));
                 emitter.complete();
                 return emitter;
             }
 
-            // 获取 API 配置
             Map<String, String> apiConfig = systemAIConfigService.getModelAPIConfig(aiModel);
-            
             if (apiConfig.get("apiKey") == null || apiConfig.get("apiKey").isEmpty()) {
-                emitter.send(SseEmitter.event().name("error").data("AI 服务未配置，请联系管理员"));
+                emitter.send(SseEmitter.event().name("error").data("AI service is not configured"));
                 emitter.complete();
                 return emitter;
             }
 
-            // 构建 AI 配置
             AIConfigRequest aiConfig = new AIConfigRequest();
             aiConfig.setProvider(apiConfig.get("provider"));
             aiConfig.setModel(apiConfig.get("model"));
             aiConfig.setApiKey(apiConfig.get("apiKey"));
             aiConfig.setBaseUrl(apiConfig.get("baseUrl"));
 
-            logger.info("🤖 开始 AI 聊天，模型: {}, 消息数: {}", aiModel.getModelId(), messages.size());
+            logger.info("Start ai chat, model={}, messages={}", aiModel.getModelId(), sanitizedMessages.size());
 
-            // 异步执行流式生成
-            CompletableFuture.runAsync(() -> {
+            CompletableFuture.runAsync(SecurityContextTaskWrapper.wrap(() -> {
                 try {
                     aiWritingService.streamGenerateContentWithMessages(
-                        messages,
-                        "ai_chat",
-                        aiConfig,
-                        chunk -> {
-                            try {
-                                // 发送 SSE 格式的数据
-                                String jsonData = "{\"choices\":[{\"delta\":{\"content\":\"" + 
-                                    escapeJson(chunk) + "\"}}]}";
-                                emitter.send(SseEmitter.event().data(jsonData));
-                            } catch (Exception e) {
-                                logger.error("发送数据失败", e);
+                            sanitizedMessages,
+                            "ai_chat",
+                            aiConfig,
+                            chunk -> {
+                                try {
+                                    String jsonData = "{\"choices\":[{\"delta\":{\"content\":\""
+                                            + escapeJson(chunk) + "\"}}]}";
+                                    emitter.send(SseEmitter.event().data(jsonData));
+                                } catch (Exception e) {
+                                    logger.error("Failed to send sse chunk", e);
+                                }
                             }
-                        }
                     );
-                    
-                    // 发送完成标记
+
                     emitter.send(SseEmitter.event().data("[DONE]"));
                     emitter.complete();
-                    logger.info("✅ AI 聊天完成");
-                    
+                    logger.info("Ai chat completed");
                 } catch (Exception e) {
-                    logger.error("AI 聊天失败", e);
+                    logger.error("Ai chat failed", e);
                     try {
-                        emitter.send(SseEmitter.event().name("error").data("生成失败: " + e.getMessage()));
+                        emitter.send(SseEmitter.event().name("error").data("Generation failed: " + e.getMessage()));
                         emitter.completeWithError(e);
                     } catch (Exception ex) {
-                        logger.error("发送错误事件失败", ex);
+                        logger.error("Failed to send error event", ex);
                     }
                 }
-            });
-
+            }));
         } catch (Exception e) {
-            logger.error("AI 聊天初始化失败", e);
+            logger.error("Failed to initialize ai chat", e);
             try {
-                emitter.send(SseEmitter.event().name("error").data("初始化失败: " + e.getMessage()));
+                emitter.send(SseEmitter.event().name("error").data("Initialization failed: " + e.getMessage()));
                 emitter.completeWithError(e);
             } catch (Exception ex) {
-                logger.error("发送错误事件失败", ex);
+                logger.error("Failed to send initialization error", ex);
             }
         }
 
         return emitter;
     }
 
-    /**
-     * 转义 JSON 字符串中的特殊字符
-     */
+    private List<Map<String, String>> sanitizeMessages(List<Map<String, String>> rawMessages, Long generatorId) {
+        List<Map<String, String>> sanitizedMessages = new ArrayList<>();
+
+        if (generatorId != null) {
+            AiGenerator generator = aiGeneratorService.getGeneratorWithPromptById(generatorId);
+            if (generator.getPrompt() != null && !generator.getPrompt().trim().isEmpty()) {
+                sanitizedMessages.add(buildMessage("system", generator.getPrompt()));
+            }
+        }
+
+        if (rawMessages == null) {
+            return sanitizedMessages;
+        }
+
+        for (Map<String, String> message : rawMessages) {
+            if (message == null) {
+                continue;
+            }
+
+            String role = message.get("role");
+            String content = message.get("content");
+            if (!isSupportedChatRole(role) || content == null || content.trim().isEmpty()) {
+                continue;
+            }
+
+            sanitizedMessages.add(buildMessage(role, content));
+        }
+
+        return sanitizedMessages;
+    }
+
+    private boolean isSupportedChatRole(String role) {
+        return "user".equals(role) || "assistant".equals(role);
+    }
+
+    private Map<String, String> buildMessage(String role, String content) {
+        Map<String, String> message = new HashMap<>();
+        message.put("role", role);
+        message.put("content", content);
+        return message;
+    }
+
+    private Long parseLong(Object value) {
+        if (value == null) {
+            return null;
+        }
+
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+
+        if (value instanceof String) {
+            String text = ((String) value).trim();
+            if (text.isEmpty()) {
+                return null;
+            }
+            try {
+                return Long.parseLong(text);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
     private String escapeJson(String text) {
-        if (text == null) return "";
+        if (text == null) {
+            return "";
+        }
         return text
-            .replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-            .replace("\t", "\\t");
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
     }
 }

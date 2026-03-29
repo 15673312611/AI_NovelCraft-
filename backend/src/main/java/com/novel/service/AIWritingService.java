@@ -5,9 +5,18 @@ import com.novel.domain.entity.AITask;
 import com.novel.domain.entity.AITask.AITaskType;
 import com.novel.domain.entity.AITask.AITaskStatus;
 import com.novel.domain.entity.User;
+import com.novel.dto.AIConfigRequest;
 import com.novel.dto.AITaskDto;
 import com.novel.common.security.AuthUtils;
 import com.novel.exception.InsufficientCreditsException;
+import com.novel.service.ai.AIModelCallLogService;
+import com.novel.service.ai.AIModelExecutionAttempt;
+import com.novel.service.ai.AIModelExecutionAttemptType;
+import com.novel.service.ai.AIModelExecutionPlan;
+import com.novel.service.ai.AIModelRoutingService;
+import com.novel.service.ai.AIModelScene;
+import com.novel.service.prompt.ManagedPromptService;
+import com.novel.service.prompt.SystemPromptDescriptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.novel.config.AIClientConfig;
 import org.springframework.stereotype.Service;
@@ -34,10 +43,121 @@ import java.util.ArrayList;
  * 实现分步骤的智能写作流程
  */
 @Service
-@Transactional
 public class AIWritingService {
 
     private static final Logger logger = LoggerFactory.getLogger(AIWritingService.class);
+
+    private static final class CostSnapshot {
+        private final String modelId;
+        private final BigDecimal multiplier;
+
+        private CostSnapshot(String modelId, BigDecimal multiplier) {
+            this.modelId = modelId;
+            this.multiplier = multiplier;
+        }
+    }
+
+    private boolean isSseDataLine(String line) {
+        return line != null && line.startsWith("data:");
+    }
+
+    private String stripSseDataPrefix(String line) {
+        if (line == null || !line.startsWith("data:")) {
+            return "";
+        }
+        String value = line.substring(5);
+        return value.startsWith(" ") ? value.substring(1) : value;
+    }
+
+    private String extractStreamingContentChunk(Map dataMap) {
+        if (dataMap == null) {
+            return null;
+        }
+
+        Object choicesObj = dataMap.get("choices");
+        if (!(choicesObj instanceof List)) {
+            return extractStreamingTextValue(dataMap.get("content"));
+        }
+
+        List choices = (List) choicesObj;
+        if (choices.isEmpty() || !(choices.get(0) instanceof Map)) {
+            return null;
+        }
+
+        Map firstChoice = (Map) choices.get(0);
+
+        String text = extractStreamingTextValue(firstChoice.get("text"));
+        if (text != null) {
+            return text;
+        }
+
+        Object deltaObj = firstChoice.get("delta");
+        if (deltaObj instanceof Map) {
+            Map deltaMap = (Map) deltaObj;
+            text = extractStreamingTextValue(deltaMap.get("content"));
+            if (text != null) {
+                return text;
+            }
+            text = extractStreamingTextValue(deltaMap.get("text"));
+            if (text != null) {
+                return text;
+            }
+        }
+
+        Object messageObj = firstChoice.get("message");
+        if (messageObj instanceof Map) {
+            text = extractStreamingTextValue(((Map) messageObj).get("content"));
+            if (text != null) {
+                return text;
+            }
+        }
+
+        return extractStreamingTextValue(firstChoice.get("content"));
+    }
+
+    private String extractStreamingTextValue(Object value) {
+        if (value instanceof String) {
+            return (String) value;
+        }
+        if (!(value instanceof List)) {
+            return null;
+        }
+
+        StringBuilder builder = new StringBuilder();
+        for (Object item : (List) value) {
+            if (item instanceof String) {
+                builder.append((String) item);
+                continue;
+            }
+            if (!(item instanceof Map)) {
+                continue;
+            }
+
+            Map part = (Map) item;
+            Object text = part.get("text");
+            if (text instanceof String) {
+                builder.append((String) text);
+                continue;
+            }
+            Object content = part.get("content");
+            if (content instanceof String) {
+                builder.append((String) content);
+            }
+        }
+
+        return builder.length() == 0 ? null : builder.toString();
+    }
+
+    private String sanitizeStreamingChunk(String chunk) {
+        if (chunk == null || chunk.isEmpty()) {
+            return "";
+        }
+
+        String sanitized = chunk.replaceAll("<think>.*?</think>", "");
+        sanitized = sanitized.replaceAll("<think>.*", "");
+        sanitized = sanitized.replaceAll(".*</think>", "");
+        return sanitized;
+    }
 
     /**
      * 任务类型到友好描述的映射
@@ -60,13 +180,14 @@ public class AIWritingService {
         TYPE_DESCRIPTIONS.put("volume_chapter_outlines_generation", "章纲批量生成");
         TYPE_DESCRIPTIONS.put("volume_chapter_outlines_generation_missing", "章纲补充生成");
         TYPE_DESCRIPTIONS.put("chapter_outline_from_content", "章纲反推生成");
+        TYPE_DESCRIPTIONS.put("volume_character_profiles", "本卷人设生成");
         TYPE_DESCRIPTIONS.put("creative_ideas_generation", "创意点子生成");
-        TYPE_DESCRIPTIONS.put("plot_reasoning", "剧情推理");
         TYPE_DESCRIPTIONS.put("agent_decision", "智能决策");
         TYPE_DESCRIPTIONS.put("agent_reflection", "智能反思");
         TYPE_DESCRIPTIONS.put("narrative_evaluation", "叙事评估");
         TYPE_DESCRIPTIONS.put("rolling_planning", "滚动规划");
         TYPE_DESCRIPTIONS.put("ai_chat", "AI对话");
+        TYPE_DESCRIPTIONS.put("chapter_title_generation", "章节取名");
         TYPE_DESCRIPTIONS.put("ai_review", "AI审稿");
         TYPE_DESCRIPTIONS.put("ai_trace_removal", "AI消痕");
         TYPE_DESCRIPTIONS.put("ai_streamline", "AI精简");
@@ -75,8 +196,33 @@ public class AIWritingService {
     /**
      * 获取任务类型的友好描述
      */
+    static {
+        TYPE_DESCRIPTIONS.put("chapter_summary", "章节概要生成");
+        TYPE_DESCRIPTIONS.put("chapter_memory_extraction", "章节概要与记忆提取");
+    }
+
     private static String getTypeDescription(String type) {
         return TYPE_DESCRIPTIONS.getOrDefault(type, type);
+    }
+
+    private CostSnapshot captureCostSnapshot(String modelId) {
+        return new CostSnapshot(modelId, systemAIConfigService.resolveCostMultiplier(modelId));
+    }
+
+    private void chargeCompletedRequest(Long userId, CostSnapshot costSnapshot, int inputTokens, int outputTokens, String type) {
+        if (userId == null || outputTokens <= 0 || costSnapshot == null) {
+            return;
+        }
+
+        BigDecimal actualCost = systemAIConfigService.calculateCostByMultiplier(costSnapshot.multiplier, inputTokens, outputTokens);
+        boolean deducted = creditService.consume(userId, actualCost, null, costSnapshot.modelId,
+            inputTokens, outputTokens, getTypeDescription(type));
+        if (deducted) {
+            logger.info("馃挵 鎵ｈ垂鎴愬姛: {} 鐐? 鐢ㄦ埛ID: {}, 杈撳叆: {} tokens, 杈撳嚭: {} tokens",
+                actualCost, userId, inputTokens, outputTokens);
+        } else {
+            logger.warn("鈿狅笍 鎵ｈ垂澶辫触锛岀敤鎴稩D: {}, 閲戦: {}", userId, actualCost);
+        }
     }
 
     @Autowired
@@ -98,11 +244,21 @@ public class AIWritingService {
     private CreditService creditService;
 
     @Autowired
+    private ManagedPromptService managedPromptService;
+
+    @Autowired
     private SystemAIConfigService systemAIConfigService;
+
+    @Autowired
+    private AIModelRoutingService aiModelRoutingService;
+
+    @Autowired
+    private AIModelCallLogService aiModelCallLogService;
 
     /**
      * 开始AI写作流程
      */
+    @Transactional
     public AITaskDto startWritingProcess(Novel novel, User user, String writingType) {
         AITask task = new AITask();
         task.setName("AI写作 - " + novel.getTitle());
@@ -125,6 +281,7 @@ public class AIWritingService {
     /**
      * 生成故事大纲
      */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public String generateOutline(Novel novel, String genre, String theme) {
         String prompt = buildOutlinePrompt(novel, genre, theme);
         return callAI(prompt);
@@ -133,6 +290,7 @@ public class AIWritingService {
     /**
      * 生成角色档案
      */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public String generateCharacterProfile(String characterName, String role, String background) {
         String prompt = buildCharacterPrompt(characterName, role, background);
         return callAI(prompt);
@@ -141,6 +299,7 @@ public class AIWritingService {
     /**
      * 生成章节内容
      */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public String generateChapterContent(Novel novel, String chapterTitle, String outline, String previousContent) {
         String prompt = buildChapterPrompt(novel, chapterTitle, outline, previousContent);
         return callAI(prompt);
@@ -152,8 +311,12 @@ public class AIWritingService {
      * @param type 生成类型（用于日志记录和参数优化）
      * @return 生成的内容
      */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public String generateContent(String prompt, String type) {
         logger.info("开始生成内容，类型: {}", type);
+        if (AIModelScene.fromTaskType(type) != null) {
+            return generateContent(prompt, type, null);
+        }
         return callAIWithType(prompt, type);
     }
 
@@ -164,7 +327,17 @@ public class AIWritingService {
      * @param aiConfig AI配置
      * @return 生成的完整内容
      */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public String generateContent(String prompt, String type, com.novel.dto.AIConfigRequest aiConfig) {
+        if (aiModelRoutingService != null) {
+            AIModelExecutionPlan executionPlan = aiModelRoutingService.buildExecutionPlan(aiConfig, type);
+            return executeWithFailover(
+                executionPlan,
+                type,
+                attemptConfig -> generateContentOnce(prompt, type, attemptConfig)
+            );
+        }
+        aiConfig = aiModelRoutingService.resolveTaskConfig(aiConfig, type);
         logger.info("开始生成内容（带AI配置），类型: {}", type);
 
         // 获取当前用户ID
@@ -187,6 +360,7 @@ public class AIWritingService {
         String baseUrl = aiConfig.getEffectiveBaseUrl();
         String apiKey = aiConfig.getApiKey();
         String model = aiConfig.getModel();
+        CostSnapshot costSnapshot = captureCostSnapshot(model);
 
         // 计算输入token数
         int inputTokens = prompt != null ? prompt.length() : 0;
@@ -252,17 +426,7 @@ public class AIWritingService {
 
                         // 计算实际消费并扣费
                         int outputTokens = content != null ? content.length() : 0;
-                        if (userId != null && outputTokens > 0) {
-                            BigDecimal actualCost = systemAIConfigService.calculateCost(model, inputTokens, outputTokens);
-                            boolean deducted = creditService.consume(userId, actualCost, null, model,
-                                    inputTokens, outputTokens, getTypeDescription(type));
-                            if (deducted) {
-                                logger.info("💰 扣费成功: {} 点, 用户ID: {}, 输入: {} tokens, 输出: {} tokens",
-                                        actualCost, userId, inputTokens, outputTokens);
-                            } else {
-                                logger.warn("⚠️ 扣费失败，用户ID: {}, 金额: {}", userId, actualCost);
-                            }
-                        }
+                        chargeCompletedRequest(userId, costSnapshot, inputTokens, outputTokens, type);
 
                         return content;
                     }
@@ -283,6 +447,7 @@ public class AIWritingService {
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void streamGenerateContent(String prompt, String type, com.novel.dto.AIConfigRequest aiConfigRequest, java.util.function.Consumer<String> chunkConsumer) {
+        aiConfigRequest = aiModelRoutingService.resolveTaskConfig(aiConfigRequest, type);
         // 获取当前用户ID
         Long userId = AuthUtils.getCurrentUserId();
 
@@ -303,6 +468,7 @@ public class AIWritingService {
         String baseUrl = aiConfigRequest.getEffectiveBaseUrl();
         String apiKey = aiConfigRequest.getApiKey();
         String model = aiConfigRequest.getModel();
+        CostSnapshot costSnapshot = captureCostSnapshot(model);
 
         if (apiKey == null || apiKey.trim().isEmpty()) {
             throw new RuntimeException("API Key未配置");
@@ -342,12 +508,11 @@ public class AIWritingService {
         final StringBuilder outputBuilder = new StringBuilder();
         final Long finalUserId = userId;
         final int finalInputTokens = inputTokens;
-        final String finalModel = model;
+        final CostSnapshot finalCostSnapshot = costSnapshot;
 
         // 发送HTTP请求（流式读取）
         try {
             String url = aiConfigRequest.getApiUrl();
-            logger.info("🌐 调用AI接口: {}", url);
 
             // 使用RestTemplate进行流式读取
             SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
@@ -376,8 +541,8 @@ public class AIWritingService {
                             boolean connectionClosed = false;
                             while ((line = reader.readLine()) != null && !connectionClosed) {
                                 line = line.trim();
-                                if (line.startsWith("data: ")) {
-                                    String data = line.substring(6);
+                                if (isSseDataLine(line)) {
+                                    String data = stripSseDataPrefix(line);
                                     if ("[DONE]".equals(data)) {
                                         break; // 流式响应结束
                                     }
@@ -386,6 +551,20 @@ public class AIWritingService {
                                         // 解析JSON数据
                                         com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
                                         java.util.Map dataMap = om.readValue(data, java.util.Map.class);
+                                        String normalizedChunk = sanitizeStreamingChunk(extractStreamingContentChunk(dataMap));
+                                        if (!normalizedChunk.isEmpty()) {
+                                            outputBuilder.append(normalizedChunk);
+                                            try {
+                                                chunkConsumer.accept(normalizedChunk);
+                                            } catch (Exception ce) {
+                                                if (ce.getMessage() != null && ce.getMessage().contains("already completed")) {
+                                                    connectionClosed = true;
+                                                    break;
+                                                }
+                                                throw ce;
+                                            }
+                                            continue;
+                                        }
 
                                         Object choicesObj = dataMap.get("choices");
                                         if (choicesObj instanceof java.util.List) {
@@ -411,7 +590,6 @@ public class AIWritingService {
                                                             } catch (Exception ce) {
                                                                 // 连接已断开，停止处理后续数据
                                                                 if (ce.getMessage() != null && ce.getMessage().contains("already completed")) {
-                                                                    logger.warn("⚠️ 客户端连接已断开，停止发送数据");
                                                                     connectionClosed = true;
                                                                     break;
                                                                 }
@@ -425,12 +603,9 @@ public class AIWritingService {
                                     } catch (Exception e) {
                                         // 如果是连接断开，停止处理
                                         if (e.getMessage() != null && e.getMessage().contains("already completed")) {
-                                            logger.warn("⚠️ 客户端连接已断开，停止处理数据");
                                             connectionClosed = true;
                                             break;
                                         }
-                                        // 解析失败，跳过这一行
-                                        logger.warn("解析流式响应数据失败: {}", e.getMessage());
                                     }
                                 }
                             }
@@ -440,17 +615,7 @@ public class AIWritingService {
 
             // 计算实际消费并扣费
             int outputTokens = outputBuilder.length();
-            if (finalUserId != null && outputTokens > 0) {
-                BigDecimal actualCost = systemAIConfigService.calculateCost(finalModel, finalInputTokens, outputTokens);
-                boolean deducted = creditService.consume(finalUserId, actualCost, null, finalModel,
-                        finalInputTokens, outputTokens, getTypeDescription(type));
-                if (deducted) {
-                    logger.info("💰 扣费成功: {} 点, 用户ID: {}, 输入: {} tokens, 输出: {} tokens",
-                            actualCost, finalUserId, finalInputTokens, outputTokens);
-                } else {
-                    logger.warn("⚠️ 扣费失败，用户ID: {}, 金额: {}", finalUserId, actualCost);
-                }
-            }
+            chargeCompletedRequest(finalUserId, finalCostSnapshot, finalInputTokens, outputTokens, type);
 
         } catch (Exception e) {
             logger.error("流式AI调用失败: {}", e.getMessage(), e);
@@ -462,7 +627,14 @@ public class AIWritingService {
      * 构建大纲生成提示词
      */
     private String buildOutlinePrompt(Novel novel, String genre, String theme) {
-        return String.format( "请为小说《%s》生成一个详细的故事大纲。\n" +
+        return managedPromptService.format(SystemPromptDescriptor.builder()
+                        .promptKey("writing.outline.basic")
+                        .name("基础大纲生成提示词")
+                        .category("outline")
+                        .description("根据小说基础信息生成简单故事大纲")
+                        .variables(List.of("novel_title", "genre", "theme", "description"))
+                        .sortOrder(210)
+                        .defaultContent("请为小说《%s》生成一个详细的故事大纲。\n" +
                         "\n" +
                         "小说信息：\n" +
                         "- 类型：%s\n" +
@@ -474,7 +646,8 @@ public class AIWritingService {
                         "2. 每个章节都要有明确的目标和冲突\n" +
                         "3. 包含主要情节转折点\n" +
                         "4. 确保故事逻辑连贯\n" +
-                        "5. 适合%s类型小说的特点\n",
+                        "5. 适合%s类型小说的特点\n")
+                        .build(),
                 novel.getTitle(), genre, theme, novel.getDescription(), genre
         );
     }
@@ -483,12 +656,20 @@ public class AIWritingService {
      * 构建角色生成提示词
      */
     private String buildCharacterPrompt(String characterName, String role, String background) {
-        return String.format("请为角色【%s】创建详细的角色档案。\n\n" +
+        return managedPromptService.format(SystemPromptDescriptor.builder()
+                        .promptKey("writing.character.basic")
+                        .name("基础角色生成提示词")
+                        .category("chapter")
+                        .description("根据角色基础信息生成角色档案")
+                        .variables(List.of("character_name", "role", "background"))
+                        .sortOrder(220)
+                        .defaultContent("请为角色【%s】创建详细的角色档案。\n\n" +
                         "角色信息：\n" +
                         "- 姓名：%s\n" +
                         "- 角色：%s\n" +
                         "- 背景：%s\n\n" +
-                        "请包含：基本信息、性格特点、背景故事、动机目标、角色关系、角色弧线、对话风格。",
+                        "请包含：基本信息、性格特点、背景故事、动机目标、角色关系、角色弧线、对话风格。")
+                        .build(),
                 characterName, characterName, role, background
         );
     }
@@ -497,10 +678,18 @@ public class AIWritingService {
      * 构建章节生成提示词
      */
     private String buildChapterPrompt(Novel novel, String chapterTitle, String outline, String previousContent) {
-        return String.format("请为小说《%s》的章节【%s】生成内容。\n\n" +
+        return managedPromptService.format(SystemPromptDescriptor.builder()
+                        .promptKey("writing.chapter.basic")
+                        .name("基础章节生成提示词")
+                        .category("chapter")
+                        .description("根据章节大纲和前文生成章节内容")
+                        .variables(List.of("novel_title", "chapter_title", "outline", "previous_content"))
+                        .sortOrder(230)
+                        .defaultContent("请为小说《%s》的章节【%s】生成内容。\n\n" +
                         "章节大纲：%s\n" +
                         "前文内容：%s\n\n" +
-                        "要求：字数2000-3000字，保持故事节奏，注意对话真实性。",
+                        "要求：字数2000-3000字，保持故事节奏，注意对话真实性。")
+                        .build(),
                 novel.getTitle(), chapterTitle, outline, previousContent
         );
     }
@@ -508,6 +697,234 @@ public class AIWritingService {
     /**
      * 调用AI服务
      */
+    @FunctionalInterface
+    private interface AIAttemptExecutor<T> {
+        T execute(AIConfigRequest aiConfig) throws Exception;
+    }
+
+    private <T> T executeWithFailover(
+        AIModelExecutionPlan executionPlan,
+        String taskType,
+        AIAttemptExecutor<T> executor
+    ) {
+        RuntimeException lastException = null;
+
+        for (AIModelExecutionAttempt attempt : executionPlan.getAttempts()) {
+            long startTime = System.currentTimeMillis();
+            try {
+                T result = executor.execute(attempt.getConfig());
+                aiModelCallLogService.recordSuccess(
+                    taskType,
+                    executionPlan.getScene(),
+                    attempt.getConfig().getModel(),
+                    attempt.getAttemptType(),
+                    System.currentTimeMillis() - startTime
+                );
+
+                if (attempt.getAttemptType() == AIModelExecutionAttemptType.FALLBACK) {
+                    logger.warn("AI 主模型失败后已切换备用模型成功: type={}, fallbackModel={}",
+                        taskType, attempt.getConfig().getModel());
+                }
+                return result;
+            } catch (Exception e) {
+                aiModelCallLogService.recordFailure(
+                    taskType,
+                    executionPlan.getScene(),
+                    attempt.getConfig().getModel(),
+                    attempt.getAttemptType(),
+                    System.currentTimeMillis() - startTime,
+                    e
+                );
+
+                lastException = asRuntimeException(e);
+                if (attempt.getAttemptType() == AIModelExecutionAttemptType.PRIMARY
+                    && executionPlan.hasFallback()
+                    && shouldTryFallback(e)) {
+                    logger.warn("AI 主模型调用失败，准备切换备用模型: type={}, model={}, error={}",
+                        taskType, attempt.getConfig().getModel(), e.getMessage());
+                    continue;
+                }
+                throw lastException;
+            }
+        }
+
+        throw lastException != null ? lastException : new RuntimeException("AI服务调用失败");
+    }
+
+    private boolean shouldTryFallback(Exception e) {
+        return !(e instanceof InsufficientCreditsException);
+    }
+
+    private RuntimeException asRuntimeException(Exception e) {
+        if (e instanceof RuntimeException) {
+            return (RuntimeException) e;
+        }
+        return new RuntimeException("AI服务调用失败: " + e.getMessage(), e);
+    }
+
+    private AIConfigRequest ensureValidAIConfig(AIConfigRequest aiConfig) {
+        if (aiConfig != null && aiConfig.isValid()) {
+            return aiConfig;
+        }
+
+        logger.info("AI 配置无效，从系统配置加载默认配置");
+        try {
+            String modelId = aiConfig != null ? aiConfig.getModel() : null;
+            AIConfigRequest resolvedConfig = aiConfigService.getSystemAIConfig(modelId);
+            if (aiConfig != null && aiConfig.getTemperature() != null) {
+                resolvedConfig.setTemperature(aiConfig.getTemperature());
+            }
+            return resolvedConfig;
+        } catch (Exception e) {
+            logger.error("加载系统 AI 配置失败: {}", e.getMessage());
+            throw new RuntimeException("AI配置无效，请先在后台 AI 模型页配置 AI 服务: " + e.getMessage(), e);
+        }
+    }
+
+    private String generateContentOnce(String prompt, String type, AIConfigRequest aiConfig) {
+        aiConfig = ensureValidAIConfig(aiConfig);
+
+        Long userId = AuthUtils.getCurrentUserId();
+        String apiKey = aiConfig.getApiKey();
+        String model = aiConfig.getModel();
+        CostSnapshot costSnapshot = captureCostSnapshot(model);
+        int inputTokens = prompt != null ? prompt.length() : 0;
+
+        if (userId != null && !creditService.hasEnoughBalance(userId, BigDecimal.ONE)) {
+            throw new InsufficientCreditsException("瀛楁暟鐐逛綑棰濅笉瓒筹紝璇峰厛鍏呭€?");
+        }
+
+        int maxTokens = getMaxTokensForProvider(aiConfig.getProvider(), model);
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("model", model);
+        requestBody.put("max_tokens", maxTokens);
+        requestBody.put("stream", false);
+        requestBody.putAll(getOptimizedParameters(type));
+        if (aiConfig.getTemperature() != null) {
+            requestBody.put("temperature", aiConfig.getTemperature());
+        }
+
+        List<Map<String, String>> messages = new ArrayList<>();
+        Map<String, String> message = new HashMap<>();
+        message.put("role", "user");
+        message.put("content", prompt);
+        messages.add(message);
+        requestBody.put("messages", messages);
+
+        try {
+            String url = aiConfig.getApiUrl();
+            logger.info("AI 非流式调用: type={}, model={}, url={}", type, model, url);
+
+            SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+            requestFactory.setConnectTimeout(30000);
+            requestFactory.setReadTimeout(300000);
+            RestTemplate restTemplate = new RestTemplate(requestFactory);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(apiKey);
+
+            HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(requestBody, headers);
+            @SuppressWarnings("unchecked")
+            ResponseEntity<Map<String, Object>> response = (ResponseEntity<Map<String, Object>>)
+                (ResponseEntity<?>) restTemplate.postForEntity(url, requestEntity, Map.class);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Map<String, Object> responseBody = response.getBody();
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> choices = (List<Map<String, Object>>) responseBody.get("choices");
+                if (choices != null && !choices.isEmpty()) {
+                    Map<String, Object> firstChoice = choices.get(0);
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> messageObj = (Map<String, Object>) firstChoice.get("message");
+                    if (messageObj != null) {
+                        String content = (String) messageObj.get("content");
+                        int outputTokens = content != null ? content.length() : 0;
+                        chargeCompletedRequest(userId, costSnapshot, inputTokens, outputTokens, type);
+                        return content;
+                    }
+                }
+            }
+
+            throw new RuntimeException("AI返回内容为空");
+        } catch (Exception e) {
+            logger.error("AI非流式调用失败: type={}", type, e);
+            throw new RuntimeException("AI服务调用失败: " + e.getMessage(), e);
+        }
+    }
+
+    private String generateContentWithMessagesOnce(List<Map<String, String>> messages, String type, AIConfigRequest aiConfig) {
+        aiConfig = ensureValidAIConfig(aiConfig);
+
+        Long userId = AuthUtils.getCurrentUserId();
+        String apiKey = aiConfig.getApiKey();
+        String model = aiConfig.getModel();
+        CostSnapshot costSnapshot = captureCostSnapshot(model);
+        int inputTokens = 0;
+        for (Map<String, String> msg : messages) {
+            String content = msg.get("content");
+            if (content != null) {
+                inputTokens += content.length();
+            }
+        }
+
+        if (userId != null && !creditService.hasEnoughBalance(userId, BigDecimal.ONE)) {
+            throw new InsufficientCreditsException("瀛楁暟鐐逛綑棰濅笉瓒筹紝璇峰厛鍏呭€?");
+        }
+
+        int maxTokens = getMaxTokensForProvider(aiConfig.getProvider(), model);
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("model", model);
+        requestBody.put("max_tokens", maxTokens);
+        requestBody.put("stream", false);
+        requestBody.putAll(getOptimizedParameters(type));
+        if (aiConfig.getTemperature() != null) {
+            requestBody.put("temperature", aiConfig.getTemperature());
+        }
+        requestBody.put("messages", messages);
+
+        try {
+            String url = aiConfig.getApiUrl();
+            logger.info("AI 非流式消息调用: type={}, model={}, url={}", type, model, url);
+
+            SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+            requestFactory.setConnectTimeout(30000);
+            requestFactory.setReadTimeout(300000);
+            RestTemplate restTemplate = new RestTemplate(requestFactory);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(apiKey);
+
+            HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(requestBody, headers);
+            @SuppressWarnings("unchecked")
+            ResponseEntity<Map<String, Object>> response = (ResponseEntity<Map<String, Object>>)
+                (ResponseEntity<?>) restTemplate.postForEntity(url, requestEntity, Map.class);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Map<String, Object> responseBody = response.getBody();
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> choices = (List<Map<String, Object>>) responseBody.get("choices");
+                if (choices != null && !choices.isEmpty()) {
+                    Map<String, Object> firstChoice = choices.get(0);
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> messageObj = (Map<String, Object>) firstChoice.get("message");
+                    if (messageObj != null) {
+                        String content = (String) messageObj.get("content");
+                        int outputTokens = content != null ? content.length() : 0;
+                        chargeCompletedRequest(userId, costSnapshot, inputTokens, outputTokens, type);
+                        return content;
+                    }
+                }
+            }
+
+            throw new RuntimeException("AI返回内容为空");
+        } catch (Exception e) {
+            logger.error("AI非流式消息调用失败: type={}", type, e);
+            throw new RuntimeException("AI服务调用失败: " + e.getMessage(), e);
+        }
+    }
+
     private String callAI(String prompt) {
         try {
             return callRealAI(prompt);
@@ -756,7 +1173,17 @@ public class AIWritingService {
      * @param aiConfig AI配置
      * @return 生成的完整内容
      */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public String generateContentWithMessages(List<Map<String, String>> messages, String type, com.novel.dto.AIConfigRequest aiConfig) {
+        if (aiModelRoutingService != null) {
+            AIModelExecutionPlan executionPlan = aiModelRoutingService.buildExecutionPlan(aiConfig, type);
+            return executeWithFailover(
+                executionPlan,
+                type,
+                attemptConfig -> generateContentWithMessagesOnce(messages, type, attemptConfig)
+            );
+        }
+        aiConfig = aiModelRoutingService.resolveTaskConfig(aiConfig, type);
         logger.info("开始生成内容（messages模式），类型: {}, messages数量: {}", type, messages.size());
 
         // 获取当前用户ID
@@ -779,6 +1206,7 @@ public class AIWritingService {
         String baseUrl = aiConfig.getEffectiveBaseUrl();
         String apiKey = aiConfig.getApiKey();
         String model = aiConfig.getModel();
+        CostSnapshot costSnapshot = captureCostSnapshot(model);
 
         // 计算输入token数（所有消息内容的总长度）
         int inputTokens = 0;
@@ -845,17 +1273,7 @@ public class AIWritingService {
 
                         // 计算实际消费并扣费
                         int outputTokens = content != null ? content.length() : 0;
-                        if (userId != null && outputTokens > 0) {
-                            BigDecimal actualCost = systemAIConfigService.calculateCost(model, inputTokens, outputTokens);
-                            boolean deducted = creditService.consume(userId, actualCost, null, model,
-                                    inputTokens, outputTokens, getTypeDescription(type));
-                            if (deducted) {
-                                logger.info("💰 扣费成功: {} 点, 用户ID: {}, 输入: {} tokens, 输出: {} tokens",
-                                        actualCost, userId, inputTokens, outputTokens);
-                            } else {
-                                logger.warn("⚠️ 扣费失败，用户ID: {}, 金额: {}", userId, actualCost);
-                            }
-                        }
+                        chargeCompletedRequest(userId, costSnapshot, inputTokens, outputTokens, type);
 
                         return content;
                     }
@@ -883,8 +1301,8 @@ public class AIWritingService {
             String type,
             com.novel.dto.AIConfigRequest aiConfig,
             java.util.function.Consumer<String> chunkConsumer) {
+        aiConfig = aiModelRoutingService.resolveTaskConfig(aiConfig, type);
 
-        logger.info("开始流式生成（messages模式），类型: {}, messages数量: {}", type, messages.size());
 
         // 获取当前用户ID
         Long userId = AuthUtils.getCurrentUserId();
@@ -906,6 +1324,7 @@ public class AIWritingService {
         String baseUrl = aiConfig.getEffectiveBaseUrl();
         String apiKey = aiConfig.getApiKey();
         String model = aiConfig.getModel();
+        CostSnapshot costSnapshot = captureCostSnapshot(model);
 
         if (apiKey == null || apiKey.trim().isEmpty()) {
             throw new RuntimeException("API Key未配置");
@@ -951,12 +1370,11 @@ public class AIWritingService {
         final StringBuilder outputBuilder = new StringBuilder();
         final Long finalUserId = userId;
         final int finalInputTokens = inputTokens;
-        final String finalModel = model;
+        final CostSnapshot finalCostSnapshot = costSnapshot;
 
         // 发送HTTP请求（流式读取）
         try {
             String url = aiConfig.getApiUrl();
-            logger.info("🌐 调用AI流式接口（messages模式）: {}", url);
 
             // 使用RestTemplate进行流式读取
             SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
@@ -984,8 +1402,8 @@ public class AIWritingService {
                             boolean connectionClosed = false;
                             while ((line = reader.readLine()) != null && !connectionClosed) {
                                 line = line.trim();
-                                if (line.startsWith("data: ")) {
-                                    String data = line.substring(6);
+                                if (isSseDataLine(line)) {
+                                    String data = stripSseDataPrefix(line);
                                     if ("[DONE]".equals(data)) {
                                         break; // 流式响应结束
                                     }
@@ -994,6 +1412,20 @@ public class AIWritingService {
                                         // 解析JSON数据
                                         com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
                                         java.util.Map dataMap = om.readValue(data, java.util.Map.class);
+                                        String normalizedChunk = sanitizeStreamingChunk(extractStreamingContentChunk(dataMap));
+                                        if (!normalizedChunk.isEmpty()) {
+                                            outputBuilder.append(normalizedChunk);
+                                            try {
+                                                chunkConsumer.accept(normalizedChunk);
+                                            } catch (Exception ce) {
+                                                if (ce.getMessage() != null && ce.getMessage().contains("already completed")) {
+                                                    connectionClosed = true;
+                                                    break;
+                                                }
+                                                throw ce;
+                                            }
+                                            continue;
+                                        }
 
                                         Object choicesObj = dataMap.get("choices");
                                         if (choicesObj instanceof java.util.List) {
@@ -1019,7 +1451,6 @@ public class AIWritingService {
                                                             } catch (Exception ce) {
                                                                 // 连接已断开，停止处理后续数据
                                                                 if (ce.getMessage() != null && ce.getMessage().contains("already completed")) {
-                                                                    logger.warn("⚠️ 客户端连接已断开，停止发送数据");
                                                                     connectionClosed = true;
                                                                     break;
                                                                 }
@@ -1033,11 +1464,9 @@ public class AIWritingService {
                                     } catch (Exception e) {
                                         // 如果是连接断开，停止处理
                                         if (e.getMessage() != null && e.getMessage().contains("already completed")) {
-                                            logger.warn("⚠️ 客户端连接已断开，停止处理数据");
                                             connectionClosed = true;
                                             break;
                                         }
-                                        logger.warn("解析流式数据失败: {}", e.getMessage());
                                     }
                                 }
                             }
@@ -1048,19 +1477,7 @@ public class AIWritingService {
 
             // 计算实际消费并扣费
             int outputTokens = outputBuilder.length();
-            if (finalUserId != null && outputTokens > 0) {
-                BigDecimal actualCost = systemAIConfigService.calculateCost(finalModel, finalInputTokens, outputTokens);
-                boolean deducted = creditService.consume(finalUserId, actualCost, null, finalModel,
-                        finalInputTokens, outputTokens, getTypeDescription(type));
-                if (deducted) {
-                    logger.info("💰 扣费成功: {} 点, 用户ID: {}, 输入: {} tokens, 输出: {} tokens",
-                            actualCost, finalUserId, finalInputTokens, outputTokens);
-                } else {
-                    logger.warn("⚠️ 扣费失败，用户ID: {}, 金额: {}", finalUserId, actualCost);
-                }
-            }
-
-            logger.info("✅ 流式生成完成（messages模式）");
+            chargeCompletedRequest(finalUserId, finalCostSnapshot, finalInputTokens, outputTokens, type);
 
         } catch (Exception e) {
             logger.error("流式AI调用失败（messages模式）: {}", e.getMessage(), e);
@@ -1074,6 +1491,7 @@ public class AIWritingService {
      * @param aiConfigRequest AI配置
      * @return 生成的脑洞简介
      */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public String generateSynopsis(String novelTitle, com.novel.dto.AIConfigRequest aiConfigRequest) {
         logger.info("开始生成小说脑洞，书名: {}", novelTitle);
 
@@ -1101,6 +1519,19 @@ public class AIWritingService {
      * 加载提示词模板
      */
     private String loadPromptTemplate(String fileName) {
+        String defaultContent = loadPromptTemplateFromSource(fileName);
+        return managedPromptService.getContent(SystemPromptDescriptor.builder()
+                .promptKey("writing.resource." + fileName.replace('.', '_'))
+                .name("资源提示词：" + fileName)
+                .category(fileName.contains("synopsis") ? "synopsis" : "other")
+                .description("从资源文件同步的提示词模板")
+                .variables(List.of("file_name"))
+                .sortOrder(240)
+                .defaultContent(defaultContent)
+                .build());
+    }
+
+    private String loadPromptTemplateFromSource(String fileName) {
         try {
             // 从 prompts 目录加载
             java.io.InputStream is = getClass().getClassLoader().getResourceAsStream("prompts/" + fileName);

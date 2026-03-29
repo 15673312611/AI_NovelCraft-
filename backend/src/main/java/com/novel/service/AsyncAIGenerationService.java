@@ -1,5 +1,7 @@
 package com.novel.service;
 
+import com.novel.common.security.AuthUtils;
+import com.novel.common.security.SecurityContextTaskWrapper;
 import com.novel.domain.entity.Novel;
 import com.novel.domain.entity.NovelVolume;
 import com.novel.dto.AIConfigRequest;
@@ -26,6 +28,9 @@ public class AsyncAIGenerationService {
     private NovelCraftAIService aiService;
 
     @Autowired
+    private AIWritingService aiWritingService;
+
+    @Autowired
     private VolumeService volumeService;
 
     @Autowired
@@ -47,6 +52,16 @@ public class AsyncAIGenerationService {
      * 使用AI配置调用AI接口
      */
     private String callAIWithConfig(String prompt, AIConfigRequest aiConfig) throws Exception {
+        if (aiWritingService != null) {
+            AIConfigRequest requestConfig = new AIConfigRequest();
+            requestConfig.setProvider(aiConfig.getProvider());
+            requestConfig.setApiKey(aiConfig.getApiKey());
+            requestConfig.setModel(aiConfig.getModel());
+            requestConfig.setBaseUrl(aiConfig.getBaseUrl());
+            requestConfig.setTemperature(0.8D);
+            return aiWritingService.generateContent(prompt, "volume_outline_generation", requestConfig);
+        }
+
         String baseUrl = aiConfig.getEffectiveBaseUrl();
         String apiKey = aiConfig.getApiKey();
         String model = aiConfig.getModel();
@@ -317,11 +332,14 @@ public class AsyncAIGenerationService {
             final AIConfigRequest finalAiConfig = aiConfig;
             
             // 使用 AITaskService 创建任务
+            if (aiTask.getUserId() == null) {
+                aiTask.setUserId(AuthUtils.getCurrentUserId());
+            }
         com.novel.dto.AITaskDto taskDto = aiTaskService.createTask(aiTask);
             Long taskId = Long.valueOf(taskDto.getId());
 
             // 启动异步生成任务
-            CompletableFuture.supplyAsync(() -> {
+            CompletableFuture.supplyAsync(SecurityContextTaskWrapper.wrapSupplier(() -> {
                 try {
                     logger.info("🤖 开始异步生成卷 {} 的详细大纲", volumeId);
 
@@ -370,7 +388,7 @@ public class AsyncAIGenerationService {
                     
                     throw new RuntimeException(e.getMessage());
                 }
-            });
+            }));
 
             logger.info("✅ 卷 {} 大纲生成任务已提交，任务ID: {}", volumeId, taskId);
             return taskId;

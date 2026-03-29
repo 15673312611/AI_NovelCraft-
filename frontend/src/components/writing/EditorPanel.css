@@ -17,73 +17,175 @@
 .editor-header {
   background: #ffffff;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  width: 100%;
+  min-width: 0;
 }
 
-.editor-header-top {
-  padding: 20px 40px 16px;
+/* 标题栏 - 单行布局 */
+.editor-header-single-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 20px;
+  gap: 10px;
+  padding: 10px 16px;
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
-.editor-header-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-.save-time-display {
-  font-size: 12px;
-  color: #8c8c8c;
-  padding: 4px 12px;
-  background: #f5f5f5;
-  border-radius: 6px;
-  white-space: nowrap;
-  font-weight: 500;
-}
-
-.editor-title {
-  font-size: 26px;
-  font-weight: 600;
-  color: #1a1a1a;
-  margin: 0;
-  line-height: 1.3;
-  flex-shrink: 0;
-  letter-spacing: -0.3px;
-}
-
-.editor-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.editor-title-wrap {
+  width: auto;
+  max-width: 165px;
+  min-width: 80px;
+  overflow: hidden;
   flex-shrink: 0;
 }
 
 .word-count {
-  font-size: 13px;
-  color: #595959;
-  padding: 7px 16px;
-  margin-right: 8px;
-  border-right: 1.5px solid #e0e5e9;
+  font-size: 11px;
+  color: #8c8c8c;
+  padding: 4px 10px;
+  margin-left: 8px;
+  background: #f5f5f5;
+  border-radius: 4px;
   font-weight: 500;
-  letter-spacing: 0.3px;
+  letter-spacing: 0;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* 按钮行 */
+.editor-header-buttons {
+  padding: 6px 16px 10px;
   display: flex;
   align-items: center;
-  height: 34px;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.editor-title-display {
+  appearance: none;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1a1a;
+  line-height: 1.3;
+  letter-spacing: -0.2px;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  outline: none;
+  font-family: inherit;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.editor-title-display:hover {
+  border-color: #d9d9d9;
+  background: #f5f5f5;
+}
+
+.editor-title-display:focus-visible {
+  outline: 2px solid rgba(79, 70, 229, 0.18);
+  outline-offset: 1px;
+}
+
+.save-time-display {
+  font-size: 11px;
+  color: #8c8c8c;
+  padding: 3px 8px;
+  background: #f5f5f5;
+  border-radius: 6px;
+  white-space: nowrap;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.editor-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0;
+  line-height: 1.3;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  letter-spacing: -0.2px;
+  /* input reset */
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  outline: none;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color 0.15s, background 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.editor-title:hover {
+  border-color: #d9d9d9;
+  background: #f5f5f5;
+}
+
+.editor-title.editor-title-editing,
+.editor-title:focus {
+  border-color: #4f46e5;
+  background: #fff;
+  cursor: text;
+  overflow: visible;
+  text-overflow: clip;
+  max-width: 100%;
+}
+
+/* 隐藏的宽度测量 span，字体与 input 完全一致 */
+.editor-title-measure {
+  position: absolute;
+  visibility: hidden;
+  white-space: pre;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  letter-spacing: -0.2px;
+  padding: 2px 4px;
+  pointer-events: none;
+}
+
+.editor-actions {
+  display: contents;
+}
+
+.outline-buttons {
+  display: contents;
 }
 
 /* AI功能按钮 - 精致设计 */
 .ai-action-btn {
   position: relative;
-  padding: 0 16px;
+  padding: 0 12px;
   height: 32px;
   width: auto;
   min-width: fit-content;
   flex-shrink: 0;
-  font-size: 13px;
+  font-size: 12px;
   color: #4f46e5 !important; /* Indigo color for AI */
   background: #f5f3ff;
   border: 1px solid #c7d2fe;
@@ -120,6 +222,7 @@
   transition: transform 0.2s ease;
 }
 
+
 .ai-action-btn:hover .anticon {
   transform: scale(1.1);
 }
@@ -127,16 +230,18 @@
 /* 大纲按钮 */
 .outline-buttons {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   align-items: center;
-  padding-left: 12px;
+  padding-left: 8px;
   border-left: 1.5px solid #e0e5e9;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .outline-btn {
   position: relative;
-  padding: 4px 12px;
-  height: 30px;
+  padding: 0 12px;
+  height: 32px;
   font-size: 12px;
   color: #1890ff !important;
   background: linear-gradient(135deg, #f0f9ff 0%, #e6f4ff 100%);
@@ -153,6 +258,7 @@
   align-items: center;
   justify-content: center;
   letter-spacing: 0.3px;
+  flex-shrink: 0;
 }
 
 .outline-btn:hover {
@@ -557,7 +663,117 @@
   animation: fadeIn 0.3s ease-out;
 }
 
-/* 格式化工具栏 - 轻量简洁风格 */
+/* 响应式设计 */
+@media (max-width: 1440px) {
+  .editor-header-top {
+    padding: 10px 14px 6px;
+  }
+
+  .editor-header-buttons {
+    padding: 6px 14px 10px;
+  }
+
+  .editor-toolbar {
+    padding: 10px 24px 12px;
+  }
+
+  .editor-content-wrapper {
+    padding: 24px 28px;
+  }
+
+  .editor-overlay {
+    top: 24px;
+    left: 28px;
+    right: 28px;
+    bottom: 24px;
+  }
+
+  .editor-footer {
+    padding: 12px 24px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .editor-title-wrap {
+    max-width: 350px;
+  }
+
+  .editor-title-display,
+  .editor-title {
+    font-size: 14px;
+  }
+
+  .ai-action-btn,
+  .outline-btn {
+    font-size: 11px;
+    padding: 0 10px;
+    height: 30px;
+  }
+}
+
+@media (max-width: 900px) {
+  .editor-header-top {
+    padding: 8px 12px 6px;
+    gap: 10px;
+  }
+
+  .editor-header-buttons {
+    padding: 6px 12px 8px;
+    gap: 6px;
+  }
+
+  .editor-title-wrap {
+    max-width: 280px;
+  }
+
+  .editor-title-display,
+  .editor-title {
+    font-size: 13px;
+  }
+
+  .word-count {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+
+  .ai-action-btn,
+  .outline-btn {
+    font-size: 11px;
+    padding: 0 8px;
+    height: 28px;
+  }
+
+  .editor-toolbar {
+    padding: 8px 16px 10px;
+  }
+
+  .editor-content-wrapper {
+    padding: 20px 18px;
+  }
+
+  .editor-overlay {
+    top: 20px;
+    left: 18px;
+    right: 18px;
+    bottom: 20px;
+  }
+
+  .editor-footer {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .editor-format-toolbar-spacer {
+    display: none;
+  }
+
+  .editor-format-toolbar-status {
+    margin-left: 0;
+    order: 99;
+  }
+}
+
 .editor-format-toolbar {
   display: flex;
   align-items: center;
@@ -567,6 +783,23 @@
   border-bottom: 1px solid #e0e0e0;
   flex-wrap: wrap;
   position: relative;
+}
+
+.editor-format-toolbar-spacer {
+  flex: 1 1 auto;
+  min-width: 12px;
+}
+
+.editor-format-toolbar-status {
+  margin-left: auto;
+  font-size: 11px;
+  color: #8c8c8c;
+  padding: 3px 8px;
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .toolbar-label {

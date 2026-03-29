@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { message, Modal, Input, Button, Spin } from 'antd'
-import { SearchOutlined, FormOutlined, HighlightOutlined, BarChartOutlined, BulbOutlined, FileTextOutlined, HistoryOutlined, SafetyCertificateOutlined, DeleteOutlined, FontSizeOutlined } from '@ant-design/icons'
+import { SearchOutlined, FormOutlined, HighlightOutlined, BarChartOutlined, BulbOutlined, FileTextOutlined, HistoryOutlined, SafetyCertificateOutlined, DeleteOutlined, FontSizeOutlined, AppstoreOutlined } from '@ant-design/icons'
 import type { NovelDocument } from '@/services/documentService'
 import rewriteService from '@/services/rewriteService'
 import aiService from '@/services/aiService'
@@ -18,6 +18,7 @@ export interface EditorPanelProps {
   onTitleChange?: (title: string) => void
   onShowOutline?: () => void
   onShowVolumeOutline?: () => void
+  onShowVolumePlanning?: () => void
   onShowSummary?: () => void
   onShowHistory?: () => void
   onReviewManuscript?: () => void
@@ -35,14 +36,29 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   onShowOutline,
   onShowHistory,
   onShowVolumeOutline,
+  onShowVolumePlanning,
   onShowSummary,
   onReviewManuscript,
   onRemoveAITrace,
+  onTitleChange,
   lastSaveTime,
   isSaving = false,
   chapterNumber,
 }) => {
   const [content, setContent] = useState('')
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleValue, setTitleValue] = useState('')
+  const titleInputRef = useRef<HTMLInputElement>(null)
+  const titleMeasureRef = useRef<HTMLSpanElement>(null)
+  const [titleInputWidth, setTitleInputWidth] = useState<number>(0)
+
+  // 测量文字宽度
+  const measureTitleWidth = useCallback((text: string) => {
+    if (titleMeasureRef.current) {
+      titleMeasureRef.current.textContent = text || ' '
+      setTitleInputWidth(titleMeasureRef.current.offsetWidth + 2)
+    }
+  }, [])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
   const searchButtonRef = useRef<HTMLButtonElement>(null)
@@ -93,6 +109,8 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   useEffect(() => {
     if (document) {
       setContent(document.content || '')
+      // 切换章节时重新测量标题宽度
+      setTimeout(() => measureTitleWidth(document.title || ''), 0)
     } else {
       setContent('')
     }
@@ -808,6 +826,9 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   }
 
   const wordCount = content.replace(/\s+/g, '').length
+  const compactWordCount = wordCount >= 10000
+    ? `${Number((wordCount / 10000).toFixed(wordCount >= 100000 ? 0 : 1))}w字`
+    : `${wordCount}字`
 
   // 格式化工具函数
   const handleIndent = () => {
@@ -1273,54 +1294,86 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
     <div className="editor-panel">
       {document ? (
         <div className="editor-container">
-          {/* 标题栏 */}
+          {/* 标题栏 - 单行布局 */}
           <div className="editor-header">
-            <div className="editor-header-top">
-              <h1 className="editor-title">{document.title}</h1>
-              <div className="editor-header-right">
-                <div className="editor-actions">
-                  <span className="word-count">字数: {wordCount}</span>
-                  <button className="ai-action-btn" onClick={openNameModal} title="AI生成章节标题">
-                    <FontSizeOutlined />
-                    <span>章节取名</span>
+            {/* 隐藏的测量 span */}
+            <span ref={titleMeasureRef} className="editor-title-measure" aria-hidden="true" />
+            <div className="editor-header-single-row">
+              <div className="editor-title-wrap">
+                {editingTitle ? (
+                  <input
+                    ref={titleInputRef}
+                    className="editor-title editor-title-editing"
+                    value={titleValue}
+                    style={{ width: titleInputWidth > 0 ? titleInputWidth : 'auto' }}
+                    onChange={(e) => {
+                      setTitleValue(e.target.value)
+                      measureTitleWidth(e.target.value)
+                    }}
+                    onBlur={() => {
+                      const trimmed = titleValue.trim()
+                      if (trimmed && trimmed !== document.title) {
+                        onTitleChange?.(trimmed)
+                      }
+                      setEditingTitle(false)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.currentTarget.blur()
+                      } else if (e.key === 'Escape') {
+                        setEditingTitle(false)
+                      }
+                    }}
+                    title="点击编辑章节名称"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    className="editor-title-display"
+                    title={document.title || '点击编辑章节名称'}
+                    onClick={() => {
+                      setTitleValue(document.title)
+                      setEditingTitle(true)
+                      measureTitleWidth(document.title)
+                      setTimeout(() => titleInputRef.current?.select(), 0)
+                    }}
+                  >
+                    {document.title}
                   </button>
-                  <button className="ai-action-btn" onClick={onReviewManuscript} title="AI智能审稿">
-                    <SafetyCertificateOutlined />
-                    <span>AI审稿</span>
-                  </button>
-                  <button className="ai-action-btn" onClick={onRemoveAITrace} title="清除AI痕迹">
-                    <DeleteOutlined />
-                    <span>AI消痕</span>
-                  </button>
-                </div>
-                <div className="outline-buttons"> 
-                  <button className="outline-btn" onClick={onShowOutline}>
-                    <FileTextOutlined style={{ marginRight: 4, fontSize: 14 }} />
-                    <span>大纲</span>
-                  </button>
-                  <button className="outline-btn" onClick={onShowVolumeOutline}>
-                    <BarChartOutlined style={{ marginRight: 4, fontSize: 14 }} />
-                    <span>卷大纲</span>
-                  </button>
-                  <button className="outline-btn" onClick={onShowSummary}>
-                    <FileTextOutlined style={{ marginRight: 4, fontSize: 14 }} />
-                    <span>概要</span>
-                  </button>
-                  {onShowHistory && (
-                    <button className="outline-btn" onClick={onShowHistory}>
-                      <HistoryOutlined style={{ marginRight: 4, fontSize: 14 }} />
-                      <span>历史</span>
-                    </button>
-                  )}
-                </div>
-                {lastSaveTime && (
-                  <div className="save-time-display">
-                    {isSaving ? '保存中...' : `最后保存: ${lastSaveTime}`}
-                  </div>
                 )}
               </div>
+              <span className="word-count" title={`字数: ${wordCount}`}>{compactWordCount}</span>
+              <button className="ai-action-btn" onClick={openNameModal} title="AI生成章节标题">
+                <FontSizeOutlined />
+                <span>章节取名</span>
+              </button>
+              <button className="ai-action-btn" onClick={onReviewManuscript} title="AI智能审稿">
+                <SafetyCertificateOutlined />
+                <span>AI审稿</span>
+              </button>
+              <button className="ai-action-btn" onClick={onRemoveAITrace} title="清除AI痕迹">
+                <DeleteOutlined />
+                <span>AI消痕</span>
+              </button>
+              <button className="outline-btn" onClick={onShowOutline}>
+                <FileTextOutlined style={{ marginRight: 4, fontSize: 13 }} />
+                <span>大纲</span>
+              </button>
+              <button className="outline-btn" onClick={onShowVolumeOutline}>
+                <BarChartOutlined style={{ marginRight: 4, fontSize: 13 }} />
+                <span>卷大纲</span>
+              </button>
+              {onShowVolumePlanning && (
+                <button className="outline-btn" onClick={onShowVolumePlanning}>
+                  <AppstoreOutlined style={{ marginRight: 4, fontSize: 13 }} />
+                  <span>卷规划</span>
+                </button>
+              )}
+              <button className="outline-btn" onClick={onShowSummary}>
+                <FileTextOutlined style={{ marginRight: 4, fontSize: 13 }} />
+                <span>概要</span>
+              </button>
             </div>
-
           </div>
 
           {/* 格式化工具栏 */}
@@ -1377,6 +1430,12 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
             >
               <SearchOutlined />
             </button>
+            <div className="editor-format-toolbar-spacer" />
+            {(isSaving || lastSaveTime) && (
+              <div className="editor-format-toolbar-status">
+                {isSaving ? '保存中...' : `最后保存: ${lastSaveTime}`}
+              </div>
+            )}
           </div>
 
           {/* 搜索替换浮动框 - 独立浮动层 */}

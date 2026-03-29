@@ -1,6 +1,8 @@
 package com.novel.service;
 
 import com.novel.dto.AIConfigRequest;
+import com.novel.service.prompt.ManagedPromptService;
+import com.novel.service.prompt.SystemPromptDescriptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpEntity;
@@ -27,6 +29,12 @@ public class AIPolishService {
 
     private static final Logger logger = LoggerFactory.getLogger(AIPolishService.class);
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private ManagedPromptService managedPromptService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private AIWritingService aiWritingService;
+
     /**
      * 润色选中的文本片段
      *
@@ -40,40 +48,57 @@ public class AIPolishService {
     public String polishSelection(String chapterTitle, String fullContent, String targetSelection, 
                                    String userInstructions, AIConfigRequest aiConfig) {
         try {
-            // 构建高阶重写提示词（只针对选中片段，整章内容仅作只读上下文）
-            StringBuilder promptBuilder = new StringBuilder();
             String contextSnippet = buildContextSnippet(fullContent, targetSelection);
-
-            // 角色与总任务 - 纯文本替换模式
-            promptBuilder.append("你是一个【文本替换工具】。你的唯一任务是重写下面的【待替换片段】，并直接输出结果。\n")
-                         .append("【格式严格死线（违反将导致系统错误）】\n")
-                         .append("1. **禁止任何废话**：绝对不要输出“好的”、“如下所示”、“重写版本”等任何提示语。直接开始写正文。\n")
-                         .append("2. **禁止包含上下文**：你只负责重写【待替换片段】这一小段。千万不要把【上下文】里的内容抄进去！\n")
-                         .append("3. **禁止解释**：不要告诉我你改了哪里，也不要解释为什么这么改。\n")
-                         .append("4. **禁止Markdown**：不要使用代码块或引用符号。\n\n")
-                         .append("【创作要求】\n")
-                         .append("1. **彻底换血**：必须用全新的句式、词汇来描写同一情节。如果原句平庸，就用惊艳的写法覆盖它。\n")
-                         .append("2. **拒绝AI味**：禁止翻译腔，禁止堆砌辞藻。要像老练的小说家一样，用白描、侧写等手法。\n\n");
-
-            // 用户指令优先级最高
+            String userInstructionsBlock = "";
             if (userInstructions != null && !userInstructions.trim().isEmpty()) {
-                promptBuilder.append("【用户特殊要求】\n")
-                             .append(userInstructions.trim()).append("\n\n");
+                userInstructionsBlock = "【用户特殊要求】\n" + userInstructions.trim() + "\n\n";
             }
 
-            // 待处理内容
-            promptBuilder.append("【待替换片段】\n")
-                         .append(targetSelection.trim())
-                         .append("\n\n");
+            String prompt = managedPromptService.render(SystemPromptDescriptor.builder()
+                            .promptKey("editing.polish.selection")
+                            .name("AI润色片段重写提示词")
+                            .category("system_chain")
+                            .description("针对选中片段进行局部重写润色")
+                            .variables(List.of("user_instructions_block", "target_selection", "context_snippet"))
+                            .sortOrder(815)
+                            .defaultContent("""
+                                    你是一个【文本替换工具】。你的唯一任务是重写下面的【待替换片段】，并直接输出结果。
+                                    【格式严格死线（违反将导致系统错误）】
+                                    1. **禁止任何废话**：绝对不要输出“好的”、“如下所示”、“重写版本”等任何提示语。直接开始写正文。
+                                    2. **禁止包含上下文**：你只负责重写【待替换片段】这一小段。千万不要把【上下文】里的内容抄进去！
+                                    3. **禁止解释**：不要告诉我你改了哪里，也不要解释为什么这么改。
+                                    4. **禁止Markdown**：不要使用代码块或引用符号。
 
-            // 上下文
-            promptBuilder.append("【上下文（仅供参考，绝对禁止出现在输出中）】\n")
-                         .append(contextSnippet);
+                                    【创作要求】
+                                    1. **彻底换血**：必须用全新的句式、词汇来描写同一情节。如果原句平庸，就用惊艳的写法覆盖它。
+                                    2. **拒绝AI味**：禁止翻译腔，禁止堆砌辞藻。要像老练的小说家一样，用白描、侧写等手法。
 
-            promptBuilder.append("\n\n---\n(请直接输出重写后的正文，不要加任何标点前缀)：");
+                                    {{user_instructions_block}}【待替换片段】
+                                    {{target_selection}}
 
-            // 调用AI
-            String polished = callAI(aiConfig, "", promptBuilder.toString());
+                                    【上下文（仅供参考，绝对禁止出现在输出中）】
+                                    {{context_snippet}}
+
+                                    ---
+                                    (请直接输出重写后的正文，不要加任何标点前缀)：
+                                    """)
+                            .build(),
+                    Map.of(
+                            "user_instructions_block", userInstructionsBlock,
+                            "target_selection", targetSelection == null ? "" : targetSelection.trim(),
+                            "context_snippet", contextSnippet == null ? "" : contextSnippet
+                    ));
+
+            AIConfigRequest requestConfig = new AIConfigRequest();
+            if (aiConfig != null) {
+                requestConfig.setProvider(aiConfig.getProvider());
+                requestConfig.setApiKey(aiConfig.getApiKey());
+                requestConfig.setModel(aiConfig.getModel());
+                requestConfig.setBaseUrl(aiConfig.getBaseUrl());
+            }
+            requestConfig.setTemperature(0.7);
+
+            String polished = aiWritingService.generateContent(prompt, "ai_polish", requestConfig);
             
             logger.info("✅ AI重写完成，原始长度: {}, 结果长度: {}", 
                     targetSelection.length(), polished.length());

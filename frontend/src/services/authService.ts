@@ -1,4 +1,5 @@
-import api from './api'
+﻿import api from './api'
+import { getClientIdentityHeaders } from './clientIdentityService'
 
 interface ApiResponse<T> {
   success: boolean
@@ -17,36 +18,37 @@ interface LoginRequest {
 interface RegisterRequest {
   username: string
   email: string
+  code?: string
   password: string
 }
 
-interface LoginResponse {
-  user: {
-    id: number
-    username: string
-    email: string
-    status: string
-    roles: string[]
-    createdAt: string
-    updatedAt: string
-  }
-  token: string
-  tokenType?: string
-}
-
-interface UserProfile {
+interface AuthUser {
   id: number
   username: string
   email: string
+  nickname?: string
+  avatarUrl?: string
+  bio?: string
   status: string
-  roles: string[]
+  emailVerified?: boolean
+  loginType?: string
+  lastLoginAt?: string
   createdAt: string
   updatedAt: string
 }
 
+interface LoginResponse {
+  user: AuthUser
+  token: string
+  tokenType?: string
+}
+
+type UserProfile = AuthUser
+
 class AuthService {
   async login(credentials: LoginRequest): Promise<LoginResponse> {
-    const res = (await api.post('/auth/login', credentials)) as ApiResponse<LoginResponse>
+    const headers = await getClientIdentityHeaders()
+    const res = (await api.post('/auth/login', credentials, { headers })) as ApiResponse<LoginResponse>
     if (!res?.success) {
       throw new Error(res?.message || '登录失败')
     }
@@ -54,7 +56,8 @@ class AuthService {
   }
 
   async register(userData: RegisterRequest): Promise<LoginResponse> {
-    const res = (await api.post('/auth/register', userData)) as ApiResponse<LoginResponse>
+    const headers = await getClientIdentityHeaders()
+    const res = (await api.post('/auth/register', userData, { headers })) as ApiResponse<LoginResponse>
     if (!res?.success) {
       throw new Error(res?.message || '注册失败')
     }
@@ -79,8 +82,7 @@ class AuthService {
   async logout(): Promise<void> {
     try {
       await api.post('/auth/logout')
-    } catch (error) {
-      // 即使API调用失败，也要清除本地token
+    } catch {
       console.warn('Logout API call failed, but clearing local token')
     }
   }

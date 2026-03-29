@@ -11,6 +11,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -39,6 +41,8 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
             PromptTemplate::getUserId,
             PromptTemplate::getCategory,
             PromptTemplate::getDescription,
+            PromptTemplate::getPromptKey,
+            PromptTemplate::getVariables,
             PromptTemplate::getIsActive,
             PromptTemplate::getIsDefault,
             PromptTemplate::getSortOrder,
@@ -48,10 +52,23 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
         );
     }
 
+    private void applyCategoryFilter(LambdaQueryWrapper<PromptTemplate> wrapper, String category) {
+        String normalizedCategory = normalizeNullable(category);
+        if (normalizedCategory == null) {
+            return;
+        }
+        if ("chapter".equals(normalizedCategory) || "writing".equals(normalizedCategory)) {
+            wrapper.in(PromptTemplate::getCategory, Arrays.asList("chapter", "writing"));
+            return;
+        }
+        wrapper.eq(PromptTemplate::getCategory, normalizedCategory);
+    }
+
 
     /**
      * 閺嶈宓両D閼惧嘲褰囧Ο鈩冩緲閸愬懎顔?
      */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED, readOnly = true)
     public String getTemplateContent(Long templateId) {
         if (templateId == null) {
             return null;
@@ -73,10 +90,118 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
         }
         
         // 婢х偛濮炴担璺ㄦ暏濞嗏剝鏆?
-        template.setUsageCount(template.getUsageCount() + 1);
-        updateById(template);
-        
         return template.getContent();
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED, readOnly = true)
+    public String getTemplateContentByPromptKey(String promptKey) {
+        if (promptKey == null || promptKey.trim().isEmpty()) {
+            return null;
+        }
+
+        PromptTemplate template = findActiveOfficialTemplateByPromptKey(promptKey.trim());
+        if (template == null || template.getContent() == null || template.getContent().trim().isEmpty()) {
+            return null;
+        }
+
+        return template.getContent();
+    }
+
+    public PromptTemplate findTemplateByPromptKey(String promptKey) {
+        if (promptKey == null || promptKey.trim().isEmpty()) {
+            return null;
+        }
+
+        LambdaQueryWrapper<PromptTemplate> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(PromptTemplate::getPromptKey, promptKey.trim()).last("LIMIT 1");
+        return getOne(wrapper, false);
+    }
+
+    public PromptTemplate findActiveOfficialTemplateByPromptKey(String promptKey) {
+        if (promptKey == null || promptKey.trim().isEmpty()) {
+            return null;
+        }
+
+        LambdaQueryWrapper<PromptTemplate> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(PromptTemplate::getPromptKey, promptKey.trim())
+                .eq(PromptTemplate::getType, "official")
+                .eq(PromptTemplate::getIsActive, true)
+                .last("LIMIT 1");
+        return getOne(wrapper, false);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public PromptTemplate ensureOfficialTemplate(String promptKey,
+                                                 String name,
+                                                 String category,
+                                                 String description,
+                                                 String variables,
+                                                 Integer sortOrder,
+                                                 String content) {
+        if (promptKey == null || promptKey.trim().isEmpty()) {
+            throw new IllegalArgumentException("promptKey不能为空");
+        }
+
+        String normalizedPromptKey = promptKey.trim();
+        PromptTemplate existing = findTemplateByPromptKey(normalizedPromptKey);
+        if (existing == null) {
+            PromptTemplate template = new PromptTemplate();
+            template.setName(name);
+            template.setContent(content);
+            template.setType("official");
+            template.setUserId(null);
+            template.setCategory(category);
+            template.setDescription(description);
+            template.setPromptKey(normalizedPromptKey);
+            template.setVariables(normalizeNullable(variables));
+            template.setIsActive(true);
+            template.setIsDefault(false);
+            template.setSortOrder(sortOrder != null ? sortOrder : 0);
+            template.setUsageCount(0);
+            template.setCreatedTime(LocalDateTime.now());
+            template.setUpdatedTime(LocalDateTime.now());
+            save(template);
+            return template;
+        }
+
+        boolean changed = false;
+        if (!"official".equalsIgnoreCase(normalizeNullable(existing.getType()))) {
+            existing.setType("official");
+            changed = true;
+        }
+        if (name != null && !name.trim().isEmpty() && !name.trim().equals(normalizeNullable(existing.getName()))) {
+            existing.setName(name.trim());
+            changed = true;
+        }
+        if (category != null && !category.trim().isEmpty() && !category.trim().equals(normalizeNullable(existing.getCategory()))) {
+            existing.setCategory(category.trim());
+            changed = true;
+        }
+        if (description != null && !description.trim().isEmpty() && !description.trim().equals(normalizeNullable(existing.getDescription()))) {
+            existing.setDescription(description.trim());
+            changed = true;
+        }
+        if (variables != null && !variables.trim().isEmpty() && !variables.trim().equals(normalizeNullable(existing.getVariables()))) {
+            existing.setVariables(variables.trim());
+            changed = true;
+        }
+        if (sortOrder != null && !sortOrder.equals(existing.getSortOrder())) {
+            existing.setSortOrder(sortOrder);
+            changed = true;
+        }
+        if ((existing.getContent() == null || existing.getContent().trim().isEmpty()) && content != null && !content.trim().isEmpty()) {
+            existing.setContent(content);
+            changed = true;
+        }
+        if (existing.getPromptKey() == null || existing.getPromptKey().trim().isEmpty()) {
+            existing.setPromptKey(normalizedPromptKey);
+            changed = true;
+        }
+        if (changed) {
+            existing.setUpdatedTime(LocalDateTime.now());
+            updateById(existing);
+        }
+        return existing;
     }
 
     /**
@@ -158,7 +283,7 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
         
         if (category != null && !category.isEmpty()) {
             logger.info("按分类过滤模板: {}", category);
-            wrapper.eq(PromptTemplate::getCategory, category);
+            applyCategoryFilter(wrapper, category);
         }
         
         wrapper.orderByDesc(PromptTemplate::getIsDefault)
@@ -177,6 +302,14 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
         return templates;
     }
 
+    private String normalizeNullable(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim();
+        return normalized.isEmpty() ? null : normalized;
+    }
+
     /**
      * 閼惧嘲褰囬悽銊﹀煕閼奉亜鐣炬稊澶嬆侀弶鍨灙鐞?
      */
@@ -187,9 +320,7 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
                .eq(PromptTemplate::getUserId, userId)
                .eq(PromptTemplate::getIsActive, true);
 
-        if (category != null && !category.isEmpty()) {
-            wrapper.eq(PromptTemplate::getCategory, category);
-        }
+        applyCategoryFilter(wrapper, category);
 
         wrapper.orderByDesc(PromptTemplate::getCreatedTime);
         
@@ -227,9 +358,7 @@ public class PromptTemplateService extends ServiceImpl<PromptTemplateRepository,
                                 .or()
                                 .eq(PromptTemplate::getUserId, userId));
 
-        if (category != null && !category.isEmpty()) {
-            templateWrapper.eq(PromptTemplate::getCategory, category);
-        }
+        applyCategoryFilter(templateWrapper, category);
         
         List<PromptTemplate> templates = list(templateWrapper);
         

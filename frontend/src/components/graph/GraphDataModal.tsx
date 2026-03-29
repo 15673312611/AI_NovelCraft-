@@ -39,6 +39,19 @@ const toStringArray = (value: any): string[] => {
   return []
 }
 
+const getRelationshipChapter = (record: any): number => {
+  const chapter = toNumber(record?.chapter ?? record?.lastChapter)
+  return chapter ?? 0
+}
+
+const getRelationshipDescription = (record: any): string => {
+  return String(record?.description || record?.status || record?.type || '')
+}
+
+const getRelationshipKey = (record: any): string => {
+  return `${record?.a || ''}_${record?.b || ''}_${getRelationshipChapter(record)}`
+}
+
 const GraphDataModal: React.FC<GraphDataModalProps> = ({ visible, novelId, novelTitle, onClose }) => {
   const [loading, setLoading] = useState(false)
   const [graphData, setGraphData] = useState<GraphData | null>(null)
@@ -373,14 +386,14 @@ const GraphDataModal: React.FC<GraphDataModalProps> = ({ visible, novelId, novel
   }
 
   const handleEditRelationshipType = (record: any) => {
-    const key = `${record.a}_${record.b}_${record.chapter}`
+    const key = getRelationshipKey(record)
     setEditingRelationshipKey(key)
     editRelationshipForm.setFieldsValue({
       a: record.a,
       b: record.b,
-      type: record.type,
+      description: getRelationshipDescription(record),
       strength: record.strength,
-      chapter: record.chapter,
+      chapter: getRelationshipChapter(record),
     })
   }
 
@@ -392,7 +405,7 @@ const GraphDataModal: React.FC<GraphDataModalProps> = ({ visible, novelId, novel
         novelId,
         a: values.a,
         b: values.b,
-        type: values.type,
+        description: values.description,
         strength: values.strength,
         chapter: values.chapter,
       }
@@ -429,7 +442,7 @@ const GraphDataModal: React.FC<GraphDataModalProps> = ({ visible, novelId, novel
         novelId,
         a: values.a,
         b: values.b,
-        type: values.type,
+        description: values.description,
         strength: values.strength ?? 0.5,
         chapter: values.chapter ?? 0,
       }
@@ -458,7 +471,7 @@ const GraphDataModal: React.FC<GraphDataModalProps> = ({ visible, novelId, novel
       key: 'a',
       width: 120,
       render: (name: any, record: any) => {
-        const key = `${record.a}_${record.b}_${record.chapter}`
+        const key = getRelationshipKey(record)
         const isEditing = editingRelationshipKey === key
         return isEditing ? (
           <Form.Item name="a" style={{ margin: 0 }}>
@@ -475,7 +488,7 @@ const GraphDataModal: React.FC<GraphDataModalProps> = ({ visible, novelId, novel
       key: 'b',
       width: 120,
       render: (name: any, record: any) => {
-        const key = `${record.a}_${record.b}_${record.chapter}`
+        const key = getRelationshipKey(record)
         const isEditing = editingRelationshipKey === key
         return isEditing ? (
           <Form.Item name="b" style={{ margin: 0 }}>
@@ -487,19 +500,19 @@ const GraphDataModal: React.FC<GraphDataModalProps> = ({ visible, novelId, novel
       },
     },
     {
-      title: '关系类型',
-      dataIndex: 'type',
-      key: 'type',
-      width: 120,
-      render: (type: any, record: any) => {
-        const key = `${record.a}_${record.b}_${record.chapter}`
+      title: '关系状态',
+      dataIndex: 'description',
+      key: 'description',
+      width: 280,
+      render: (_: any, record: any) => {
+        const key = getRelationshipKey(record)
         const isEditing = editingRelationshipKey === key
         return isEditing ? (
-          <Form.Item name="type" style={{ margin: 0 }}>
-            <Input size="small" placeholder="关系类型" />
+          <Form.Item name="description" style={{ margin: 0 }}>
+            <Input.TextArea size="small" rows={2} placeholder="请输入中文关系状态分析" />
           </Form.Item>
         ) : (
-          type || '-'
+          getRelationshipDescription(record) || '-'
         )
       },
     },
@@ -509,7 +522,7 @@ const GraphDataModal: React.FC<GraphDataModalProps> = ({ visible, novelId, novel
       key: 'strength',
       width: 100,
       render: (strength: any, record: any) => {
-        const key = `${record.a}_${record.b}_${record.chapter}`
+        const key = getRelationshipKey(record)
         const isEditing = editingRelationshipKey === key
         return isEditing ? (
           <Form.Item name="strength" style={{ margin: 0 }}>
@@ -525,16 +538,16 @@ const GraphDataModal: React.FC<GraphDataModalProps> = ({ visible, novelId, novel
       dataIndex: 'chapter',
       key: 'chapter',
       width: 100,
-      sorter: (a: any, b: any) => (toNumber(a.chapter) || 0) - (toNumber(b.chapter) || 0),
-      render: (chapter: any, record: any) => {
-        const key = `${record.a}_${record.b}_${record.chapter}`
+      sorter: (a: any, b: any) => getRelationshipChapter(a) - getRelationshipChapter(b),
+      render: (_: any, record: any) => {
+        const key = getRelationshipKey(record)
         const isEditing = editingRelationshipKey === key
         return isEditing ? (
           <Form.Item name="chapter" style={{ margin: 0 }}>
             <InputNumber size="small" min={0} style={{ width: '100%' }} />
           </Form.Item>
         ) : (
-          chapter ?? '-'
+          getRelationshipChapter(record) ?? '-'
         )
       },
     },
@@ -544,7 +557,7 @@ const GraphDataModal: React.FC<GraphDataModalProps> = ({ visible, novelId, novel
       width: 160,
       fixed: 'right' as const,
       render: (_: any, record: any) => {
-        const key = `${record.a}_${record.b}_${record.chapter}`
+        const key = getRelationshipKey(record)
         const isEditing = editingRelationshipKey === key
         return isEditing ? (
           <span>
@@ -963,7 +976,7 @@ const GraphDataModal: React.FC<GraphDataModalProps> = ({ visible, novelId, novel
               <Table
                 columns={relationshipStateColumns}
                 dataSource={graphData.relationshipStates}
-                rowKey={(record) => `${record.a || ''}_${record.b || ''}_${record.chapter || ''}`}
+                rowKey={(record) => getRelationshipKey(record)}
                 pagination={{ pageSize: 10 }}
                 size="small"
                 bordered
@@ -1126,8 +1139,12 @@ const GraphDataModal: React.FC<GraphDataModalProps> = ({ visible, novelId, novel
           >
             <Input placeholder="请输入角色B名称" />
           </Form.Item>
-          <Form.Item label="关系类型" name="type">
-            <Input placeholder="例如：好友、敌对、暧昧..." />
+          <Form.Item
+            label="关系状态"
+            name="description"
+            rules={[{ required: true, message: '请输入中文关系状态分析' }]}
+          >
+            <Input.TextArea rows={3} placeholder="例如：名义上是盟友，但实际上互相提防，关系正在恶化" />
           </Form.Item>
           <Form.Item label="关系强度" name="strength" initialValue={0.5}>
             <InputNumber min={0} max={1} step={0.1} style={{ width: '100%' }} placeholder="0-1之间" />

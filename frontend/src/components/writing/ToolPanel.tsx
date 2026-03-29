@@ -3,6 +3,7 @@ import { Button, Checkbox, Input, Modal, message, Slider } from 'antd'
 import type { ReferenceFile } from '@/services/referenceFileService'
 import type { NovelDocument } from '@/services/documentService'
 import type { NovelFolder } from '@/services/folderService'
+import type { OutlineContextMode } from '@/services/novelService'
 import {
   getWritingStyleTemplates,
   getUserCustomTemplates,
@@ -28,6 +29,8 @@ import {
   UserOutlined,
   SendOutlined,
   ThunderboltFilled,
+  HistoryOutlined,
+  NodeIndexOutlined,
 } from '@ant-design/icons'
 import './ToolPanel.css'
 
@@ -35,6 +38,29 @@ interface SimpleAIHistoryItem {
   id: number
   content: string
   createdAt: string
+}
+
+const DISPLAY_STRUCTURED_PATTERN = /^(#{1,6}\s|[-*+]\s|>\s|\d+\.\s|\|)/u
+
+const splitAIOutputBlocks = (content: string): string[] =>
+  content
+    .replace(/\r\n?/g, '\n')
+    .split(/\n{2,}/)
+    .map(block => block.trim())
+    .filter(Boolean)
+
+const getAITextBlockClassName = (block: string): string => {
+  const firstLine = block.split('\n', 1)[0]?.trim() || ''
+
+  if (firstLine.startsWith('\u7B2C') && firstLine.includes('\u7AE0')) {
+    return 'ai-text-block is-heading'
+  }
+
+  if (DISPLAY_STRUCTURED_PATTERN.test(firstLine)) {
+    return 'ai-text-block is-structured'
+  }
+
+  return 'ai-text-block is-paragraph'
 }
 
 interface ToolPanelProps {
@@ -73,14 +99,15 @@ interface ToolPanelProps {
   documentsMap?: Record<number, NovelDocument[]>
 
   // 章纲入口
-  onShowChapterOutline?: () => void
-
   // 可选：AI 历史与生成器（目前仅保留接口，不在 UI 中强制展示）
   aiHistory?: SimpleAIHistoryItem[]
   onClearAIHistory?: () => void
   generators?: AiGenerator[]
   generatorId?: number | null
   onGeneratorChange?: (id: number | null) => void
+  outlineContextMode?: OutlineContextMode
+  outlineContextModeSaving?: boolean
+  onOutlineContextModeChange?: (mode: OutlineContextMode) => void
 
   // 模型选择
   selectedModel?: string
@@ -99,6 +126,10 @@ interface ToolPanelProps {
   // 搜索结果（保留接口以便后续扩展）
   searchResults?: NovelDocument[]
   onSelectSearchResult?: (document: NovelDocument) => void
+
+  // 顶部工具栏
+  onShowGraph?: () => void
+  onShowHistory?: () => void
 }
 
 const ToolPanel: React.FC<ToolPanelProps> = ({
@@ -116,13 +147,18 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
   onReplaceWithAIOutput,
   folders = [],
   documentsMap = {},
-  onShowChapterOutline,
   aiHistory = [],
   onClearAIHistory,
+  outlineContextMode = 'SIMPLIFIED',
+  outlineContextModeSaving = false,
+  onOutlineContextModeChange,
   selectedModel = '',
   onModelChange,
   temperature: propTemperature = 1.0,
   onTemperatureChange,
+  novelId,
+  onShowGraph,
+  onShowHistory,
 }) => {
   const [isLinkedModalVisible, setIsLinkedModalVisible] = useState(false)
   const [isWritingStyleModalVisible, setIsWritingStyleModalVisible] = useState(false)
@@ -136,6 +172,7 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
   // 模板相关状态
   const [writingStyles, setWritingStyles] = useState<PromptTemplate[]>([])
   const [selectedWritingStyleId, setSelectedWritingStyleId] = useState<number | null>(writingStyleId ?? null)
+  const [selectedWritingStyleNameFallback, setSelectedWritingStyleNameFallback] = useState('默认模板')
   const [activeTemplateTab, setActiveTemplateTab] = useState<'public' | 'custom' | 'favorites'>('public')
   const [templateSearchKeyword, setTemplateSearchKeyword] = useState('')
   // 强制过滤分类为'chapter'(写作正文)
@@ -143,40 +180,108 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
   
   const [availableModels, setAvailableModels] = useState<AIModel[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
+  const aiOutputBlocks = useMemo(() => splitAIOutputBlocks(aiOutput), [aiOutput])
 
   // 同步外部写作风格 ID
   useEffect(() => {
     setSelectedWritingStyleId(writingStyleId ?? null)
   }, [writingStyleId])
 
+  useEffect(() => {
+    setLocalTemperature(propTemperature)
+  }, [propTemperature])
+
   // 初始化：自动加载默认模板
   useEffect(() => {
+    let isMounted = true
+
     const initDefaultTemplate = async () => {
       // 这里的逻辑只在组件挂载时执行一次
       try {
         // 获取 'chapter' 分类的公开模板
         console.log('🚀 初始化：自动加载默认写作模板...')
         const styles = await getWritingStyleTemplates('chapter')
-        
-        // 保存模板列表以便显示名称
-        setWritingStyles(styles)
-        
-        // 如果当前没有选中的模板，则自动选中默认模板
-        if (!selectedWritingStyleId) {
-          const defaultStyle = styles.find(s => s.isDefault)
-          if (defaultStyle) {
-            console.log('✅ 自动选中默认模板:', defaultStyle.name)
-            setSelectedWritingStyleId(defaultStyle.id)
-            onWritingStyleChange?.(defaultStyle.id)
-          }
+
+        if (isMounted) {
+          // 保存模板列表以便显示名称
+          setWritingStyles(styles)
         }
       } catch (error) {
         console.error('❌ 初始化默认模板失败:', error)
       }
     }
-    
+
     initDefaultTemplate()
-  }, []) // 仅挂载时执行一次
+
+    return () => {
+      isMounted = false
+    }
+  }, [novelId]) // 仅挂载时执行一次
+
+  useEffect(() => {
+    if (selectedWritingStyleId !== null || activeTemplateTab !== 'public' || writingStyles.length === 0) {
+      return
+    }
+
+    const defaultStyle = writingStyles.find(style => style.isDefault)
+    if (defaultStyle) {
+      setSelectedWritingStyleId(defaultStyle.id)
+      onWritingStyleChange?.(defaultStyle.id)
+    }
+  }, [activeTemplateTab, onWritingStyleChange, selectedWritingStyleId, writingStyles])
+
+  useEffect(() => {
+    if (!selectedWritingStyleId) {
+      setSelectedWritingStyleNameFallback('默认模板')
+      return
+    }
+
+    const currentStyle = writingStyles.find(style => style.id === selectedWritingStyleId)
+    if (currentStyle) {
+      setSelectedWritingStyleNameFallback(currentStyle.name)
+      return
+    }
+
+    let cancelled = false
+
+    const resolveSelectedWritingStyleName = async () => {
+      try {
+        const [publicStyles, customStyles, favoriteStyles] = await Promise.all([
+          getWritingStyleTemplates(templateCategory || undefined),
+          getUserCustomTemplates(templateCategory || undefined),
+          getUserFavoriteTemplates(templateCategory || undefined),
+        ])
+
+        if (cancelled) {
+          return
+        }
+
+        const matchedStyle = [...publicStyles, ...customStyles, ...favoriteStyles].find(
+          style => style.id === selectedWritingStyleId
+        )
+
+        if (matchedStyle) {
+          setSelectedWritingStyleNameFallback(matchedStyle.name)
+          setWritingStyles(prev =>
+            prev.some(style => style.id === matchedStyle.id) ? prev : [matchedStyle, ...prev]
+          )
+        } else {
+          setSelectedWritingStyleNameFallback('默认模板')
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.warn('解析当前模板名称失败', error)
+          setSelectedWritingStyleNameFallback('默认模板')
+        }
+      }
+    }
+
+    resolveSelectedWritingStyleName()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedWritingStyleId, templateCategory, writingStyles])
 
   // 加载写作模板（写作风格）- 弹窗打开时刷新
   useEffect(() => {
@@ -210,14 +315,6 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
         
         setWritingStyles(styles)
         
-        // 仅在首次加载且未选且是公开Tab时自动选中默认
-        if (writingStyleId === null && activeTemplateTab === 'public' && !selectedWritingStyleId) {
-          const defaultStyle = styles.find(s => s.isDefault)
-          if (defaultStyle) {
-            setSelectedWritingStyleId(defaultStyle.id)
-            onWritingStyleChange?.(defaultStyle.id)
-          }
-        }
       } catch (error) {
         console.error('❌ 加载写作模板失败:', error)
       }
@@ -256,22 +353,6 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
         const models = await creditService.getAvailableModels()
         setAvailableModels(models)
         console.log('✅ 加载可用模型:', models)
-        
-        // 优先选择后台配置的默认模型
-        if (models.length > 0) {
-          const defaultModel = models.find(m => m.isDefault)
-          const currentModelExists = models.some(m => m.modelId === selectedModel)
-          
-          if (defaultModel && !currentModelExists) {
-            // 如果有默认模型且当前选中的模型不在列表中，使用默认模型
-            onModelChange?.(defaultModel.modelId)
-            console.log('✅ 使用后台配置的默认模型:', defaultModel.modelId)
-          } else if (!currentModelExists) {
-            // 如果没有默认模型且当前选中的模型不在列表中，使用第一个
-            onModelChange?.(models[0].modelId)
-            console.log('✅ 使用第一个模型:', models[0].modelId)
-          }
-        }
       } catch (error) {
         console.error('加载模型列表失败:', error)
       } finally {
@@ -280,6 +361,33 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
     }
     loadModels()
   }, [])
+
+  useEffect(() => {
+    if (availableModels.length === 0) {
+      return
+    }
+
+    const currentModelExists = availableModels.some(model => String(model.id) === selectedModel)
+    if (currentModelExists) {
+      return
+    }
+
+    const defaultModel = availableModels.find(model => model.isDefault) ?? availableModels[0]
+    if (defaultModel) {
+      onModelChange?.(String(defaultModel.id))
+    }
+  }, [availableModels, onModelChange, selectedModel])
+
+  const selectedWritingStyleName = selectedWritingStyleId
+    ? writingStyles.find((style) => style.id === selectedWritingStyleId)?.name || selectedWritingStyleNameFallback
+    : '默认模板'
+
+  const selectedModelDisplayName = loadingModels
+    ? '加载中...'
+    : availableModels.find((model) => String(model.id) === selectedModel)?.displayName || '自动模型'
+
+  const selectedModelTitle =
+    availableModels.find((model) => String(model.id) === selectedModel)?.displayName || '自动模型'
 
   const handleLinkedDocumentToggle = (checked: boolean, id: number) => {
     const current = new Set(selectedLinkedDocumentIds)
@@ -325,6 +433,44 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
 
   return (
     <div className="tool-panel-container">
+      {/* 顶部工具栏 */}
+      <div className="tool-panel-toolbar">
+        {onShowGraph && (
+          <button className="tp-tool-btn" onClick={onShowGraph} title="图谱">
+            <NodeIndexOutlined className="tp-tool-icon" />
+            <span>图谱</span>
+          </button>
+        )}
+        <button className="tp-tool-btn" onClick={onShowHistory} title="历史版本">
+          <HistoryOutlined className="tp-tool-icon" />
+          <span>历史</span>
+        </button>
+        {onOutlineContextModeChange && (
+          <div className="tp-outline-mode">
+            <span className="tp-outline-mode-label">大纲</span>
+            <div className="tp-outline-mode-segment" role="group" aria-label="大纲上下文模式">
+              <button
+                type="button"
+                className={`tp-outline-mode-option ${outlineContextMode === 'SIMPLIFIED' ? 'active' : ''}`}
+                onClick={() => onOutlineContextModeChange('SIMPLIFIED')}
+                disabled={isGenerating || outlineContextModeSaving}
+                title="精简大纲：更省上下文，生成更稳"
+              >
+                精简
+              </button>
+              <button
+                type="button"
+                className={`tp-outline-mode-option ${outlineContextMode === 'FULL' ? 'active' : ''}`}
+                onClick={() => onOutlineContextModeChange('FULL')}
+                disabled={isGenerating || outlineContextModeSaving}
+                title="完整大纲：更利于把握整体风格，但更占上下文"
+              >
+                完整
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
       {/* AI 对话区域 */}
       <div className="ai-chat-area">
         {/* 历史生成入口 */}
@@ -436,7 +582,15 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
                 </div>
               </div>
               <div className="ai-response-content">
-                <div className="ai-text-display">{aiOutput || '正在接收内容...'}</div>
+                <div className="ai-text-display">
+                  {aiOutput
+                    ? aiOutputBlocks.map((block, index) => (
+                      <div key={`${index}-${block.slice(0, 16)}`} className={getAITextBlockClassName(block)}>
+                        {block}
+                      </div>
+                    ))
+                    : '正在接收内容...'}
+                </div>
               </div>
             </div>
           ) : !isGenerating && !aiOutput ? (
@@ -476,14 +630,7 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
             )}
           </button>
 
-          {onShowChapterOutline && (
-            <button onClick={onShowChapterOutline} className="premium-tool-chip">
-              <div className="chip-icon orange">
-                <FileTextOutlined />
-              </div>
-              <span className="chip-label">章纲</span>
-            </button>
-          )}
+          
         </div>
 
         {/* 输入框区域 */}
@@ -504,13 +651,9 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
             <button
               onClick={() => setIsWritingStyleModalVisible(true)}
               className="premium-capsule-btn template-selector"
-              title={selectedWritingStyleId ? writingStyles.find((s) => s.id === selectedWritingStyleId)?.name : '默认模板'}
+              title={selectedWritingStyleName}
             >
-              <span className="capsule-text">
-                {selectedWritingStyleId
-                  ? writingStyles.find((s) => s.id === selectedWritingStyleId)?.name || '默认模板'
-                  : '默认模板'}
-              </span>
+              <span className="capsule-text">{selectedWritingStyleName}</span>
             </button>
             
             {/* 模型选择 */}
@@ -518,13 +661,9 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
               onClick={() => setIsModelModalVisible(true)}
               className="premium-capsule-btn model-selector"
               disabled={loadingModels}
-              title={availableModels.find(m => m.modelId === selectedModel)?.displayName || selectedModel}
+              title={selectedModelTitle}
             >
-              <span className="capsule-text">
-                {loadingModels ? '加载中...' : (
-                  availableModels.find(m => m.modelId === selectedModel)?.displayName || selectedModel || '自动模型'
-                )}
-              </span>
+              <span className="capsule-text">{selectedModelDisplayName}</span>
             </button>
           </div>
 
@@ -845,7 +984,7 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
             <div className="saas-sidebar-footer">
               <div className="sidebar-info">
                 <span className="info-label">当前模型</span>
-                <span className="info-value">{availableModels.find(m => m.modelId === selectedModel)?.displayName || 'Auto'}</span>
+                <span className="info-value">{availableModels.find(m => String(m.id) === selectedModel)?.displayName || 'Auto'}</span>
               </div>
             </div>
           </div>
@@ -906,9 +1045,6 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
                       >
                         <div className="card-body">
                           <div className="card-top-area">
-                            <div className={`card-icon-wrapper ${isOfficial ? 'official' : 'custom'}`}>
-                              {style.name.charAt(0)}
-                            </div>
                             <div className="card-header-info">
                               <div className="card-title-row">
                                 <h3 className="card-title">{style.name}</h3>
@@ -1015,13 +1151,13 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
         <div className="modal-body">
           <div className="model-list">
             {availableModels.map((model) => {
-              const isSelected = model.modelId === selectedModel
+              const isSelected = String(model.id) === selectedModel
               const multiplier = model.costMultiplier || 1
 
               return (
                 <div
-                  key={model.modelId}
-                  onClick={() => onModelChange?.(model.modelId)}
+                  key={model.id}
+                  onClick={() => onModelChange?.(String(model.id))}
                   className={`model-item-card ${isSelected ? 'selected' : ''}`}
                 >
                   <div className="model-card-content">

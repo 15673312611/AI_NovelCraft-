@@ -23,9 +23,15 @@ import {
   ChatBubbleLeftRightIcon
 } from '@heroicons/react/24/outline'
 import { creditService, UserCreditInfo } from '@/services/creditService'
-import AnnouncementModal from '@/components/AnnouncementModal'
+import NotificationCenter from '@/components/NotificationCenter'
 import RechargeModal from '@/components/RechargeModal'
 import './ModernLayout.css'
+
+type RechargePaymentMessage = {
+  type: 'recharge-payment-result'
+  payStatus: 'success' | 'fail'
+  orderNo?: string
+}
 
 const ModernLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate()
@@ -74,6 +80,77 @@ const ModernLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) =>
   }, [])
 
   // 格式化数字显示
+  useEffect(() => {
+    const handlePaymentMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) {
+        return
+      }
+
+      const payload = event.data as RechargePaymentMessage | undefined
+      if (!payload || payload.type !== 'recharge-payment-result') {
+        return
+      }
+
+      if (payload.payStatus === 'success') {
+        message.success('支付成功，正在刷新余额')
+        setRechargeModalVisible(false)
+        loadCreditInfo()
+      } else {
+        message.warning('支付结果未确认，请稍后刷新余额或交易记录')
+      }
+    }
+
+    window.addEventListener('message', handlePaymentMessage)
+    return () => window.removeEventListener('message', handlePaymentMessage)
+  }, [])
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const payStatus = params.get('payStatus')
+    if (!payStatus) {
+      return
+    }
+
+    const isSuccess = payStatus === 'success'
+    if (isSuccess) {
+      message.success('支付成功，正在刷新余额')
+      loadCreditInfo()
+    } else {
+      message.warning('支付结果未确认，请稍后刷新余额或交易记录')
+    }
+
+    const orderNo = params.get('orderNo') || undefined
+    if (window.opener && window.opener !== window) {
+      try {
+        const payload: RechargePaymentMessage = {
+          type: 'recharge-payment-result',
+          payStatus: isSuccess ? 'success' : 'fail',
+          orderNo,
+        }
+        window.opener.postMessage(payload, window.location.origin)
+      } catch (error) {
+        console.error('通知主窗口支付结果失败:', error)
+      }
+    }
+
+    params.delete('payStatus')
+    params.delete('orderNo')
+    const nextSearch = params.toString()
+    navigate(
+      {
+        pathname: location.pathname,
+        search: nextSearch ? `?${nextSearch}` : ''
+      },
+      { replace: true }
+    )
+
+    if (window.opener && window.opener !== window) {
+      window.setTimeout(() => {
+        window.close()
+      }, 200)
+    }
+  }, [location.pathname, location.search, navigate])
+
   const formatNumber = (num: number) => {
     if (num >= 10000) {
       return (num / 10000).toFixed(1) + '万'
@@ -95,12 +172,18 @@ const ModernLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) =>
       message.warning('请输入兑换码')
       return
     }
+
     setRedeemLoading(true)
     try {
-      // TODO: 调用兑换接口
-      message.info('兑换功能开发中')
-    } catch (error) {
-      message.error('兑换失败')
+      const result = await creditService.redeemCode(redeemCode.trim())
+      if (!result) {
+        throw new Error('兑换失败，请稍后重试')
+      }
+      setRedeemCode('')
+      await loadCreditInfo()
+      message.success(`兑换成功，已到账 ${formatNumber(Number(result.credits || 0))} 字数`)
+    } catch (error: any) {
+      message.error(error?.message || '兑换失败')
     } finally {
       setRedeemLoading(false)
     }
@@ -169,9 +252,6 @@ const ModernLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) =>
 
   return (
     <div className="modern-layout">
-      {/* 公告弹窗 */}
-      <AnnouncementModal />
-      
       {/* Sidebar */}
       <aside className="modern-sidebar">
         <div className="sidebar-logo">
@@ -258,6 +338,16 @@ const ModernLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) =>
           </div>
 
           <div className="header-right">
+            <NotificationCenter />
+
+            <button
+              className="header-recharge-btn"
+              onClick={() => setRechargeModalVisible(true)}
+            >
+              <WalletIcon style={{ width: 18 }} />
+              <span>充值</span>
+            </button>
+
             <button 
               className="header-contact-btn"
               onClick={() => setContactModalVisible(true)}
@@ -351,6 +441,7 @@ const ModernLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) =>
                         placeholder="请输入兑换码"
                         value={redeemCode}
                         onChange={(e) => setRedeemCode(e.target.value)}
+                        onPressEnter={handleRedeem}
                         className="redeem-input-v2"
                         size="small"
                       />

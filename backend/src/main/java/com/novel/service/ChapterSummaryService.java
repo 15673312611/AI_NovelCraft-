@@ -4,6 +4,8 @@ import com.novel.domain.entity.Chapter;
 import com.novel.domain.entity.ChapterSummary;
 import com.novel.dto.AIConfigRequest;
 import com.novel.repository.ChapterSummaryRepository;
+import com.novel.service.prompt.ManagedPromptService;
+import com.novel.service.prompt.SystemPromptDescriptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +37,9 @@ public class ChapterSummaryService {
     
     @Autowired(required = false)
     private com.novel.agentic.service.graph.IGraphService graphService;
+
+    @Autowired
+    private ManagedPromptService managedPromptService;
 
     /**
      * 生成章节概括（使用后端配置 - 已弃用，建议使用带AIConfigRequest参数的方法）
@@ -337,26 +342,45 @@ public class ChapterSummaryService {
      * 构建概括提示词
      */
     private String buildSummaryPrompt(Chapter chapter) {
-        // 强化为“高信息密度 + 可推理信号”的摘要指令
-        return "你是一位顶尖网文编辑。请为下面这一章生成150-250字的剧情摘要，像“追更提醒”一样高密度、强钩子、可复盘。\n\n" +
-            "【写作目标】只保留对“理解剧情走向”和“承接下一章”必要的信息。\n\n" +
-            "【必须覆盖的4点（自然融入一段内，不要打标签）】\n" +
-            "1) 动作与结果：最关键的“行为→后果”一句。\n" +
-            "2) 情报增量：本章新增的重要信息/设定。\n" +
-            "3) 关系/立场变化：人物关系或冲突格局的显著变动（若无写“无”）。\n" +
-            "4) 悬念钩子：促使读者读下一章的未决点。\n\n" +
-            "【状态信号（务必从正文中提取，若无则写“无”）】在摘要末尾另起一行输出“Summary Signals:”后接半角分号分隔的键值：\n" +
-            "loc=当前位置; realm=境界变动; item=关键物品变动; foreshadow=埋/回收/无; deaths=死亡角色(可空); relChange=关系变动(可空)\n\n" +
-            "【硬性规则】\n" +
-            "- 一段成文，不要分点、不要加任何标题或解释。\n" +
-            "- 不要剧透下一章；只基于当前章节内容。\n" +
-            "- 用语要快节奏、具体、少形容词，避免空话套话。\n\n" +
-            "---\n" +
-            "章节标题：" + chapter.getTitle() + "\n" +
-            "章节内容：\n" +
-            chapter.getContent() + "\n" +
-            "---\n" +
-            "请现在输出摘要正文，其后紧跟一行“Summary Signals: ...”。";
+        String optimizedContent = ChapterTextOptimizer.sampleForAi(chapter.getContent(), 8000);
+        return renderManagedPrompt(
+            "chapter.summary.basic",
+            "章节概要提取提示词",
+            "system_chain",
+            "根据章节正文生成高信息密度的剧情摘要，并附带 Summary Signals 结构化状态信号",
+            220,
+            List.of("chapter_title", "chapter_content"),
+            """
+                你是一位顶尖网文编辑。请为下面这一章生成150-250字的剧情摘要，像“追更提醒”一样高密度、强钩子、可复盘。
+
+                【写作目标】只保留对“理解剧情走向”和“承接下一章”必要的信息。
+
+                【必须覆盖的4点（自然融入一段内，不要打标签）】
+                1) 动作与结果：最关键的“行为→后果”一句。
+                2) 情报增量：本章新增的重要信息/设定。
+                3) 关系/立场变化：人物关系或冲突格局的显著变动（若无写“无”）。
+                4) 悬念钩子：促使读者读下一章的未决点。
+
+                【状态信号（务必从正文中提取，若无则写“无”）】在摘要末尾另起一行输出“Summary Signals:”后接半角分号分隔的键值：
+                loc=当前位置; realm=境界变动; item=关键物品变动; foreshadow=埋/回收/无; deaths=死亡角色(可空); relChange=关系变动(可空)
+
+                【硬性规则】
+                - 一段成文，不要分点、不要加任何标题或解释。
+                - 不要剧透下一章；只基于当前章节内容。
+                - 用语要快节奏、具体、少形容词，避免空话套话。
+
+                ---
+                章节标题：{{chapter_title}}
+                章节内容：
+                {{chapter_content}}
+                ---
+                请现在输出摘要正文，其后紧跟一行“Summary Signals: ...”。
+                """,
+            Map.of(
+                "chapter_title", safeText(chapter.getTitle()),
+                "chapter_content", safeText(optimizedContent)
+            )
+        );
     }
     
     /**
@@ -516,5 +540,29 @@ public class ChapterSummaryService {
             logger.error("查找章节失败: novelId={}, chapterNumber={}", novelId, chapterNumber, e);
             return null;
         }
+    }
+
+    private String renderManagedPrompt(String promptKey,
+                                       String name,
+                                       String category,
+                                       String description,
+                                       int sortOrder,
+                                       List<String> variables,
+                                       String template,
+                                       Map<String, ?> values) {
+        return managedPromptService.render(SystemPromptDescriptor.builder()
+                        .promptKey(promptKey)
+                        .name(name)
+                        .category(category)
+                        .description(description)
+                        .variables(variables)
+                        .sortOrder(sortOrder)
+                        .defaultContent(template)
+                        .build(),
+                values);
+    }
+
+    private String safeText(String value) {
+        return value == null ? "" : value;
     }
 }

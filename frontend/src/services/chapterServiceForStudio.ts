@@ -16,6 +16,65 @@ export interface Chapter {
   notes?: string | null
 }
 
+export interface ChapterImportPreviewChapter {
+  title: string
+  sourceTitle?: string | null
+  summary?: string | null
+  content: string
+  wordCount: number
+  tooLong: boolean
+  wasSplit?: boolean
+  detectedChapterNumber?: number | null
+}
+
+export interface ChapterImportPreviewResponse {
+  fileName?: string
+  fileType?: string
+  detectedChapterCount: number
+  totalWordCount: number
+  oversizedCount: number
+  maxChapterLength: number
+  requiresSplitConfirmation: boolean
+  warnings: string[]
+  chapters: ChapterImportPreviewChapter[]
+  creditNotice?: string
+}
+
+export interface ChapterImportResult {
+  importedCount: number
+  splitChapterCount: number
+  startChapterNumber?: number | null
+  endChapterNumber?: number | null
+  importedChapterIds: number[]
+  importedChapters: Array<{
+    id: number
+    chapterNumber: number
+    title: string
+    wordCount: number
+    wasSplit?: boolean
+    sourceTitle?: string | null
+  }>
+  message?: string
+}
+
+export interface ChapterImportPostProcessResult {
+  processedCount: number
+  memoryProcessedCount: number
+  graphProcessedCount: number
+  warnings: string[]
+  estimatedCredits?: {
+    memoryEstimate?: number
+    graphEstimate?: number
+  }
+  message?: string
+}
+
+export interface ChapterSummaryResponse {
+  chapterId: number
+  hasSummary: boolean
+  summary: string
+}
+
 const normalizeChapter = (raw: any): Chapter => {
   if (!raw) {
     throw new Error('章节数据缺失')
@@ -78,6 +137,17 @@ export const getChapterById = async (chapterId: number): Promise<Chapter> => {
   return normalizeChapter(response)
 }
 
+export const getChapterSummaryById = async (chapterId: number): Promise<ChapterSummaryResponse> => {
+  const response = await api.get(`/chapters/${chapterId}/summary`)
+  const data = extractData<any>(response, {})
+
+  return {
+    chapterId: Number(data.chapterId ?? chapterId),
+    hasSummary: Boolean(data.hasSummary),
+    summary: typeof data.summary === 'string' ? data.summary : '',
+  }
+}
+
 export const createChapter = async (
   novelId: number,
   payload: Partial<Chapter>
@@ -105,3 +175,44 @@ export const deleteChapter = async (chapterId: number): Promise<void> => {
   await api.delete(`/chapters/${chapterId}`)
 }
 
+export const previewChapterImport = async (
+  novelId: number,
+  file: File
+): Promise<ChapterImportPreviewResponse> => {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  return await api.post(`/chapters/novel/${novelId}/import/preview`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  })
+}
+
+export const importChaptersFromPreview = async (
+  novelId: number,
+  chapters: ChapterImportPreviewChapter[],
+  autoSplitLongChapters: boolean
+): Promise<ChapterImportResult> => {
+  return await api.post(`/chapters/novel/${novelId}/import`, {
+    chapters,
+    autoSplitLongChapters,
+  })
+}
+
+export const postProcessImportedChapters = async (
+  novelId: number,
+  chapterIds: number[],
+  payload?: {
+    buildMemory?: boolean
+    buildGraph?: boolean
+    preferredModel?: string
+  }
+): Promise<ChapterImportPostProcessResult> => {
+  return await api.post(`/chapters/novel/${novelId}/import/post-process`, {
+    chapterIds,
+    buildMemory: payload?.buildMemory ?? true,
+    buildGraph: payload?.buildGraph ?? true,
+    ...(payload?.preferredModel ? { preferredModel: payload.preferredModel } : {}),
+  })
+}

@@ -1,27 +1,30 @@
 package com.novel.controller;
 
+import com.novel.domain.entity.User;
 import com.novel.dto.ApiResponse;
-import com.novel.dto.LoginRequest;
-import com.novel.dto.RegisterRequest;
 import com.novel.dto.AuthResponse;
 import com.novel.dto.ChangePasswordRequest;
-import com.novel.domain.entity.User;
+import com.novel.dto.LoginRequest;
+import com.novel.dto.RegisterRequest;
+import com.novel.dto.SafeUserDto;
 import com.novel.service.AuthService;
+import com.novel.service.UserAuthActivityLogService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
+import javax.servlet.http.HttpServletRequest;
 import javax.validation.Valid;
+import java.util.Map;
 
-/**
- * 认证控制器
- * 
- * @author Novel Creation System
- * @version 1.0.0
- * @since 2024-01-01
- */
 @RestController
 @RequestMapping("/auth")
 @CrossOrigin(originPatterns = {"http://localhost:*", "http://127.0.0.1:*"}, allowCredentials = "true")
@@ -30,50 +33,43 @@ public class AuthController {
     @Autowired
     private AuthService authService;
 
-    /**
-     * 用户登录
-     */
+    @Autowired
+    private UserAuthActivityLogService userAuthActivityLogService;
+
     @PostMapping("/login")
-    public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request) {
+    public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
         try {
             AuthResponse response = authService.login(request);
+            recordAuthActivity(response, UserAuthActivityLogService.EventType.LOGIN, httpRequest);
             return ResponseEntity.ok(ApiResponse.success(response));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
     }
 
-    /**
-     * 用户注册
-     */
     @PostMapping("/register")
-    public ResponseEntity<ApiResponse<AuthResponse>> register(@Valid @RequestBody RegisterRequest request) {
+    public ResponseEntity<ApiResponse<AuthResponse>> register(@Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
         try {
             AuthResponse response = authService.register(request);
+            recordAuthActivity(response, UserAuthActivityLogService.EventType.REGISTER, httpRequest);
             return ResponseEntity.ok(ApiResponse.success(response));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
     }
 
-    /**
-     * 获取用户资料
-     */
     @GetMapping("/profile")
-    public ResponseEntity<ApiResponse<User>> getProfile() {
+    public ResponseEntity<ApiResponse<SafeUserDto>> getProfile() {
         try {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
             String username = authentication.getName();
             User user = authService.getUserByUsername(username);
-            return ResponseEntity.ok(ApiResponse.success(user));
+            return ResponseEntity.ok(ApiResponse.success(SafeUserDto.from(user)));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
     }
 
-    /**
-     * 修改密码
-     */
     @PutMapping("/change-password")
     public ResponseEntity<ApiResponse<String>> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
         try {
@@ -86,9 +82,6 @@ public class AuthController {
         }
     }
 
-    /**
-     * 用户登出
-     */
     @PostMapping("/logout")
     public ResponseEntity<ApiResponse<String>> logout() {
         try {
@@ -99,16 +92,20 @@ public class AuthController {
         }
     }
 
-    /**
-     * 获取用户统计信息
-     */
     @GetMapping("/statistics")
-    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> getUserStatistics() {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getUserStatistics() {
         try {
-            java.util.Map<String, Object> stats = authService.getUserStatistics();
+            Map<String, Object> stats = authService.getUserStatistics();
             return ResponseEntity.ok(ApiResponse.success(stats));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
+    }
+
+    private void recordAuthActivity(AuthResponse response, UserAuthActivityLogService.EventType eventType, HttpServletRequest httpRequest) {
+        if (response == null || response.getUser() == null || response.getUser().getId() == null) {
+            return;
+        }
+        userAuthActivityLogService.recordSuccessfulAuth(response.getUser().getId(), eventType, httpRequest);
     }
 }

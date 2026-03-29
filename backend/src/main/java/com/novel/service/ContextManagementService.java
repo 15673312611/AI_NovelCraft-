@@ -173,7 +173,9 @@ public class ContextManagementService {
         }
 
         // 3.6 历史事件与未回收伏笔（relevantEvents / unresolvedForeshadows）
-        if (context.getRelevantEvents() != null && !context.getRelevantEvents().isEmpty()) {
+        boolean includeHistoricalEventsInDirectWriting = false;
+        // Historical events stay in planning/outline context, not direct chapter writing context.
+        if (includeHistoricalEventsInDirectWriting && context.getRelevantEvents() != null && !context.getRelevantEvents().isEmpty()) {
             StringBuilder sb = new StringBuilder();
             sb.append("【历史事件概览】\n");
             for (com.novel.agentic.model.GraphEntity event : context.getRelevantEvents()) {
@@ -226,10 +228,16 @@ public class ContextManagementService {
                 if (rel == null) continue;
                 Object a = rel.get("a");
                 Object b = rel.get("b");
+                Object description = rel.get("description");
                 Object type = rel.get("type");
                 if (a == null || b == null) continue;
                 sb.append("- ").append(a).append(" ↔ ").append(b);
-                if (type != null) sb.append("（").append(type).append(")");
+                String relationText = description != null && !description.toString().trim().isEmpty()
+                    ? description.toString().trim()
+                    : (type != null ? type.toString().trim() : "");
+                if (!relationText.isEmpty()) {
+                    sb.append("：").append(relationText);
+                }
                 sb.append("\n");
             }
             messages.add(createMessage("system", sb.toString()));

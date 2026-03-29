@@ -1,17 +1,20 @@
 /* Markdown渲染器基础样式 */
 .markdown-renderer {
-  font-size: 15px;
-  line-height: 1.5;
+  font-size: 16px;
+  line-height: 2;
   color: #1f2937;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.5px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 /* 紧凑换行 - 减少br标签的高度 */
 .markdown-renderer br {
   display: block;
   content: "";
-  margin: 0;
-  line-height: 0.8;
+  margin: 0.5em 0;
+  line-height: 1;
 }
 
 .markdown-renderer.compact br {

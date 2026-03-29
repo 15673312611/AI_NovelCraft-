@@ -1,15 +1,12 @@
 package com.novel.config;
 
 import com.novel.util.JwtTokenUtil;
-import com.novel.service.CustomUserDetailsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -22,28 +19,21 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
 /**
- * 增强版JWT认证过滤器
- * 优先从Token中获取用户ID，避免频繁查询数据库
- * 
- * @author Novel Creation System
- * @version 2.0.0
- * @since 2024-10-22
+ * 增强版 JWT 认证过滤器。
+ * 优先从 token 中获取用户 ID，避免频繁查询数据库。
  */
 @Component
 public class EnhancedJwtAuthenticationFilter extends OncePerRequestFilter {
 
     private static final Logger logger = LoggerFactory.getLogger(EnhancedJwtAuthenticationFilter.class);
+    private static final String RENEWED_TOKEN_HEADER = "X-Auth-Token";
 
     @Autowired
     private JwtTokenUtil jwtTokenUtil;
 
-    @Autowired
-    @Lazy
-    private UserDetailsService userDetailsService;
-
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, 
-                                  FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
+                                    FilterChain filterChain) throws ServletException, IOException {
         try {
             String jwt = getJwtFromRequest(request);
 
@@ -51,23 +41,20 @@ public class EnhancedJwtAuthenticationFilter extends OncePerRequestFilter {
                 String username = jwtTokenUtil.getUsernameFromToken(jwt);
                 Long userId = jwtTokenUtil.getUserIdFromToken(jwt);
 
-                if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                    
-                    if (jwtTokenUtil.validateToken(jwt, username)) {
-                        // 创建增强版用户主体，包含用户ID
-                        EnhancedUserPrincipal principal = new EnhancedUserPrincipal(userId, username);
-                        
-                        UsernamePasswordAuthenticationToken authentication = 
-                            new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
-                        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                        
-                        SecurityContextHolder.getContext().setAuthentication(authentication);
-                        logger.debug("增强JWT认证成功: userId={}, username={}", userId, username);
-                    }
+                if (username != null && SecurityContextHolder.getContext().getAuthentication() == null
+                        && jwtTokenUtil.validateToken(jwt, username)) {
+                    EnhancedUserPrincipal principal = new EnhancedUserPrincipal(userId, username);
+                    UsernamePasswordAuthenticationToken authentication =
+                        new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
+                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                    issueRenewedToken(response, userId, username);
+                    logger.debug("Enhanced JWT auth success: userId={}, username={}", userId, username);
                 }
             }
         } catch (Exception ex) {
-            logger.error("增强JWT认证失败", ex);
+            logger.error("Enhanced JWT auth failed", ex);
         }
 
         filterChain.doFilter(request, response);
@@ -81,12 +68,19 @@ public class EnhancedJwtAuthenticationFilter extends OncePerRequestFilter {
         return null;
     }
 
+    private void issueRenewedToken(HttpServletResponse response, Long userId, String username) {
+        String renewedToken = userId != null
+            ? jwtTokenUtil.generateToken(userId, username)
+            : jwtTokenUtil.generateToken(username);
+        response.setHeader(RENEWED_TOKEN_HEADER, renewedToken);
+    }
+
     /**
-     * 增强版用户主体，直接包含用户ID，避免查数据库
+     * Enhanced user principal with embedded user ID.
      */
     public static class EnhancedUserPrincipal implements UserDetails {
-        private Long userId;
-        private String username;
+        private final Long userId;
+        private final String username;
 
         public EnhancedUserPrincipal(Long userId, String username) {
             this.userId = userId;
@@ -104,7 +98,7 @@ public class EnhancedJwtAuthenticationFilter extends OncePerRequestFilter {
 
         @Override
         public String getPassword() {
-            return null; // JWT认证不需要密码
+            return null;
         }
 
         @Override

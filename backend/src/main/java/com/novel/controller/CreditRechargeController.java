@@ -43,7 +43,8 @@ public class CreditRechargeController {
         }
 
         String payType = String.valueOf(body.getOrDefault("payType", ""));
-        Map<String, Object> data = rechargeOrderService.createOrder(userId, packageId, payType, request);
+        String redirectPath = String.valueOf(body.getOrDefault("redirectPath", ""));
+        Map<String, Object> data = rechargeOrderService.createOrder(userId, packageId, payType, redirectPath, request);
         return Result.success(data);
     }
 

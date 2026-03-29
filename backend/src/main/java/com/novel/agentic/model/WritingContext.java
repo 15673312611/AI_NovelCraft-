@@ -29,9 +29,19 @@ public class WritingContext {
     private String coreSettings;
 
     /**
+     * 大纲上下文模式：SIMPLIFIED / FULL
+     */
+    private String outlineContextMode;
+
+    /**
      * 当前卷蓝图
      */
     private Map<String, Object> volumeBlueprint;
+
+    /**
+     * 当前章节细纲（正文生成时优先遵守）
+     */
+    private String currentChapterOutline;
 
     /**
      * 章节计划
@@ -119,6 +129,11 @@ public class WritingContext {
     private List<Map<String, Object>> characterProfiles;
 
     /**
+     * 当前卷的人设卡
+     */
+    private List<Map<String, Object>> volumeCharacterProfiles;
+
+    /**
      * 核心记忆账本：角色状态
      */
     private List<Map<String, Object>> characterStates;
@@ -154,4 +169,3 @@ public class WritingContext {
      */
     private List<AgentThought> thoughts;
 }
-

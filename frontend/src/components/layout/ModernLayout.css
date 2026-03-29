@@ -193,20 +193,31 @@
   color: var(--text-primary);
 }
 
+.header-recharge-btn,
 .header-contact-btn {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
   border-radius: 99px;
-  color: #475569;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
   outline: none; /* Remove default button outline */
+}
+
+.header-recharge-btn {
+  background: linear-gradient(135deg, #eff6ff 0%, #eef2ff 100%);
+  border: 1px solid rgba(96, 165, 250, 0.42);
+  color: #1d4ed8;
+  box-shadow: 0 10px 24px -20px rgba(37, 99, 235, 0.45);
+}
+
+.header-contact-btn {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
 }
 
 .contact-support-modal .ant-modal-content {
@@ -217,6 +228,13 @@
 .contact-support-modal .ant-modal-close {
   top: 16px;
   right: 16px;
+}
+
+.header-recharge-btn:hover {
+  background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%);
+  border-color: rgba(59, 130, 246, 0.55);
+  color: #1e40af;
+  box-shadow: 0 16px 28px -22px rgba(37, 99, 235, 0.5);
 }
 
 .header-contact-btn:hover {

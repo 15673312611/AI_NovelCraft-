@@ -1,5 +1,8 @@
 import axios, { AxiosRequestConfig, AxiosResponse } from 'axios'
 
+const TOKEN_STORAGE_KEY = 'token'
+const RENEWED_TOKEN_HEADER = 'x-auth-token'
+
 type ApiClient = {
   get: <T = any>(url: string, config?: AxiosRequestConfig) => Promise<T>
   delete: <T = any>(url: string, config?: AxiosRequestConfig) => Promise<T>
@@ -23,7 +26,7 @@ const api: ApiClient = (axios.create({
 // 请求拦截器
 api.interceptors.request.use(
   (config: any) => {
-    const token = localStorage.getItem('token')
+    const token = localStorage.getItem(TOKEN_STORAGE_KEY)
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -37,6 +40,10 @@ api.interceptors.request.use(
 // 响应拦截器
 api.interceptors.response.use(
   (response: AxiosResponse) => {
+    const renewedToken = getRenewedToken(response)
+    if (renewedToken) {
+      localStorage.setItem(TOKEN_STORAGE_KEY, renewedToken)
+    }
     return response.data
   },
   (error: any) => {
@@ -52,7 +59,7 @@ api.interceptors.response.use(
           if (!window.location.pathname.includes('/login') && 
               !window.location.pathname.includes('/register')) {
             console.error('认证失败，请重新登录')
-            localStorage.removeItem('token')
+            localStorage.removeItem(TOKEN_STORAGE_KEY)
             window.location.href = '/login'
           }
           break
@@ -105,6 +112,17 @@ function getDefaultErrorMessage(status: number): string {
     default:
       return `请求失败 (${status})`
   }
+}
+
+function getRenewedToken(response: AxiosResponse): string | null {
+  const headers = response.headers || {}
+  const renewedToken = headers[RENEWED_TOKEN_HEADER] || headers['X-Auth-Token']
+
+  if (typeof renewedToken === 'string' && renewedToken.trim()) {
+    return renewedToken
+  }
+
+  return null
 }
 
 export default api 

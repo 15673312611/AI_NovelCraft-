@@ -1,5 +1,6 @@
 package com.novel.controller;
 
+import com.novel.common.security.SecurityContextTaskWrapper;
 import com.novel.dto.AIConfigRequest;
 import com.novel.service.AIWritingService;
 import com.novel.service.NovelService;
@@ -71,8 +72,6 @@ public class ChapterRewriteController {
                 aiConfig.setModel((String) requestMap.get("model"));
                 aiConfig.setBaseUrl((String) requestMap.get("baseUrl"));
 
-                log.info("✅ 章节重写流式 - 收到AI配置: provider={}, model={}",
-                    aiConfig.getProvider(), aiConfig.getModel());
             } else if (requestMap.get("aiConfig") instanceof Map) {
                 // 兼容旧的嵌套格式
                 @SuppressWarnings("unchecked")
@@ -111,17 +110,13 @@ public class ChapterRewriteController {
             if (chapterNumber != null && chapterNumber > 0) {
                 // 使用上下文增强的重写prompt（智能修改）
                 prompt = buildRewritePromptWithContext(novelId, chapterNumber, content, requirements);
-                log.info("🔄 开始章节重写流式处理（带上下文），章节号: {}, 内容长度: {}, 使用模型: {}",
-                    chapterNumber, content.length(), aiConfig.getModel());
             } else {
                 // 降级为简单重写prompt
                 prompt = buildRewritePrompt(content, requirements);
-                log.info("🔄 开始章节重写流式处理（无上下文），内容长度: {}, 使用模型: {}",
-                    content.length(), aiConfig.getModel());
             }
 
             // 异步执行流式重写
-            java.util.concurrent.CompletableFuture.runAsync(() -> {
+            java.util.concurrent.CompletableFuture.runAsync(SecurityContextTaskWrapper.wrap(() -> {
                 try {
                     aiWritingService.streamGenerateContent(
                         prompt,
@@ -141,7 +136,6 @@ public class ChapterRewriteController {
                     );
                     // 流式处理完成
                     emitter.complete();
-                    log.info("✅ 章节重写流式处理完成");
                 } catch (Exception e) {
                     log.error("章节重写流式处理失败", e);
                     try {
@@ -152,7 +146,7 @@ public class ChapterRewriteController {
                         log.error("发送错误事件失败", ex);
                     }
                 }
-            });
+            }));
 
         } catch (Exception e) {
             log.error("章节重写初始化失败", e);

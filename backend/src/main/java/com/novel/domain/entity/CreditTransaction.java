@@ -1,12 +1,14 @@
 package com.novel.domain.entity;
 
-import com.baomidou.mybatisplus.annotation.*;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-/**
- * 灵感点交易记录实体
- */
 @TableName("credit_transactions")
 public class CreditTransaction {
 
@@ -43,18 +45,17 @@ public class CreditTransaction {
     @TableField("operator_id")
     private Long operatorId;
 
-    /** 字数来源: DAILY_FREE=每日免费, PACKAGE=字数包 */
     @TableField("credit_source")
     private String creditSource = "PACKAGE";
 
     @TableField(value = "created_at", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 
-    // 交易类型枚举
     public enum TransactionType {
         RECHARGE("充值"),
         CONSUME("消费"),
         GIFT("赠送"),
+        REDEEM_CODE("兑换码"),
         REFUND("退款"),
         ADMIN_ADJUST("管理员调整");
 
@@ -69,46 +70,115 @@ public class CreditTransaction {
         }
     }
 
-    // Getters and Setters
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
+    public Long getId() {
+        return id;
+    }
 
-    public Long getUserId() { return userId; }
-    public void setUserId(Long userId) { this.userId = userId; }
+    public void setId(Long id) {
+        this.id = id;
+    }
 
-    public TransactionType getType() { return type; }
-    public void setType(TransactionType type) { this.type = type; }
+    public Long getUserId() {
+        return userId;
+    }
 
-    public BigDecimal getAmount() { return amount; }
-    public void setAmount(BigDecimal amount) { this.amount = amount; }
+    public void setUserId(Long userId) {
+        this.userId = userId;
+    }
 
-    public BigDecimal getBalanceBefore() { return balanceBefore; }
-    public void setBalanceBefore(BigDecimal balanceBefore) { this.balanceBefore = balanceBefore; }
+    public TransactionType getType() {
+        return type;
+    }
 
-    public BigDecimal getBalanceAfter() { return balanceAfter; }
-    public void setBalanceAfter(BigDecimal balanceAfter) { this.balanceAfter = balanceAfter; }
+    public void setType(TransactionType type) {
+        this.type = type;
+    }
 
-    public Long getAiTaskId() { return aiTaskId; }
-    public void setAiTaskId(Long aiTaskId) { this.aiTaskId = aiTaskId; }
+    public BigDecimal getAmount() {
+        return amount;
+    }
 
-    public String getModelId() { return modelId; }
-    public void setModelId(String modelId) { this.modelId = modelId; }
+    public void setAmount(BigDecimal amount) {
+        this.amount = amount;
+    }
 
-    public Integer getInputTokens() { return inputTokens; }
-    public void setInputTokens(Integer inputTokens) { this.inputTokens = inputTokens; }
+    public BigDecimal getBalanceBefore() {
+        return balanceBefore;
+    }
 
-    public Integer getOutputTokens() { return outputTokens; }
-    public void setOutputTokens(Integer outputTokens) { this.outputTokens = outputTokens; }
+    public void setBalanceBefore(BigDecimal balanceBefore) {
+        this.balanceBefore = balanceBefore;
+    }
 
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
+    public BigDecimal getBalanceAfter() {
+        return balanceAfter;
+    }
 
-    public Long getOperatorId() { return operatorId; }
-    public void setOperatorId(Long operatorId) { this.operatorId = operatorId; }
+    public void setBalanceAfter(BigDecimal balanceAfter) {
+        this.balanceAfter = balanceAfter;
+    }
 
-    public String getCreditSource() { return creditSource; }
-    public void setCreditSource(String creditSource) { this.creditSource = creditSource; }
+    public Long getAiTaskId() {
+        return aiTaskId;
+    }
 
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public void setAiTaskId(Long aiTaskId) {
+        this.aiTaskId = aiTaskId;
+    }
+
+    public String getModelId() {
+        return modelId;
+    }
+
+    public void setModelId(String modelId) {
+        this.modelId = modelId;
+    }
+
+    public Integer getInputTokens() {
+        return inputTokens;
+    }
+
+    public void setInputTokens(Integer inputTokens) {
+        this.inputTokens = inputTokens;
+    }
+
+    public Integer getOutputTokens() {
+        return outputTokens;
+    }
+
+    public void setOutputTokens(Integer outputTokens) {
+        this.outputTokens = outputTokens;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public Long getOperatorId() {
+        return operatorId;
+    }
+
+    public void setOperatorId(Long operatorId) {
+        this.operatorId = operatorId;
+    }
+
+    public String getCreditSource() {
+        return creditSource;
+    }
+
+    public void setCreditSource(String creditSource) {
+        this.creditSource = creditSource;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
 }

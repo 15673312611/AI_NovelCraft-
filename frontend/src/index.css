@@ -441,6 +441,40 @@ p {
   }
 }
 
+/* --------------------------------------------------------------------------
+   Ant Design / App Fixes
+
+   Some environments enable "reduced motion" at OS/browser level. Our global
+   rule above intentionally minimizes animations, but it can also make loading
+   spinners look "stuck" (one-frame animation). Keep progress indicators
+   animating so users can still perceive ongoing work.
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  /* Ant Design icons use `.anticon-spin` for rotating indicators (Button loading, etc.) */
+  .anticon-spin,
+  /* Ant Design Spin component (dot-based) */
+  .ant-spin-dot,
+  .ant-spin-dot-item,
+  /* App custom spinners */
+  .verify-spinner,
+  .task-loading-spinner,
+  .btn-spinner,
+  .spinner-ring {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  /* Preserve the intended slower timing for the reverse ring spinner. */
+  .spinner-ring.ring-2 {
+    animation-duration: 1.5s !important;
+  }
+}
+
+/* Ensure AntD Select dropdown is not hidden under custom high z-index layers. */
+.ant-select-dropdown {
+  z-index: 5000 !important;
+}
+
 /* 全局性能优化 */
 * {
   box-sizing: border-box;

@@ -13,15 +13,20 @@ import {
   CheckCircleOutlined, ClockCircleOutlined,
   ReloadOutlined, PlayCircleOutlined, EyeOutlined, InfoCircleOutlined, DownOutlined, StarFilled
 } from '@ant-design/icons';
+import ReactMarkdown from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
+import remarkGfm from 'remark-gfm';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import novelVolumeService, { NovelVolume } from '../services/novelVolumeService';
 import novelService, { Novel as NovelModel } from '../services/novelService';
 import novelOutlineService, { NovelOutline as OutlineModel } from '../services/novelOutlineService';
 import { aiTaskService } from '../services/aiTaskService';
 import api from '../services/api';
+import creditService, { type AIModel } from '../services/creditService';
 import { getWritingStyleTemplates } from '../services/promptTemplateService';
 import { checkAIConfig, withAIConfig, AI_CONFIG_ERROR_MESSAGE } from '../utils/aiRequest';
 import { formatAIErrorMessage } from '../utils/errorHandler';
+import { extractSseEvents } from '../utils/sse';
 import './VolumeManagementPage.css';
 import './VolumeManagementPage.apple.css';
 
@@ -33,6 +38,89 @@ interface LocationState {
   autoGenerate?: boolean;
 }
 
+interface OutlineStreamMeta {
+  outlineId: number;
+  basicIdea: string;
+  targetChapterCount: number;
+  targetWordCount: number;
+  createdAt: string;
+}
+
+type AppleSelectPlacement = 'top' | 'bottom';
+
+interface AppleSelectDropdownPosition {
+  top: number;
+  left: number;
+  width: number;
+  maxHeight: number;
+  placement: AppleSelectPlacement;
+}
+
+const APPLE_SELECT_GAP = 8;
+const APPLE_SELECT_MAX_HEIGHT = 280;
+const APPLE_SELECT_MIN_HEIGHT = 160;
+const APPLE_SELECT_VIEWPORT_PADDING = 16;
+
+const DEFAULT_APPLE_SELECT_POSITION: AppleSelectDropdownPosition = {
+  top: 0,
+  left: 0,
+  width: 0,
+  maxHeight: APPLE_SELECT_MAX_HEIGHT,
+  placement: 'bottom'
+};
+
+const getAppleSelectDropdownPosition = (
+  triggerElement: HTMLDivElement | null,
+  dropdownElement?: HTMLDivElement | null
+): AppleSelectDropdownPosition => {
+  if (!triggerElement) {
+    return DEFAULT_APPLE_SELECT_POSITION;
+  }
+
+  const rect = triggerElement.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const dropdownHeight = dropdownElement?.offsetHeight || APPLE_SELECT_MAX_HEIGHT;
+  const availableBelow = Math.max(
+    viewportHeight - rect.bottom - APPLE_SELECT_GAP - APPLE_SELECT_VIEWPORT_PADDING,
+    0
+  );
+  const availableAbove = Math.max(
+    rect.top - APPLE_SELECT_GAP - APPLE_SELECT_VIEWPORT_PADDING,
+    0
+  );
+  const shouldOpenTop =
+    availableBelow < Math.min(dropdownHeight, APPLE_SELECT_MIN_HEIGHT) &&
+    availableAbove > availableBelow;
+  const preferredSpace = shouldOpenTop ? availableAbove : availableBelow;
+  const maxHeight = Math.min(
+    APPLE_SELECT_MAX_HEIGHT,
+    Math.max(preferredSpace, Math.min(dropdownHeight, APPLE_SELECT_MIN_HEIGHT))
+  );
+  const visibleHeight = Math.min(dropdownHeight, maxHeight);
+  const width = Math.min(rect.width, viewportWidth - APPLE_SELECT_VIEWPORT_PADDING * 2);
+  const left = Math.min(
+    Math.max(rect.left, APPLE_SELECT_VIEWPORT_PADDING),
+    viewportWidth - APPLE_SELECT_VIEWPORT_PADDING - width
+  );
+  let top = shouldOpenTop
+    ? rect.top - APPLE_SELECT_GAP - visibleHeight
+    : rect.bottom + APPLE_SELECT_GAP;
+
+  top = Math.min(
+    Math.max(top, APPLE_SELECT_VIEWPORT_PADDING),
+    viewportHeight - APPLE_SELECT_VIEWPORT_PADDING - visibleHeight
+  );
+
+  return {
+    top,
+    left,
+    width,
+    maxHeight,
+    placement: shouldOpenTop ? 'top' : 'bottom'
+  };
+};
+
 interface OutlineTemplateSelectProps {
   value?: number;
   onChange: (value: number | undefined) => void;
@@ -42,25 +130,29 @@ interface OutlineTemplateSelectProps {
 
 const OutlineTemplateSelect: React.FC<OutlineTemplateSelectProps> = ({ value, onChange, options, loading }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
+  const [position, setPosition] = useState<AppleSelectDropdownPosition>(DEFAULT_APPLE_SELECT_POSITION);
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    let rafId = 0;
+
     const updatePosition = () => {
-      if (triggerRef.current && isOpen) {
-        const rect = triggerRef.current.getBoundingClientRect();
-        setPosition({
-          top: rect.bottom + 8,
-          left: rect.left,
-          width: rect.width
-        });
-      }
+      setPosition(getAppleSelectDropdownPosition(triggerRef.current, dropdownRef.current));
     };
 
-    updatePosition();
-    window.addEventListener('resize', updatePosition);
-    window.addEventListener('scroll', updatePosition, true);
+    const scheduleUpdate = () => {
+      window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(updatePosition);
+    };
+
+    scheduleUpdate();
+    window.addEventListener('resize', scheduleUpdate);
+    window.addEventListener('scroll', scheduleUpdate, true);
 
     const handleClickOutside = (e: MouseEvent) => {
       if (
@@ -73,26 +165,20 @@ const OutlineTemplateSelect: React.FC<OutlineTemplateSelectProps> = ({ value, on
       }
     };
 
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
+    document.addEventListener('mousedown', handleClickOutside);
 
     return () => {
-      window.removeEventListener('resize', updatePosition);
-      window.removeEventListener('scroll', updatePosition, true);
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', scheduleUpdate);
+      window.removeEventListener('scroll', scheduleUpdate, true);
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isOpen]);
 
   const handleToggle = () => {
     if (!loading) {
-      if (!isOpen && triggerRef.current) {
-        const rect = triggerRef.current.getBoundingClientRect();
-        setPosition({
-          top: rect.bottom + 8,
-          left: rect.left,
-          width: rect.width
-        });
+      if (!isOpen) {
+        setPosition(getAppleSelectDropdownPosition(triggerRef.current, dropdownRef.current));
       }
       setIsOpen(!isOpen);
     }
@@ -124,7 +210,9 @@ const OutlineTemplateSelect: React.FC<OutlineTemplateSelectProps> = ({ value, on
           style={{ 
             top: position.top, 
             left: position.left, 
-            width: position.width 
+            width: position.width,
+            maxHeight: position.maxHeight,
+            transformOrigin: position.placement === 'top' ? 'bottom center' : 'top center'
           }}
         >
           <div 
@@ -149,6 +237,128 @@ const OutlineTemplateSelect: React.FC<OutlineTemplateSelectProps> = ({ value, on
               <span className="apple-select-option-name">{option.name}</span>
               {option.description && (
                 <span className="apple-select-option-desc">{option.description}</span>
+              )}
+            </div>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+};
+
+interface AIModelSelectProps {
+  value?: string;
+  onChange: (value: string) => void;
+  options: AIModel[];
+  loading?: boolean;
+}
+
+const AIModelSelect: React.FC<AIModelSelectProps> = ({ value, onChange, options, loading }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [position, setPosition] = useState<AppleSelectDropdownPosition>(DEFAULT_APPLE_SELECT_POSITION);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    let rafId = 0;
+
+    const updatePosition = () => {
+      setPosition(getAppleSelectDropdownPosition(triggerRef.current, dropdownRef.current));
+    };
+
+    const scheduleUpdate = () => {
+      window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(updatePosition);
+    };
+
+    scheduleUpdate();
+    window.addEventListener('resize', scheduleUpdate);
+    window.addEventListener('scroll', scheduleUpdate, true);
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        triggerRef.current &&
+        !triggerRef.current.contains(e.target as Node) &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', scheduleUpdate);
+      window.removeEventListener('scroll', scheduleUpdate, true);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const handleToggle = () => {
+    if (loading || options.length === 0) {
+      return;
+    }
+
+    if (!isOpen) {
+      setPosition(getAppleSelectDropdownPosition(triggerRef.current, dropdownRef.current));
+    }
+
+    setIsOpen(!isOpen);
+  };
+
+  const selectedOption = options.find((option) => String(option.id) === value);
+
+  return (
+    <div className="apple-select">
+      <div
+        ref={triggerRef}
+        className={`apple-select-trigger ${isOpen ? 'open' : ''}`}
+        onClick={handleToggle}
+      >
+        {selectedOption ? (
+          <span className="apple-select-value">{selectedOption.displayName}</span>
+        ) : (
+          <span className="apple-select-placeholder">
+            {loading ? '加载中...' : options.length > 0 ? '请选择模型' : '暂无可用模型'}
+          </span>
+        )}
+        <DownOutlined className="apple-select-arrow" />
+      </div>
+
+      {isOpen && createPortal(
+        <div
+          ref={dropdownRef}
+          className="apple-select-dropdown-portal"
+          style={{
+            top: position.top,
+            left: position.left,
+            width: position.width,
+            maxHeight: position.maxHeight,
+            transformOrigin: position.placement === 'top' ? 'bottom center' : 'top center'
+          }}
+        >
+          {options.map((option) => (
+            <div
+              key={option.id}
+              className={`apple-select-option ${value === String(option.id) ? 'selected' : ''}`}
+              onClick={() => {
+                onChange(String(option.id));
+                setIsOpen(false);
+              }}
+            >
+              {option.isDefault && <StarFilled className="apple-select-option-star" />}
+              <span className="apple-select-option-name">{option.displayName}</span>
+              {option.description && (
+                <span className="apple-select-option-desc">
+                  {option.description}
+                </span>
               )}
             </div>
           ))}
@@ -210,11 +420,163 @@ const VolumeManagementPage: React.FC = () => {
   const [outlineTemplates, setOutlineTemplates] = useState<any[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | undefined>(undefined);
+  const [volumeTemplates, setVolumeTemplates] = useState<any[]>([]);
+  const [loadingVolumeTemplates, setLoadingVolumeTemplates] = useState(false);
+  const [selectedVolumeTemplateId, setSelectedVolumeTemplateId] = useState<number | undefined>(undefined);
+  const [availableModels, setAvailableModels] = useState<AIModel[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [selectedOutlineModel, setSelectedOutlineModel] = useState('');
 
   const { novelId } = useParams<{ novelId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const currentTaskIdRef = useRef<number | null>(null);
+  const outlineStreamTextRef = useRef('');
+  const outlineStreamFrameRef = useRef<number | null>(null);
+  const outlineStreamMetaRef = useRef<OutlineStreamMeta | null>(null);
 
+  const cancelOutlineStreamFrame = React.useCallback(() => {
+    if (outlineStreamFrameRef.current !== null) {
+      window.cancelAnimationFrame(outlineStreamFrameRef.current);
+      outlineStreamFrameRef.current = null;
+    }
+  }, []);
+
+  const flushOutlineStreamState = React.useCallback(() => {
+    outlineStreamFrameRef.current = null;
+    const meta = outlineStreamMetaRef.current;
+    if (!meta) {
+      return;
+    }
+
+    const streamedText = outlineStreamTextRef.current;
+    setCurrentSuperOutline((previous) => ({
+      ...(previous as any),
+      id: meta.outlineId || (previous as any)?.id || 0,
+      novelId: novelId as any,
+      basicIdea: meta.basicIdea || (previous as any)?.basicIdea || '',
+      coreTheme: (previous as any)?.coreTheme || '',
+      mainCharacters: (previous as any)?.mainCharacters || '',
+      plotStructure: streamedText,
+      worldSetting: (previous as any)?.worldSetting || '',
+      keyElements: (previous as any)?.keyElements || '',
+      conflictTypes: (previous as any)?.conflictTypes || '',
+      targetChapterCount: meta.targetChapterCount,
+      targetWordCount: meta.targetWordCount,
+      status: 'DRAFT',
+      feedbackHistory: (previous as any)?.feedbackHistory || '',
+      revisionCount: (previous as any)?.revisionCount || 0,
+      createdAt: (previous as any)?.createdAt || meta.createdAt,
+      updatedAt: new Date().toISOString(),
+    } as any));
+  }, [novelId]);
+
+  const scheduleOutlineStreamFlush = React.useCallback(() => {
+    if (outlineStreamFrameRef.current !== null) {
+      return;
+    }
+
+    outlineStreamFrameRef.current = window.requestAnimationFrame(() => {
+      flushOutlineStreamState();
+    });
+  }, [flushOutlineStreamState]);
+
+  const prepareOutlineStream = React.useCallback((meta: OutlineStreamMeta) => {
+    cancelOutlineStreamFrame();
+    outlineStreamTextRef.current = '';
+    outlineStreamMetaRef.current = meta;
+  }, [cancelOutlineStreamFrame]);
+
+  const updateOutlineStreamMeta = React.useCallback((patch: Partial<OutlineStreamMeta>) => {
+    if (!outlineStreamMetaRef.current) {
+      return;
+    }
+
+    outlineStreamMetaRef.current = {
+      ...outlineStreamMetaRef.current,
+      ...patch,
+    };
+  }, []);
+
+  const appendOutlineStreamChunk = React.useCallback((chunk: string) => {
+    outlineStreamTextRef.current += chunk;
+    scheduleOutlineStreamFlush();
+  }, [scheduleOutlineStreamFlush]);
+
+  const finalizeOutlineStream = React.useCallback(() => {
+    cancelOutlineStreamFrame();
+    flushOutlineStreamState();
+  }, [cancelOutlineStreamFrame, flushOutlineStreamState]);
+
+  const readGenerationParams = () => {
+    if (!novelId) {
+      return {};
+    }
+
+    try {
+      const paramsStr = localStorage.getItem(`novel_${novelId}_generation_params`);
+      return paramsStr ? JSON.parse(paramsStr) : {};
+    } catch (error) {
+      console.warn('读取生成参数失败，使用默认值', error);
+      return {};
+    }
+  };
+
+  const saveGenerationParams = (patch: Record<string, any>) => {
+    if (!novelId) {
+      return;
+    }
+
+    try {
+      const current = readGenerationParams();
+      const next = { ...current, ...patch };
+      localStorage.setItem(`novel_${novelId}_generation_params`, JSON.stringify(next));
+    } catch (error) {
+      console.warn('保存生成参数失败', error);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      cancelOutlineStreamFrame();
+    };
+  }, [cancelOutlineStreamFrame]);
+
+  const pickOutlineModel = (models: AIModel[], preferredModel?: string) => {
+    if (!Array.isArray(models) || models.length === 0) {
+      return '';
+    }
+
+    if (preferredModel && models.some((model) => String(model.id) === preferredModel)) {
+      return preferredModel;
+    }
+
+    const savedParams: any = readGenerationParams();
+    const savedModel = savedParams.model || savedParams.modelId;
+    if (savedModel && models.some((model) => String(model.id) === savedModel)) {
+      return savedModel;
+    }
+
+    const defaultModel = models.find((model) => model.isDefault);
+    return defaultModel ? String(defaultModel.id) : String(models[0].id);
+  };
+
+  const selectedOutlineModelInfo = availableModels.find((model) => String(model.id) === selectedOutlineModel);
+  const selectedVolumeTemplate = volumeTemplates.find((template: any) => template?.id === selectedVolumeTemplateId);
+
+  const getSelectedVolumeTemplateId = () => {
+    const savedParams: any = readGenerationParams();
+    return [
+      selectedVolumeTemplateId,
+      outlineForm.getFieldValue('volumeTemplateId'),
+      savedParams.volumeTemplateId
+    ]
+      .map((id) => {
+        const parsedId = Number(id);
+        return Number.isFinite(parsedId) && parsedId > 0 ? parsedId : undefined;
+      })
+      .find((id) => id !== undefined);
+  };
 
 
 
@@ -230,7 +592,9 @@ const VolumeManagementPage: React.FC = () => {
           loadNovelInfo(),
           loadVolumes(),
           checkSuperOutline(),
-          loadSuperOutlines()
+          loadSuperOutlines(),
+          loadOutlineTemplates(),
+          loadVolumeTemplates()
         ]);
 
         console.log('[初始化] 数据加载完成，开始恢复步骤状态');
@@ -252,18 +616,25 @@ const VolumeManagementPage: React.FC = () => {
 
         // 检查是否正在生成卷规划（用于刷新后恢复轮询）
         const generatingMark = localStorage.getItem(`novel_${novelId}_generating_volumes`);
+        const hasStoredVolumeTask = aiTaskService.getStoredTasks().some(task =>
+          task.novelId === Number(novelId) && task.type === 'VOLUME_GENERATION'
+        );
         if (generatingMark) {
           const startTime = parseInt(generatingMark);
           const elapsedMinutes = (Date.now() - startTime) / 1000 / 60;
 
           if (elapsedMinutes < 5) {
-            // 5分钟内，认为还在生成，恢复轮询
-            console.log('[恢复轮询] 检测到正在生成卷规划，恢复轮询...');
-            setTimeout(() => {
-              pollForVolumeGeneration().catch(err => {
-                console.error('[恢复轮询] 轮询失败:', err);
-              });
-            }, 1000);
+            if (hasStoredVolumeTask) {
+              console.log('[恢复轮询] 检测到已存储的卷规划任务，交由任务恢复逻辑处理');
+            } else {
+              // 5分钟内，认为还在生成，恢复轮询
+              console.log('[恢复轮询] 检测到正在生成卷规划，恢复轮询...');
+              setTimeout(() => {
+                pollForVolumeGeneration().catch(err => {
+                  console.error('[恢复轮询] 轮询失败:', err);
+                });
+              }, 1000);
+            }
           } else {
             // 超过5分钟，可能已经失败或完成，清除标记
             console.log('[恢复轮询] 生成时间过长，清除标记');
@@ -277,6 +648,23 @@ const VolumeManagementPage: React.FC = () => {
 
       initializeState();
     }
+  }, [novelId]);
+
+  useEffect(() => {
+    const loadAvailableModels = async () => {
+      setLoadingModels(true);
+      try {
+        const models = await creditService.getAvailableModels();
+        setAvailableModels(models);
+        setSelectedOutlineModel((currentModel) => pickOutlineModel(models, currentModel));
+      } catch (error) {
+        console.error('加载模型列表失败:', error);
+      } finally {
+        setLoadingModels(false);
+      }
+    };
+
+    loadAvailableModels();
   }, [novelId]);
 
   // 处理弹出配置弹窗：只在特定情况下弹出
@@ -318,6 +706,7 @@ const VolumeManagementPage: React.FC = () => {
       // 显示配置弹窗
       setQuickStartVisible(true);
       loadOutlineTemplates();
+      loadVolumeTemplates();
       // 标记已显示过弹窗（本次会话）
       setHasShownQuickStart(true);
       
@@ -471,6 +860,75 @@ const checkSuperOutline = async () => {
     }
   };
 
+  const isConfirmedOutlineVolumeTask = (task: any) => {
+    const rawParams = task?.parameters;
+    if (!rawParams || typeof rawParams !== 'string') {
+      return false;
+    }
+
+    try {
+      const parsed = JSON.parse(rawParams);
+      return parsed?.operationType === 'GENERATE_VOLUMES_FROM_CONFIRMED_OUTLINE';
+    } catch {
+      return false;
+    }
+  };
+
+  const extractTaskId = (response: any): number | null => {
+    const candidate = response?.taskId ?? response?.data?.taskId ?? response?.data?.data?.taskId;
+    const taskId = Number(candidate);
+    return Number.isFinite(taskId) && taskId > 0 ? taskId : null;
+  };
+
+  const rememberVolumeGenerationTask = (taskId: number) => {
+    if (!novelId) return;
+
+    currentTaskIdRef.current = taskId;
+    setCurrentTaskId(taskId);
+    setIsGenerating(true);
+    aiTaskService.storeTask(taskId, 'VOLUME_GENERATION', Number(novelId));
+  };
+
+  const clearVolumeGenerationTracking = (taskId?: number | null) => {
+    const targetTaskId = taskId ?? currentTaskIdRef.current;
+
+    if (novelId) {
+      localStorage.removeItem(`novel_${novelId}_generating_volumes`);
+    }
+
+    if (targetTaskId) {
+      aiTaskService.removeStoredTask(targetTaskId);
+    }
+
+    currentTaskIdRef.current = null;
+    setCurrentTaskId(null);
+    setIsGenerating(false);
+    setIsConfirmingOutline(false);
+  };
+
+  const findLatestVolumeGenerationTaskId = async (): Promise<number | null> => {
+    if (!novelId) return null;
+
+    try {
+      const tasksResponse = await aiTaskService.getAITasks(
+        0,
+        20,
+        undefined,
+        undefined,
+        parseInt(novelId)
+      );
+      const tasks = tasksResponse?.content || [];
+      const latestTask = tasks
+        .filter((task: any) => isConfirmedOutlineVolumeTask(task))
+        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+      return extractTaskId(latestTask);
+    } catch (error) {
+      console.warn('[任务恢复] 查询最新卷规划任务失败:', error);
+      return null;
+    }
+  };
+
 
   // 页面刷新后恢复任务
   const recoverTasks = async () => {
@@ -489,6 +947,9 @@ const checkSuperOutline = async () => {
 
         if (taskDetail.status === 'RUNNING' || taskDetail.status === 'PENDING') {
           // 恢复任务轮询
+          if (relevantTask.type === 'VOLUME_GENERATION') {
+            currentTaskIdRef.current = relevantTask.taskId;
+          }
           setCurrentTaskId(relevantTask.taskId);
           setIsGenerating(true);
 
@@ -506,9 +967,16 @@ const checkSuperOutline = async () => {
             () => {
               // 任务完成
               setTaskProgress({ percentage: 100, message: `${taskTypeText}生成完成！` });
-              setCurrentTaskId(null);
-              setIsGenerating(false);
-              aiTaskService.removeStoredTask(relevantTask.taskId);
+              if (relevantTask.type === 'VOLUME_GENERATION') {
+                clearVolumeGenerationTracking(relevantTask.taskId);
+                setCurrentStep(2);
+                saveCreationState(2);
+              } else {
+                setCurrentTaskId(null);
+                setIsGenerating(false);
+                aiTaskService.removeStoredTask(relevantTask.taskId);
+              }
+              setStopPolling(null);
 
               message.success(`${taskTypeText}生成成功！`);
               loadVolumes();
@@ -516,9 +984,14 @@ const checkSuperOutline = async () => {
             (error) => {
               // 任务失败
               setTaskProgress(null);
-              setCurrentTaskId(null);
-              setIsGenerating(false);
-              aiTaskService.removeStoredTask(relevantTask.taskId);
+              if (relevantTask.type === 'VOLUME_GENERATION') {
+                clearVolumeGenerationTracking(relevantTask.taskId);
+              } else {
+                setCurrentTaskId(null);
+                setIsGenerating(false);
+                aiTaskService.removeStoredTask(relevantTask.taskId);
+              }
+              setStopPolling(null);
               message.error(`生成${taskTypeText}失败: ` + error);
             }
           );
@@ -626,6 +1099,9 @@ const checkSuperOutline = async () => {
     setTaskProgress({ percentage: 0, message: '正在确认大纲...' });
 
     try {
+      let volumeGenerationTaskId: number | null = null;
+      const volumeTemplateId = getSelectedVolumeTemplateId();
+
       // 1) 直接将当前大纲内容写入 novels.outline
       const outlineText = (currentSuperOutline as any).plotStructure || (currentSuperOutline as any).outline || '';
       if (!outlineText || !String(outlineText).trim()) {
@@ -652,9 +1128,16 @@ const checkSuperOutline = async () => {
         if (outlineId) {
           console.log('[confirmSuperOutline] 确认大纲记录，outlineId=', outlineId);
           // 传递 AI 配置
-          await api.put(`/outline/${outlineId}/confirm`, withAIConfig({}));
+          await api.put(
+            `/outline/${outlineId}/confirm`,
+            withAIConfig(
+              volumeTemplateId ? { volumeTemplateId } : {},
+              { model: selectedOutlineModel }
+            )
+          );
           message.success('大纲确认成功，已触发卷规划生成！');
           triggered = true;
+          volumeGenerationTaskId = await findLatestVolumeGenerationTaskId();
         }
       } catch (err) {
         console.warn('[confirmSuperOutline] 获取大纲记录失败，将走兜底触发', err);
@@ -684,8 +1167,24 @@ const checkSuperOutline = async () => {
           console.log('[confirmSuperOutline] 根据大纲长度估算卷数，大纲长度=', outlineLength, ', volumeCount=', volumeCount);
         }
 
-        await api.post(`/volumes/${novelId}/generate-from-outline`, withAIConfig({ volumeCount }));
+        const response: any = await api.post(
+          `/volumes/${novelId}/generate-from-outline`,
+          withAIConfig(
+            {
+              volumeCount,
+              ...(volumeTemplateId ? { volumeTemplateId } : {})
+            },
+            { model: selectedOutlineModel }
+          )
+        );
+        volumeGenerationTaskId = extractTaskId(response) || await findLatestVolumeGenerationTaskId();
         message.success(`大纲确认成功，已触发卷规划生成（约${volumeCount}卷）！`);
+      }
+
+      if (volumeGenerationTaskId) {
+        rememberVolumeGenerationTask(volumeGenerationTaskId);
+      } else {
+        setIsGenerating(true);
       }
 
       setConfirmedSuperOutline({ novelId: Number(novelId), outline: outlineText } as any);
@@ -708,11 +1207,7 @@ const checkSuperOutline = async () => {
       message.error(error.message || '确认大纲失败');
       // 报错时清理所有进行中状态
       setTaskProgress(null);
-      setIsConfirmingOutline(false);
-      // 清理可能已设置的 localStorage 标记
-      if (novelId) {
-        localStorage.removeItem(`novel_${novelId}_generating_volumes`);
-      }
+      clearVolumeGenerationTracking();
     }
     // 注意：不在 finally 中设置 setIsConfirmingOutline(false)，
     // 因为成功时会启动轮询，轮询完成后才需要清理该状态
@@ -720,6 +1215,11 @@ const checkSuperOutline = async () => {
 
   // 轮询等待卷规划生成完成（直接跳到步骤2）
   const pollForVolumeGeneration = async () => {
+    if (stopPolling) {
+      stopPolling();
+      setStopPolling(null);
+    }
+
     let attempts = 0;
     const maxAttempts = 120; // 最多轮询4分钟（120次 * 4秒 = 480秒）
     let consecutiveErrors = 0; // 连续错误计数
@@ -728,9 +1228,20 @@ const checkSuperOutline = async () => {
     // 标记正在生成卷（持久化到 localStorage）
     localStorage.setItem(`novel_${novelId}_generating_volumes`, Date.now().toString());
     console.log('[轮询] 开始轮询卷规划生成，已设置 localStorage 标记');
+    setIsGenerating(true);
 
     return new Promise<void>((resolve, reject) => {
-      const intervalId = setInterval(async () => {
+      let intervalId: ReturnType<typeof setInterval> | null = null;
+
+      const cleanupPolling = () => {
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+        setStopPolling(null);
+      };
+
+      intervalId = setInterval(async () => {
         attempts++;
         try {
           // 更新进度 - 优化为3分钟模拟曲线，前期快后期慢，分段增长
@@ -775,13 +1286,17 @@ const checkSuperOutline = async () => {
             })[0];
 
             if (latestTask) {
+              const latestTaskId = extractTaskId(latestTask);
+              if (latestTaskId && !currentTaskIdRef.current) {
+                rememberVolumeGenerationTask(latestTaskId);
+              }
+
               console.log('[轮询] 卷规划任务状态:', latestTask.status, '错误信息:', latestTask.errorMessage);
 
               if (latestTask.status === 'FAILED' || latestTask.status === 'CANCELLED') {
-                clearInterval(intervalId);
-                localStorage.removeItem(`novel_${novelId}_generating_volumes`);
+                cleanupPolling();
                 setTaskProgress(null);
-                setIsConfirmingOutline(false);
+                clearVolumeGenerationTracking(latestTaskId);
 
                 const errorMsg = latestTask.errorMessage || '任务失败';
                 message.error({
@@ -812,11 +1327,10 @@ const checkSuperOutline = async () => {
             
             // 如果连续多次获取失败，可能是网络问题或服务异常
             if (consecutiveErrors >= maxConsecutiveErrors) {
-              clearInterval(intervalId);
-              localStorage.removeItem(`novel_${novelId}_generating_volumes`);
+              cleanupPolling();
               setTaskProgress(null);
-              setIsConfirmingOutline(false);
-              
+              clearVolumeGenerationTracking();
+               
               message.error({
                 content: '无法连接到服务器，请检查网络连接或稍后重试',
                 duration: 8
@@ -847,11 +1361,9 @@ const checkSuperOutline = async () => {
             }
 
             if (Array.isArray(list) && list.length > 0) {
-              clearInterval(intervalId);
-
-              // 卷规划生成完成，清除标记
-              localStorage.removeItem(`novel_${novelId}_generating_volumes`);
-              console.log('[轮询] 卷规划生成完成，已清除 localStorage 标记');
+              cleanupPolling();
+              clearVolumeGenerationTracking();
+              console.log('[轮询] 卷规划生成完成，已清除生成跟踪');
 
               // 卷规划生成完成，直接跳到步骤2（跳过步骤1的生成卷蓝图页面）
               setTaskProgress({ percentage: 100, message: '卷规划生成完成！' });
@@ -872,11 +1384,10 @@ const checkSuperOutline = async () => {
           
           // 连续错误处理
           if (consecutiveErrors >= maxConsecutiveErrors) {
-            clearInterval(intervalId);
-            localStorage.removeItem(`novel_${novelId}_generating_volumes`);
+            cleanupPolling();
             setTaskProgress(null);
-            setIsConfirmingOutline(false);
-            
+            clearVolumeGenerationTracking();
+             
             message.error({
               content: '生成过程中出现异常，请刷新页面重试',
               duration: 8
@@ -889,11 +1400,10 @@ const checkSuperOutline = async () => {
 
         // 超时处理
         if (attempts >= maxAttempts) {
-          clearInterval(intervalId);
-          localStorage.removeItem(`novel_${novelId}_generating_volumes`);
-          console.log('[轮询] 轮询超时，已清除 localStorage 标记');
+          cleanupPolling();
+          clearVolumeGenerationTracking();
+          console.log('[轮询] 轮询超时，已清除生成跟踪');
           setTaskProgress(null);
-          setIsConfirmingOutline(false);
           
           message.warning({
             content: '卷规划生成超时，请刷新页面查看是否已生成，或重新尝试',
@@ -903,21 +1413,36 @@ const checkSuperOutline = async () => {
           reject(new Error('卷规划生成超时'));
         }
       }, 4000); // 每次轮询间隔4秒
+
+      setStopPolling(() => () => {
+        cleanupPolling();
+      });
     });
   };
 
   // 取消卷生成任务
-  const cancelVolumeGeneration = () => {
-    if (novelId) {
-      localStorage.removeItem(`novel_${novelId}_generating_volumes`);
-      console.log('[取消生成] 已清除生成标记');
+  const cancelVolumeGeneration = async () => {
+    const taskId = currentTaskIdRef.current;
+
+    if (stopPolling) {
+      stopPolling();
+      setStopPolling(null);
     }
-    setTaskProgress(null);
-    setIsGenerating(false);
-    setCurrentTaskId(null);
-    message.info('已取消生成任务');
-    // 刷新页面以停止轮询
-    window.location.reload();
+
+    try {
+      if (taskId) {
+        await aiTaskService.cancelAITask(taskId);
+        message.info('已请求停止生成，页面将停止继续轮询');
+      } else {
+        message.info('已停止当前页面轮询，后台任务状态可能稍后同步');
+      }
+    } catch (error: any) {
+      console.error('[取消生成] 请求停止任务失败:', error);
+      message.warning(error?.message || '停止请求失败，已停止当前页面轮询');
+    } finally {
+      setTaskProgress(null);
+      clearVolumeGenerationTracking(taskId);
+    }
   };
 
   // 加载大纲模板列表
@@ -930,16 +1455,44 @@ const checkSuperOutline = async () => {
       console.log('解析后的模板列表:', templates);
       setOutlineTemplates(templates);
 
-      // 如果有默认模板，自动选中
+      const savedParams: any = readGenerationParams();
+      const savedTemplateId = savedParams.templateId;
+      const currentTemplateId = selectedTemplateId ?? outlineForm.getFieldValue('templateId');
+      const preferredTemplateId = [savedTemplateId, currentTemplateId]
+        .find((id) => id && templates.some((t: any) => t.id === id));
       const defaultTemplate = templates.find((t: any) => t.isDefault);
-      if (defaultTemplate) {
-        setSelectedTemplateId(defaultTemplate.id);
-        outlineForm.setFieldValue('templateId', defaultTemplate.id);
-      }
+      const nextTemplateId = preferredTemplateId ?? defaultTemplate?.id;
+
+      setSelectedTemplateId(nextTemplateId);
+      outlineForm.setFieldValue('templateId', nextTemplateId);
     } catch (error) {
       console.error('加载大纲模板失败:', error);
     } finally {
       setLoadingTemplates(false);
+    }
+  };
+
+  const loadVolumeTemplates = async () => {
+    setLoadingVolumeTemplates(true);
+    try {
+      const templates = await getWritingStyleTemplates('volume_split');
+      setVolumeTemplates(templates);
+
+      const savedParams: any = readGenerationParams();
+      const currentTemplateId = selectedVolumeTemplateId ?? outlineForm.getFieldValue('volumeTemplateId');
+      const preferredTemplateId = [currentTemplateId, savedParams.volumeTemplateId]
+        .map((id) => {
+          const parsedId = Number(id);
+          return Number.isFinite(parsedId) && parsedId > 0 ? parsedId : undefined;
+        })
+        .find((id) => id !== undefined && templates.some((template: any) => Number(template.id) === id));
+
+      setSelectedVolumeTemplateId(preferredTemplateId);
+      outlineForm.setFieldValue('volumeTemplateId', preferredTemplateId);
+    } catch (error) {
+      console.error('加载拆分卷模板失败:', error);
+    } finally {
+      setLoadingVolumeTemplates(false);
     }
   };
 
@@ -1034,12 +1587,24 @@ const checkSuperOutline = async () => {
       // 流式生成大纲（SSE）
       setIsGeneratingOutline(true);
       setCurrentSuperOutline(null);
+      prepareOutlineStream({
+        outlineId: 0,
+        basicIdea: values.basicIdea,
+        targetChapterCount: values.targetChapters || 300,
+        targetWordCount: values.targetWords || 1000000,
+        createdAt: new Date().toISOString()
+      });
 
       // 保存生成参数到 localStorage，供重新生成时使用
       const generationParams = {
         templateId: selectedTemplateId || values.templateId,
+        volumeTemplateId: selectedVolumeTemplateId ?? values.volumeTemplateId,
         outlineWordLimit: values.outlineWordLimit || 2000,
-        volumeCount: values.volumeCount || 5
+        volumeCount: values.volumeCount || 5,
+        targetChapters: values.targetChapters || 300,
+        wordsPerChapter: values.wordsPerChapter || 2000,
+        targetWords: values.targetWords || 1000000,
+        model: selectedOutlineModel
       };
       localStorage.setItem(`novel_${novelId}_generation_params`, JSON.stringify(generationParams));
 
@@ -1047,6 +1612,8 @@ const checkSuperOutline = async () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+          'Cache-Control': 'no-cache',
           ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
         },
         body: JSON.stringify(withAIConfig({
@@ -1057,6 +1624,8 @@ const checkSuperOutline = async () => {
           templateId: generationParams.templateId,
           outlineWordLimit: generationParams.outlineWordLimit,
           volumeCount: generationParams.volumeCount
+        }, {
+          model: selectedOutlineModel
         }))
       });
 
@@ -1070,40 +1639,29 @@ const checkSuperOutline = async () => {
 
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
-      let outlineIdFromSSE: number | null = null;
-      let streamedText = '';
-
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
 
-        const events = buffer.split('\n\n');
-        buffer = events.pop() || '';
+        const parsed = extractSseEvents(buffer);
+        buffer = parsed.remaining;
 
-        for (const evt of events) {
-          const lines = evt.split('\n');
-          let eventName = 'message';
-          let data = '';
-          for (const line of lines) {
-            if (line.startsWith('event:')) eventName = line.replace('event:', '').trim();
-            if (line.startsWith('data:')) data += line.replace('data:', '').trim();
-          }
+        for (const evt of parsed.events) {
+          const eventName = evt.event;
+          const data = evt.data;
           if (eventName === 'meta') {
             try {
               const meta = JSON.parse(data);
-              outlineIdFromSSE = meta.outlineId;
+              updateOutlineStreamMeta({ outlineId: meta.outlineId || 0 });
             } catch {}
           } else if (eventName === 'done') {
-            console.log('[SSE done] 生成完成，当前 currentSuperOutline:', currentSuperOutline);
-            console.log('[SSE done] plotStructure 长度:', currentSuperOutline?.plotStructure?.length);
-            
+            finalizeOutlineStream();
             setIsGeneratingOutline(false);
             setHasSuperOutline(true);
             
             // 后端流式生成时已自动保存到 novel_outlines 表（状态为DRAFT）
             // 前端只需提示用户生成完成即可
-            console.log('大纲生成完成，后端已自动保存为草稿状态');
             message.success('大纲生成完成！您可以查看、修改或确认大纲');
             
             // 保持 currentSuperOutline，这样页面会继续显示大纲内容而不是回到"准备开始创作"状态
@@ -1116,30 +1674,12 @@ const checkSuperOutline = async () => {
           } else if (eventName === 'error') {
             throw new Error(data || '生成失败');
           } else if (eventName === 'chunk' || (eventName === 'message' && data)) {
-            // 处理流式文本块（兼容 'chunk' 和默认 'message' 事件）
-            streamedText += data;
-            setCurrentSuperOutline({
-              id: outlineIdFromSSE || 0,
-              novelId: novelId as any,
-              basicIdea: values.basicIdea,
-              coreTheme: '',
-              mainCharacters: '',
-              plotStructure: streamedText,
-              worldSetting: '',
-              keyElements: '',
-              conflictTypes: '',
-              targetChapterCount: values.targetChapters || 300,
-              targetWordCount: values.targetWords || 1000000,
-              status: 'DRAFT',
-              feedbackHistory: '',
-              revisionCount: 0,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            } as any);
+            appendOutlineStreamChunk(data);
           }
         }
       }
     } catch (error: any) {
+      finalizeOutlineStream();
       console.error('[生成大纲失败]', error);
       message.error({
         content: formatAIErrorMessage(error),
@@ -1344,20 +1884,25 @@ const regenerateSuperOutline = async () => {
       }
 
       // 读取之前保存的生成参数（模板ID、大纲字数限制等）
-      let savedParams: any = {};
-      try {
-        const paramsStr = localStorage.getItem(`novel_${novelId}_generation_params`);
-        if (paramsStr) {
-          savedParams = JSON.parse(paramsStr);
-        }
-      } catch (e) {
-        console.warn('读取生成参数失败，使用默认值', e);
-      }
+      const savedParams: any = readGenerationParams();
+      const outlineModel = pickOutlineModel(
+        availableModels,
+        savedParams.model || savedParams.modelId || selectedOutlineModel
+      );
+      prepareOutlineStream({
+        outlineId: currentSuperOutline?.id || 0,
+        basicIdea,
+        targetChapterCount: currentSuperOutline.targetChapterCount || 500,
+        targetWordCount: currentSuperOutline.targetWordCount || 1000000,
+        createdAt: (currentSuperOutline as any)?.createdAt || new Date().toISOString()
+      });
 
       const sseResp = await fetch(`/api/outline/generate-stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+          'Cache-Control': 'no-cache',
           ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
         },
         body: JSON.stringify(withAIConfig({
@@ -1369,6 +1914,8 @@ const regenerateSuperOutline = async () => {
           templateId: savedParams.templateId,
           outlineWordLimit: savedParams.outlineWordLimit || 2000,
           volumeCount: savedParams.volumeCount || 5
+        }, {
+          model: outlineModel
         }))
       });
 
@@ -1382,29 +1929,24 @@ const regenerateSuperOutline = async () => {
 
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
-      let streamedText = '';
-
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
 
-        const events = buffer.split('\n\n');
-        buffer = events.pop() || '';
+        const parsed = extractSseEvents(buffer);
+        buffer = parsed.remaining;
 
-        for (const evt of events) {
-          const lines = evt.split('\n');
-          let eventName = 'message';
-          let data = '';
-          for (const line of lines) {
-            if (line.startsWith('event:')) eventName = line.replace('event:', '').trim();
-            if (line.startsWith('data:')) data += line.replace('data:', '').trim();
-          }
+        for (const evt of parsed.events) {
+          const eventName = evt.event;
+          const data = evt.data;
           if (eventName === 'meta') {
             try {
-              JSON.parse(data);
+              const meta = JSON.parse(data);
+              updateOutlineStreamMeta({ outlineId: meta.outlineId || currentSuperOutline?.id || 0 });
             } catch {}
           } else if (eventName === 'done') {
+            finalizeOutlineStream();
             setIsGeneratingOutline(false);
             message.success('大纲重新生成完成！');
             
@@ -1415,16 +1957,12 @@ const regenerateSuperOutline = async () => {
           } else if (eventName === 'error') {
             throw new Error(data || '生成失败');
           } else if (data) {
-            // 默认的 message 事件（后端直接send纯文本）
-            streamedText += data;
-            setCurrentSuperOutline({
-              ...(currentSuperOutline as any),
-              plotStructure: streamedText,
-            } as any);
+            appendOutlineStreamChunk(data);
           }
         }
       }
     } catch (error: any) {
+      finalizeOutlineStream();
       console.error('[重新生成大纲失败]', error);
       message.error(formatAIErrorMessage(error));
       setIsGeneratingOutline(false);
@@ -1607,18 +2145,7 @@ const enterWriting = (volume: NovelVolume) => {
                     color: 'white',
                     boxShadow: '0 4px 20px rgba(59, 130, 246, 0.25)'
                   }}>
-                    <div style={{
-                      width: '40px',
-                      height: '40px',
-                      borderRadius: '12px',
-                      background: 'rgba(255, 255, 255, 0.2)',
-                      backdropFilter: 'blur(10px)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '20px',
-                      animation: 'pulse 2s infinite'
-                    }}>
+                    <div className="vm-generating-badge vm-generating-badge--outline">
                       <RobotOutlined style={{ fontSize: '18px', color: 'white' }} />
                     </div>
                     <div style={{ flex: 1 }}>
@@ -1629,12 +2156,11 @@ const enterWriting = (volume: NovelVolume) => {
                         请稍候，精彩的故事即将呈现...
                       </div>
                     </div>
-                    <div style={{
+                    <div className="vm-generating-live-dot" style={{
                       width: '8px',
                       height: '8px',
                       borderRadius: '50%',
                       background: '#22c55e',
-                      animation: 'blink 1.5s infinite',
                       boxShadow: '0 0 16px #22c55e'
                     }} />
                   </div>
@@ -1696,7 +2222,17 @@ const enterWriting = (volume: NovelVolume) => {
                     <div className="outline-content">
                       {(currentSuperOutline as any)?.plotStructure ? (
                         <div className="outline-content-wrapper" style={{ animation: 'fadeIn 0.3s ease-in' }}>
-                          {(currentSuperOutline as any).plotStructure}
+                          <div className="outline-markdown">
+                            {isGeneratingOutline ? (
+                              <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                                {(currentSuperOutline as any).plotStructure}
+                              </div>
+                            ) : (
+                              <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                                {(currentSuperOutline as any).plotStructure}
+                              </ReactMarkdown>
+                            )}
+                          </div>
                         </div>
                       ) : (
                         <div style={{
@@ -1704,10 +2240,9 @@ const enterWriting = (volume: NovelVolume) => {
                           padding: '80px 20px',
                           color: '#94a3b8'
                         }}>
-                          <div style={{
+                          <div className="vm-generating-placeholder-icon" style={{
                             fontSize: '56px',
-                            marginBottom: '20px',
-                            animation: 'pulse 2s infinite'
+                            marginBottom: '20px'
                           }}>
                             <ClockCircleOutlined style={{ fontSize: 52 }} />
                           </div>
@@ -1777,6 +2312,7 @@ const enterWriting = (volume: NovelVolume) => {
                         // 打开配置弹窗
                         setQuickStartVisible(true);
                         loadOutlineTemplates();
+                        loadVolumeTemplates();
                         message.info('请重新配置参数');
                       }}
                       style={{
@@ -1894,7 +2430,11 @@ const enterWriting = (volume: NovelVolume) => {
                 {!isEditingOutline ? (
                   <div className="outline-content">
                     <div className="outline-content-wrapper">
-                      {((currentSuperOutline as any)?.plotStructure) || '大纲内容加载中...'}
+                      <div className="outline-markdown">
+                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                          {((currentSuperOutline as any)?.plotStructure) || '大纲内容加载中...'}
+                        </ReactMarkdown>
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -1918,6 +2458,41 @@ const enterWriting = (volume: NovelVolume) => {
                   </div>
                 )}
                     </Card>
+
+              {!isEditingOutline && (
+                <div
+                  style={{
+                    maxWidth: 560,
+                    margin: '0 auto 28px',
+                    padding: '20px 22px',
+                    background: 'linear-gradient(135deg, #f8fffe 0%, #ecfeff 100%)',
+                    border: '1px solid #c7f9f1',
+                    borderRadius: '18px',
+                    boxShadow: '0 12px 30px rgba(15, 118, 110, 0.08)',
+                    textAlign: 'left'
+                  }}
+                >
+                  <div style={{ fontSize: '15px', fontWeight: 600, color: '#134e4a', marginBottom: 8 }}>
+                    拆分卷模板
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#4b5563', marginBottom: 14, lineHeight: 1.7 }}>
+                    只影响本次确认后的拆分卷规划，不会重新生成当前大纲。
+                  </div>
+                  <OutlineTemplateSelect
+                    value={selectedVolumeTemplateId}
+                    options={volumeTemplates}
+                    loading={loadingVolumeTemplates}
+                    onChange={(val) => {
+                      setSelectedVolumeTemplateId(val);
+                      outlineForm.setFieldValue('volumeTemplateId', val);
+                      saveGenerationParams({ volumeTemplateId: val });
+                    }}
+                  />
+                  <div className="vm-template-hint">
+                    {selectedVolumeTemplate?.description || '未选择时使用系统默认拆分卷提示词。'}
+                  </div>
+                </div>
+              )}
 
               {/* 操作按钮 */}
               <div style={{ textAlign: 'center' }}>
@@ -2049,18 +2624,7 @@ const enterWriting = (volume: NovelVolume) => {
                   color: 'white',
                   boxShadow: '0 4px 16px rgba(102, 126, 234, 0.25)'
                 }}>
-                  <div style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '50%',
-                    background: 'rgba(255, 255, 255, 0.2)',
-                    backdropFilter: 'blur(10px)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-                    fontSize: '18px',
-                    animation: 'pulse 2s infinite'
-            }}>
+                  <div className="vm-generating-badge vm-generating-badge--compact">
               <BarChartOutlined style={{ fontSize: 18, color: 'white' }} />
             </div>
                   <div style={{ flex: 1 }}>
@@ -2071,12 +2635,11 @@ const enterWriting = (volume: NovelVolume) => {
                       请稍候，正在智能规划章节结构...
                     </div>
                   </div>
-                  <div style={{
+                  <div className="vm-generating-live-dot" style={{
                     width: '6px',
                     height: '6px',
                     borderRadius: '50%',
                     background: '#52c41a',
-                    animation: 'blink 1.5s infinite',
                     boxShadow: '0 0 12px #52c41a'
                   }} />
                 </div>
@@ -2251,29 +2814,12 @@ const enterWriting = (volume: NovelVolume) => {
           >
             {/* 卷列表 */}
             <div style={{ marginBottom: 20 }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: 20,
-                paddingBottom: 16,
-                borderBottom: '2px solid #f1f5f9'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <div style={{
-                    width: '42px',
-                    height: '42px',
-                    borderRadius: '12px',
-                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '20px',
-                    boxShadow: '0 4px 14px rgba(59, 130, 246, 0.3)'
-                  }}>
-                    <BookOutlined style={{ fontSize: 20, color: 'white' }} />
+              <div className="volume-list-toolbar">
+                <div className="volume-list-title-group">
+                  <div className="volume-list-icon">
+                    <BookOutlined />
                   </div>
-                  <div>
+                  <div className="volume-list-title-meta">
                     <Title level={4} style={{ margin: 0, color: '#0f172a', fontWeight: 700, fontSize: '18px', letterSpacing: '-0.02em' }}>
                       卷列表
                     </Title>
@@ -2282,145 +2828,133 @@ const enterWriting = (volume: NovelVolume) => {
                     </Text>
                   </div>
                 </div>
-                <Button
-                  icon={<ReloadOutlined spin={isRegeneratingVolumes} />}
-                  loading={isRegeneratingVolumes}
-                  disabled={isRegeneratingVolumes}
-                  style={{
-                    borderRadius: '8px',
-                    height: '36px',
-                    padding: '0 16px',
-                    border: '1.5px solid #e2e8f0',
-                    fontWeight: 500,
-                    fontSize: '13px',
-                    transition: 'all 0.2s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isRegeneratingVolumes) {
-                      e.currentTarget.style.borderColor = '#3b82f6';
-                      e.currentTarget.style.color = '#2563eb';
-                      e.currentTarget.style.background = 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isRegeneratingVolumes) {
-                      e.currentTarget.style.borderColor = '#e2e8f0';
-                      e.currentTarget.style.color = '';
-                      e.currentTarget.style.background = '';
-                    }
-                  }}
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    Modal.confirm({
-                      title: '重新生成卷规划',
-                      content: '确定要重新生成所有卷的规划吗？这将清除现有卷及其章纲数据，并基于当前大纲重新拆分卷。',
-                      okText: '确认重新生成',
-                      cancelText: '取消',
-                      okButtonProps: { danger: true },
-                      onOk: async () => {
-                        try {
-                          setIsRegeneratingVolumes(true);
-                          setFakeProgress(0);
-                          setRegenerateProgress({ percentage: 0, message: '正在提交重新生成任务...' });
-                          
-                          // 启动假进度条动画：每500ms增加5-10%，最多到85%
-                          const fakeProgressInterval = setInterval(() => {
-                            setFakeProgress(prev => {
-                              if (prev >= 85) {
-                                clearInterval(fakeProgressInterval);
-                                return prev;
-                              }
-                              const increment = Math.floor(Math.random() * 6) + 5; // 5-10%
-                              return Math.min(prev + increment, 85);
-                            });
-                          }, 500);
-                          
-                          const response = await api.post(`/volumes/${novelId}/generate-from-outline`, withAIConfig({
-                            volumeCount: volumes.length
-                          }));
-                          
-                          if (response.data?.taskId) {
-                            const taskId = response.data.taskId;
-                            setRegenerateProgress({ percentage: 10, message: '已提交任务，正在清理旧数据...' });
-                            
-                            // 开始轮询任务状态
-                            const pollInterval = setInterval(async () => {
-                              try {
-                                const taskResp = await api.get(`/ai-tasks/${taskId}`);
-                                const task = taskResp.data || taskResp;
-                                
-                                // 更新进度：使用真实进度和假进度的较大值
-                                if (task.progress !== undefined) {
-                                  const realProgress = task.progress;
-                                  setFakeProgress(prev => Math.max(prev, realProgress));
-                                  setRegenerateProgress({
-                                    percentage: Math.max(fakeProgress, realProgress),
-                                    message: task.message || '正在重新生成卷规划...'
-                                  });
-                                }
-                                
-                                if (task.status === 'COMPLETED') {
+                <div className="volume-list-actions">
+                  <Tooltip title={isRegeneratingVolumes ? '正在重新生成卷规划' : '重新生成卷规划'}>
+                    <Button
+                      aria-label={isRegeneratingVolumes ? '正在重新生成卷规划' : '重新生成卷规划'}
+                      className="volume-list-refresh-button"
+                      icon={<ReloadOutlined spin={isRegeneratingVolumes} />}
+                      loading={isRegeneratingVolumes}
+                      disabled={isRegeneratingVolumes}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        Modal.confirm({
+                          title: '重新生成卷规划',
+                          content: '确定要重新生成所有卷的规划吗？这将清除现有卷及其章纲数据，并基于当前大纲重新拆分卷。',
+                          okText: '确认重新生成',
+                          cancelText: '取消',
+                          okButtonProps: { danger: true },
+                          onOk: async () => {
+                            try {
+                              setIsRegeneratingVolumes(true);
+                              setFakeProgress(0);
+                              setRegenerateProgress({ percentage: 0, message: '正在提交重新生成任务...' });
+
+                              // 启动假进度条动画：每500ms增加5-10%，最多到85%
+                              const fakeProgressInterval = setInterval(() => {
+                                setFakeProgress(prev => {
+                                  if (prev >= 85) {
+                                    clearInterval(fakeProgressInterval);
+                                    return prev;
+                                  }
+                                  const increment = Math.floor(Math.random() * 6) + 5; // 5-10%
+                                  return Math.min(prev + increment, 85);
+                                });
+                              }, 500);
+
+                              const volumeTemplateId = getSelectedVolumeTemplateId();
+                              const response = await api.post(
+                                `/volumes/${novelId}/generate-from-outline`,
+                                withAIConfig({
+                                  volumeCount: volumes.length,
+                                  ...(volumeTemplateId ? { volumeTemplateId } : {})
+                                }, {
+                                  model: selectedOutlineModel
+                                })
+                              );
+
+                              if (response.data?.taskId) {
+                                const taskId = response.data.taskId;
+                                setRegenerateProgress({ percentage: 10, message: '已提交任务，正在清理旧数据...' });
+
+                                // 开始轮询任务状态
+                                const pollInterval = setInterval(async () => {
+                                  try {
+                                    const taskResp = await api.get(`/ai-tasks/${taskId}`);
+                                    const task = taskResp.data || taskResp;
+
+                                    // 更新进度：使用真实进度和假进度的较大值
+                                    if (task.progress !== undefined) {
+                                      const realProgress = task.progress;
+                                      setFakeProgress(prev => Math.max(prev, realProgress));
+                                      setRegenerateProgress({
+                                        percentage: Math.max(fakeProgress, realProgress),
+                                        message: task.message || '正在重新生成卷规划...'
+                                      });
+                                    }
+
+                                    if (task.status === 'COMPLETED') {
+                                      clearInterval(pollInterval);
+                                      clearInterval(fakeProgressInterval);
+                                      setFakeProgress(100);
+                                      setRegenerateProgress({ percentage: 100, message: '重新生成完成！' });
+                                      message.success('卷规划重新生成完成');
+
+                                      // 延迟一下再刷新，让用户看到100%
+                                      setTimeout(() => {
+                                        setIsRegeneratingVolumes(false);
+                                        setRegenerateProgress(null);
+                                        setFakeProgress(0);
+                                        loadVolumes();
+                                      }, 1000);
+                                    } else if (task.status === 'FAILED') {
+                                      clearInterval(pollInterval);
+                                      clearInterval(fakeProgressInterval);
+                                      setIsRegeneratingVolumes(false);
+                                      setRegenerateProgress(null);
+                                      setFakeProgress(0);
+                                      message.error('卷规划生成失败: ' + (task.error || '未知错误'));
+                                    }
+                                  } catch (err) {
+                                    console.error('轮询任务状态失败:', err);
+                                  }
+                                }, 2000);
+
+                                // 10分钟后停止轮询
+                                setTimeout(() => {
                                   clearInterval(pollInterval);
                                   clearInterval(fakeProgressInterval);
-                                  setFakeProgress(100);
-                                  setRegenerateProgress({ percentage: 100, message: '重新生成完成！' });
-                                  message.success('卷规划重新生成完成');
-                                  
-                                  // 延迟一下再刷新，让用户看到100%
-                                  setTimeout(() => {
+                                  if (isRegeneratingVolumes) {
                                     setIsRegeneratingVolumes(false);
                                     setRegenerateProgress(null);
                                     setFakeProgress(0);
-                                    loadVolumes();
-                                  }, 1000);
-                                } else if (task.status === 'FAILED') {
-                                  clearInterval(pollInterval);
-                                  clearInterval(fakeProgressInterval);
+                                    message.warning('任务超时，请刷新页面查看结果');
+                                  }
+                                }, 600000);
+                              } else {
+                                clearInterval(fakeProgressInterval);
+                                setFakeProgress(100);
+                                setRegenerateProgress({ percentage: 100, message: '重新生成完成！' });
+                                setTimeout(() => {
                                   setIsRegeneratingVolumes(false);
                                   setRegenerateProgress(null);
                                   setFakeProgress(0);
-                                  message.error('卷规划生成失败: ' + (task.error || '未知错误'));
-                                }
-                              } catch (err) {
-                                console.error('轮询任务状态失败:', err);
+                                  loadVolumes();
+                                }, 1000);
                               }
-                            }, 2000);
-                            
-                            // 10分钟后停止轮询
-                            setTimeout(() => {
-                              clearInterval(pollInterval);
-                              clearInterval(fakeProgressInterval);
-                              if (isRegeneratingVolumes) {
-                                setIsRegeneratingVolumes(false);
-                                setRegenerateProgress(null);
-                                setFakeProgress(0);
-                                message.warning('任务超时，请刷新页面查看结果');
-                              }
-                            }, 600000);
-                          } else {
-                            clearInterval(fakeProgressInterval);
-                            setFakeProgress(100);
-                            setRegenerateProgress({ percentage: 100, message: '重新生成完成！' });
-                            setTimeout(() => {
+                            } catch (error: any) {
+                              console.error('重新生成卷规划失败:', error);
                               setIsRegeneratingVolumes(false);
                               setRegenerateProgress(null);
                               setFakeProgress(0);
-                              loadVolumes();
-                            }, 1000);
+                              message.error(formatAIErrorMessage(error));
+                            }
                           }
-                        } catch (error: any) {
-                          console.error('重新生成卷规划失败:', error);
-                          setIsRegeneratingVolumes(false);
-                          setRegenerateProgress(null);
-                          setFakeProgress(0);
-                          message.error(formatAIErrorMessage(error));
-                        }
-                      }
-                    });
-                  }}
-                >
-                  {isRegeneratingVolumes ? '重新生成中...' : '重新生成卷'}
-                </Button>
+                        });
+                      }}
+                    />
+                  </Tooltip>
+                </div>
               </div>
 
               {/* 卷列表容器 - 优化布局，一行4个 */}
@@ -2949,6 +3483,23 @@ const enterWriting = (volume: NovelVolume) => {
                 placeholder="建议3-8卷，默认5卷"
             />
           </Form.Item>
+
+          <Form.Item
+            label="生成模型"
+            tooltip="用于本次大纲与分卷规划生成"
+          >
+            <AIModelSelect
+              value={selectedOutlineModel}
+              options={availableModels}
+              loading={loadingModels}
+              onChange={setSelectedOutlineModel}
+            />
+            {selectedOutlineModelInfo && (
+              <div className="vm-template-hint">
+                {selectedOutlineModelInfo.description || '已选择当前模型'}
+              </div>
+            )}
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -3154,6 +3705,32 @@ const enterWriting = (volume: NovelVolume) => {
                 size="large"
               />
             </Form.Item>
+            <Form.Item
+              name="volumeTemplateId"
+              label={
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '14px', fontWeight: 600, color: '#334155' }}>拆分卷模板</span>
+                  <Tooltip title="确认大纲后，将使用这里选定的模板来拆分卷规划">
+                    <InfoCircleOutlined style={{ color: '#94a3b8', fontSize: '13px' }} />
+                  </Tooltip>
+                </div>
+              }
+            >
+              <OutlineTemplateSelect
+                value={selectedVolumeTemplateId}
+                options={volumeTemplates}
+                loading={loadingVolumeTemplates}
+                onChange={(val) => {
+                  setSelectedVolumeTemplateId(val);
+                  outlineForm.setFieldValue('volumeTemplateId', val);
+                  saveGenerationParams({ volumeTemplateId: val });
+                }}
+              />
+
+              <div className="vm-template-hint">
+                {selectedVolumeTemplate?.description || '会在确认大纲后用于拆分卷规划，未选择时使用系统默认模板。'}
+              </div>
+            </Form.Item>
             {/* 模板选择器 - 使用原生 select（更稳定，避免某些环境下 antd Select 无法展开） */}
             <Form.Item 
               name="templateId" 
@@ -3173,6 +3750,7 @@ const enterWriting = (volume: NovelVolume) => {
                 onChange={(val) => {
                   setSelectedTemplateId(val);
                   outlineForm.setFieldValue('templateId', val);
+                  saveGenerationParams({ templateId: val });
                 }}
               />
 
@@ -3184,6 +3762,33 @@ const enterWriting = (volume: NovelVolume) => {
                   <div className="vm-template-hint">{selected.description}</div>
                 ) : null;
               })()}
+            </Form.Item>
+
+            <Form.Item
+              label={
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '14px', fontWeight: 600, color: '#334155' }}>生成模型</span>
+                  <Tooltip title="用于本次大纲与分卷规划生成">
+                    <InfoCircleOutlined style={{ color: '#94a3b8', fontSize: '13px' }} />
+                  </Tooltip>
+                </div>
+              }
+            >
+              <AIModelSelect
+                value={selectedOutlineModel}
+                options={availableModels}
+                loading={loadingModels}
+                onChange={(value) => {
+                  setSelectedOutlineModel(value);
+                  saveGenerationParams({ model: value });
+                }}
+              />
+
+              {selectedOutlineModelInfo && (
+                <div className="vm-template-hint">
+                  {selectedOutlineModelInfo.description || '已选择当前模型'}
+                </div>
+              )}
             </Form.Item>
 
             {/* 隐藏的构思字段，从创建页面自动填充 */}
@@ -3533,32 +4138,42 @@ const enterWriting = (volume: NovelVolume) => {
 
           {(() => {
             try {
-              const paramsStr = localStorage.getItem(`novel_${novelId}_generation_params`);
-              if (paramsStr) {
-                const savedParams = JSON.parse(paramsStr);
-                const template = outlineTemplates.find((t: any) => t.id === savedParams.templateId);
-                if (template) {
-                  return (
-                    <div style={{
-                      padding: '12px 16px',
-                      background: '#e6f7ff',
-                      borderRadius: '8px',
-                      marginBottom: 16,
-                      border: '1px solid #91d5ff'
-                    }}>
-                      <div style={{ fontSize: '13px', color: '#666', marginBottom: 4 }}>使用模板：</div>
-                      <div style={{ fontSize: '14px', color: '#1890ff', fontWeight: 500 }}>
-                        {template.name}
-                      </div>
-                      {template.description && (
-                        <div style={{ fontSize: '12px', color: '#666', marginTop: 4 }}>
-                          {template.description}
-                        </div>
-                      )}
+              const savedParams: any = readGenerationParams();
+              const outlineTemplate = outlineTemplates.find((t: any) => t.id === savedParams.templateId);
+              const volumeTemplate = volumeTemplates.find((t: any) => t.id === savedParams.volumeTemplateId);
+
+              return (
+                <div style={{ display: 'grid', gap: 12, marginBottom: 16 }}>
+                  <div style={{
+                    padding: '12px 16px',
+                    background: '#e6f7ff',
+                    borderRadius: '8px',
+                    border: '1px solid #91d5ff'
+                  }}>
+                    <div style={{ fontSize: '13px', color: '#666', marginBottom: 4 }}>大纲模板：</div>
+                    <div style={{ fontSize: '14px', color: '#1890ff', fontWeight: 500 }}>
+                      {outlineTemplate?.name || '系统默认'}
                     </div>
-                  );
-                }
-              }
+                    <div style={{ fontSize: '12px', color: '#666', marginTop: 4 }}>
+                      {outlineTemplate?.description || '用于重新生成当前大纲。'}
+                    </div>
+                  </div>
+                  <div style={{
+                    padding: '12px 16px',
+                    background: '#ecfeff',
+                    borderRadius: '8px',
+                    border: '1px solid #99f6e4'
+                  }}>
+                    <div style={{ fontSize: '13px', color: '#666', marginBottom: 4 }}>拆分卷模板：</div>
+                    <div style={{ fontSize: '14px', color: '#0f766e', fontWeight: 500 }}>
+                      {volumeTemplate?.name || '系统默认'}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#666', marginTop: 4 }}>
+                      {volumeTemplate?.description || '用于确认大纲后的拆分卷规划。'}
+                    </div>
+                  </div>
+                </div>
+              );
             } catch (e) {
               console.warn('读取模板信息失败', e);
             }
@@ -3578,11 +4193,7 @@ const enterWriting = (volume: NovelVolume) => {
               size="small"
               onClick={() => {
                 try {
-                  const paramsStr = localStorage.getItem(`novel_${novelId}_generation_params`);
-                  let savedParams: any = {};
-                  if (paramsStr) {
-                    savedParams = JSON.parse(paramsStr);
-                  }
+                  const savedParams: any = readGenerationParams();
 
                   const basicIdea = (currentSuperOutline as any)?.basicIdea || novel?.description || '';
                   const targetChapters = (novel as any)?.targetTotalChapters || savedParams.targetChapters || 300;
@@ -3596,11 +4207,18 @@ const enterWriting = (volume: NovelVolume) => {
                     wordsPerChapter,
                     targetWords,
                     volumeCount,
-                    templateId: savedParams.templateId
+                    templateId: savedParams.templateId,
+                    volumeTemplateId: savedParams.volumeTemplateId
                   });
 
                   if (savedParams.templateId) {
                     setSelectedTemplateId(savedParams.templateId);
+                  }
+                  setSelectedVolumeTemplateId(savedParams.volumeTemplateId ?? undefined);
+                  if (savedParams.model || savedParams.modelId) {
+                    setSelectedOutlineModel(
+                      pickOutlineModel(availableModels, savedParams.model || savedParams.modelId)
+                    );
                   }
                 } catch (e) {
                   console.warn('预填快速开始参数失败', e);
@@ -3609,6 +4227,7 @@ const enterWriting = (volume: NovelVolume) => {
                 setOutlineGenerationVisible(false);
                 setQuickStartVisible(true);
                 loadOutlineTemplates();
+                loadVolumeTemplates();
               }}
             >
               修改模板和参数（打开配置弹窗）

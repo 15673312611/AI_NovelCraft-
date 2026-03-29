@@ -2,11 +2,14 @@ package com.novel.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import javax.validation.constraints.NotBlank;
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @TableName("ai_model")
-public class AIModel {
+public class AIModel implements Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     @TableId(type = IdType.AUTO)
     private Long id;
