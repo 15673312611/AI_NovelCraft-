@@ -4,6 +4,8 @@ import com.novel.agentic.model.GraphEntity;
 import com.novel.agentic.model.WritingContext;
 import com.novel.agentic.model.TokenBudget;
 import com.novel.domain.entity.Novel;
+import com.novel.service.prompt.ManagedPromptService;
+import com.novel.service.prompt.SystemPromptDescriptor;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +29,12 @@ public class StructuredMessageBuilder {
 
     @Autowired(required = false)
     private com.novel.agentic.service.graph.IGraphService graphService;
+
+    @Autowired
+    private WritingMessageInjectionService writingMessageInjectionService;
+
+    @Autowired
+    private ManagedPromptService managedPromptService;
 
 
 
@@ -124,29 +132,12 @@ public class StructuredMessageBuilder {
 
         // Message 3: 整体大纲（仅做参考，禁止开天眼）
         // 原“核心设定”消息暂时改为输出整体大纲，帮助AI理解全局走向，但不能提前写后面章节内容
-        if (context != null
-                && Novel.OUTLINE_CONTEXT_MODE_FULL.equalsIgnoreCase(context.getOutlineContextMode())
-                && StringUtils.isNotBlank(context.getOutline())) {
-//        if (novel != null && StringUtils.isNotBlank(novel.getOutline())) {
-            String outline = context.getOutline();
-            StringBuilder sb = new StringBuilder();
-            sb.append("【整体大纲（仅供参考，禁止开天眼）】\n");
-            sb.append("下面是全书的整体大纲，用于帮助你理解全局剧情节奏和后续大致走向。\n");
-            sb.append("写本章内容时：\n");
-            sb.append("- 只能使用当前进度之前已经出现或合理铺垫过的信息；\n");
-            sb.append("- 不能提前写后面章节才会出现的设定、角色发展、伏笔回收或重大反转；\n");
-            sb.append("- 不能凭大纲“开天眼”，一次性剧透或跳跃推进剧情。\n\n");
-            sb.append(outline).append("\n");
-            messages.add(createMessage("system", sb.toString()));
-            logger.info("已添加整体大纲 ({}字)", outline.length());
-        } else if (context != null && StringUtils.isNotBlank(context.getCoreSettings())) {
-            String core = context.getCoreSettings();
-            StringBuilder sb = new StringBuilder();
-            sb.append("【核心设定】\n");
-            sb.append(core).append("\n");
-            messages.add(createMessage("system", sb.toString()));
-            logger.info("已添加核心设定作为整体大纲 ({}字)", core.length());
+        String outlineContext = buildOutlineContextMessage(context);
+        if (StringUtils.isNotBlank(outlineContext)) {
+            messages.add(createMessage("system", outlineContext));
+            logger.info("已添加大纲上下文");
         }
+        appendInjectedMessages(messages, "after_outline_context", novel, context, chapterNumber);
 
         // Message 4: 卷蓝图（如果有）
         if (context != null) {
@@ -156,6 +147,7 @@ public class StructuredMessageBuilder {
                 logger.info("已添加卷蓝图");
             }
         }
+        appendInjectedMessages(messages, "after_volume_blueprint", novel, context, chapterNumber);
 
         // Message 5: 最近章节完整内容和概要
         if (context != null) {
@@ -166,6 +158,7 @@ public class StructuredMessageBuilder {
             }
             addRecentChapterMessages(context, messages);
         }
+        appendInjectedMessages(messages, "after_recent_chapters", novel, context, chapterNumber);
 
         // Message 6: 角色档案（如果有）
         if (context != null) {
@@ -210,12 +203,16 @@ public class StructuredMessageBuilder {
                 logger.info("已添加用户关联素材（{}项）", context.getReferenceContents().size());
             }
         }
+        appendInjectedMessages(messages, "after_character_context", novel, context, chapterNumber);
 
         // Message 9: 系统提示词下移到上下文之后，减少被长上下文冲淡。
+        appendInjectedMessages(messages, "before_writing_requirements", novel, context, chapterNumber);
         if (StringUtils.isNotBlank(writingRequirementsPrompt)) {
             messages.add(createMessage("user", writingRequirementsPrompt));
         }
-        messages.add(createMessage("user", "【正文创作要求】"+systemPrompt));
+        appendInjectedMessages(messages, "after_writing_requirements", novel, context, chapterNumber);
+        messages.add(createMessage("system", buildSystemPromptEnvelope(systemPrompt)));
+        appendInjectedMessages(messages, "after_system_prompt", novel, context, chapterNumber);
 
         // Message 10: 章节意图（来自推理或预生成章纲）
         if (context != null) {
@@ -225,37 +222,11 @@ public class StructuredMessageBuilder {
                 logger.info("已添加当前章节细纲");
             }
         }
-
-        StringBuilder intentMsg = new StringBuilder();
-        intentMsg.append("【本章创作方向】\n");
-        if (context != null && StringUtils.isNotBlank(context.getCurrentChapterOutline())) {
-            intentMsg.append("如果下面的创作方向与【当前章节细纲（优先遵守）】冲突，以当前章节细纲为准。\n\n");
-        }
-        if (intent != null) {
-            // 使用 direction 作为本章剧情方向（包含关键剧情点）
-            Object direction = intent.get("direction");
-            if (direction != null) {
-                intentMsg.append("本章剧情方向：\n").append(direction).append("\n\n");
-            }
-
-            // 伏笔操作
-            Object foreshadowAction = intent.get("foreshadowAction");
-            Object foreshadowDetail = intent.get("foreshadowDetail");
-            if (foreshadowAction != null && !"NONE".equals(foreshadowAction.toString())) {
-                intentMsg.append("伏笔操作：").append(foreshadowAction).append("\n");
-                if (foreshadowDetail instanceof Map) {
-                    Map<?, ?> detail = (Map<?, ?>) foreshadowDetail;
-                    Object content = detail.get("content");
-                    if (content != null) {
-                        intentMsg.append("伏笔内容：").append(content).append("\n");
-                    }
-                }
-                intentMsg.append("\n");
-            }
-        }
+        appendInjectedMessages(messages, "after_chapter_outline", novel, context, chapterNumber);
         if (intent != null && !intent.isEmpty() && (context == null || StringUtils.isBlank(context.getCurrentChapterOutline()))) {
-            messages.add(createMessage("user", intentMsg.toString()));
+            messages.add(createMessage("user", buildIntentMessage(context, intent)));
         }
+        appendInjectedMessages(messages, "after_intent", novel, context, chapterNumber);
 
 //        //开篇提速
 //        String openingBooster = buildOpeningBooster(chapterNumber);
@@ -265,31 +236,27 @@ public class StructuredMessageBuilder {
 //        }
 
         // Message 11: 写作任务说明
-        StringBuilder taskDesc = new StringBuilder();
-        taskDesc.append("请开始创作第").append(chapterNumber).append("章。 \n");
-//        taskDesc.append("遵循上面的指令,按照前面的上下文信息开始写作,保证逻辑通畅,衔接上一章剧情;如果上一章结尾和【本章创作方向】有出入 还要衔接上章为主 在慢慢按【本章创作方向】去编写;同时需要考虑逻辑性; 不能机械降神 不能引入超脱剧本的支线和设定 按照现有剧情设定去推理。");
-        if (context != null && StringUtils.isNotBlank(context.getCurrentChapterOutline())) {
-            taskDesc.append("优先按照当前章节细纲展开正文，确保计划中的事件、基调和伏笔节奏真正落到文本里。\n");
-        }
-        messages.add(createMessage("user",taskDesc.toString()));
+        messages.add(createMessage("user", buildTaskDescriptionMessage(context, chapterNumber)));
+        appendInjectedMessages(messages, "after_task_description", novel, context, chapterNumber);
         //字数限制
         String wordCountLimit = buildWordCountLimitSimple(novel);
         messages.add(createMessage("user", wordCountLimit));
+        appendInjectedMessages(messages, "after_word_count_limit", novel, context, chapterNumber);
 
         // 作者本次特别构思 / 用户调整指令（放在最底部）
         if (context != null && StringUtils.isNotBlank(context.getUserAdjustment())) {
             String userAdj = context.getUserAdjustment().trim();
             // 如果是"开始"，跳过不添加
             if (!"开始".equals(userAdj)) {
-                StringBuilder ua = new StringBuilder();
-                ua.append("【作者本次特别构思 / 临时要求】\n");
-                ua.append(context.getUserAdjustment()).append("\n\n");
-                messages.add(createMessage("system", ua.toString()));
+                messages.add(createMessage("system", buildUserAdjustmentMessage(context.getUserAdjustment())));
                 logger.info("已添加用户调整指令（放在最底部）");
             } else {
                 logger.info("用户调整指令为'开始'，跳过不添加");
             }
         }
+
+        appendInjectedMessages(messages, "after_user_adjustment", novel, context, chapterNumber);
+        appendInjectedMessages(messages, "final", novel, context, chapterNumber);
 
         logger.info("意图驱动写作消息构建完成: 共{}条消息", messages.size());
 
@@ -308,6 +275,25 @@ public class StructuredMessageBuilder {
     }
 
     private String buildWritingRequirementsPrompt(WritingContext context) {
+        if (managedPromptService != null) {
+            Map<String, Object> variables = new LinkedHashMap<>();
+            variables.put("chapter_outline_rule", context != null && StringUtils.isNotBlank(context.getCurrentChapterOutline())
+                    ? "- 当前章节细纲优先，已经明确的事件顺序、目标、基调和伏笔安排不要改写。\n"
+                    : "");
+            return renderManagedChapterWritingPrompt(
+                    "agentic.chapter_writing.writing_requirements",
+                    "Agentic chapter writing requirements",
+                    "写作工作流中的正文创作要求消息，可在后台调整通用写作规则。",
+                    Arrays.asList("chapter_outline_rule"),
+                    546,
+                    String.join("\n",
+                            "【正文创作要求】",
+                            "- 直接输出小说正文，不要解释计划、提纲或创作思路。",
+                            "- 严格承接现有上下文，保证人物状态、设定、时间线和因果关系一致。",
+                            "- 用场景、动作、对白和必要心理活动推进，不要写成摘要或大纲复述。",
+                            "{{chapter_outline_rule}}- 结尾保留自然钩子，但不要为了制造钩子硬拗逻辑."),
+                    variables);
+        }
         StringBuilder sb = new StringBuilder();
         sb.append("【正文创作要求】\n");
         sb.append("- 直接输出小说正文，不要解释计划、提纲或创作思路。\n");
@@ -329,6 +315,26 @@ public class StructuredMessageBuilder {
      * 基于小说配置的每章目标字数（novels.words_per_chapter），若无配置则回退到 2500 字
      */
     private String buildWordCountLimitSimple(Novel novel) {
+        if (managedPromptService != null) {
+            int baseWords = 2500;
+            if (novel != null && novel.getWordsPerChapter() != null && novel.getWordsPerChapter() > 0) {
+                baseWords = novel.getWordsPerChapter();
+            }
+
+            Map<String, Object> variables = new LinkedHashMap<>();
+            variables.put("target_words", baseWords);
+            variables.put("max_words", baseWords + 200);
+            return renderManagedChapterWritingPrompt(
+                    "agentic.chapter_writing.word_count.simple",
+                    "Agentic chapter writing word count simple",
+                    "意图驱动写作链中的简化字数限制消息。",
+                    Arrays.asList("target_words", "max_words"),
+                    551,
+                    String.join("\n",
+                            "【生成的小说字数范围】",
+                            "- 范围：{{target_words}} 字（可上下浮动约 200 字，建议不要超过 {{max_words}} 字）"),
+                    variables);
+        }
         int base = 2500;
         if (novel != null && novel.getWordsPerChapter() != null && novel.getWordsPerChapter() > 0) {
             base = novel.getWordsPerChapter();
@@ -435,6 +441,33 @@ public class StructuredMessageBuilder {
     }
 
     private String buildOpeningBooster(Integer chapterNumber) {
+        if (managedPromptService != null) {
+            if (chapterNumber == null || chapterNumber > 3) {
+                return "";
+            }
+
+            Map<String, Object> variables = new LinkedHashMap<>();
+            variables.put("chapter_number", chapterNumber);
+            return renderManagedChapterWritingPrompt(
+                    "agentic.chapter_writing.opening_booster",
+                    "Agentic chapter writing opening booster",
+                    "前三章专用的开篇强化指令。",
+                    Arrays.asList("chapter_number"),
+                    552,
+                    String.join("\n",
+                            "【黄金三章开局专用指令】",
+                            "- 本指令仅在全书最前面的章节生效，在这些章节中优先级最高。",
+                            "- 在不推翻作品核心设定和主线目标的前提下，可以暂时牺牲一部分节奏规划、世界观讲解顺序和细枝末节的严谨性，优先保证“好看、上瘾、爽”。",
+                            "- 读者第一次接触作品多半只看开头几屏，如果这里不立刻抓住人，后面再精彩也没人看到。",
+                            "- 一开场就让读者“掉进事件里”：用冲突、选择或异常场景切入，不要从天气、环境或大段设定说明写起。",
+                            "- 尽量让前几段就出现：主角明确的欲望或目标、需要立刻应对的压力或机会，以及做出选择带来的直接后果。",
+                            "- 必须让读者感到真实代价：关系紧张、局势恶化、资源被消耗、时间被压缩等，而不是虚空的口头威胁。",
+                            "- 可以在不推翻作品核心设定和主线目标的前提下，适度偏离卷蓝图或细节规划，以换取更强的开局吸引力；后续章节再慢慢校正。",
+                            "- 避免长篇讲解世界观或背景，把必要信息拆散，夹在动作、对话和冲突推进之中，让读者一边追剧情一边顺手理解设定。",
+                            "- 章节结尾必须留下钩子：未解决的问题、被打断的行动、危险的悬而未决、出乎意料的提议或信号等，逼使读者想“再看一小段”。",
+                            "- 语言上多用有画面感的动作和对话，少用空泛的议论和解释，让读者“看到场景在动”，而不是在听作者讲道理。"),
+                    variables);
+        }
         if (chapterNumber == null || chapterNumber > 3) {
             return "";
         }
@@ -469,6 +502,38 @@ public class StructuredMessageBuilder {
      * Message 5: 卷蓝图
      */
     private String buildVolumeBlueprintMessage(WritingContext context) {
+        if (managedPromptService != null) {
+            if (context == null || context.getVolumeBlueprint() == null) {
+                return "";
+            }
+
+            Map<String, Object> volume = context.getVolumeBlueprint();
+            String blueprint = String.valueOf(volume.get("blueprint"));
+            Object progress = volume.get("progressDescription");
+
+            Map<String, Object> variables = new LinkedHashMap<>();
+            variables.put("volume_title", safeString(volume.get("volumeTitle"), "未命名卷"));
+            variables.put("chapter_range", safeString(volume.get("chapterRange"), "未设置"));
+            variables.put("blueprint_line", StringUtils.isNotBlank(blueprint) && !"null".equals(blueprint)
+                    ? "蓝图摘要：" + blueprint + "\n"
+                    : "");
+            variables.put("progress_line", progress != null
+                    ? "当前位置：" + progress + "\n"
+                    : "");
+            return renderManagedChapterWritingPrompt(
+                    "agentic.chapter_writing.volume_blueprint",
+                    "Agentic chapter writing volume blueprint",
+                    "章节写作链中的当前卷蓝图消息。",
+                    Arrays.asList("volume_title", "chapter_range", "blueprint_line", "progress_line"),
+                    547,
+                    String.join("\n",
+                            "【本卷故事蓝图】",
+                            "中心围绕这一部分和后面给的【本章创作方向】。",
+                            "卷名：{{volume_title}}",
+                            "章节范围：{{chapter_range}}",
+                            "{{blueprint_line}}{{progress_line}}"),
+                    variables).trim();
+        }
         if (context.getVolumeBlueprint() == null) {
             return "";
         }
@@ -603,6 +668,26 @@ public class StructuredMessageBuilder {
     }
 
     private String buildCurrentChapterOutlineMessage(WritingContext context) {
+        if (managedPromptService != null) {
+            if (context == null || StringUtils.isBlank(context.getCurrentChapterOutline())) {
+                return "";
+            }
+
+            Map<String, Object> variables = new LinkedHashMap<>();
+            variables.put("current_chapter_outline", context.getCurrentChapterOutline().trim());
+            return renderManagedChapterWritingPrompt(
+                    "agentic.chapter_writing.chapter_outline",
+                    "Agentic chapter writing chapter outline",
+                    "章节写作链中的当前章节细纲消息。",
+                    Arrays.asList("current_chapter_outline"),
+                    549,
+                    String.join("\n",
+                            "{{current_chapter_outline}}",
+                            "",
+                            "【写作规则】",
+                            "优先遵守这份当前章节细纲。可以补充场景、动作、对话和节奏，但不要替换掉细纲原定的主事件，也不要改动细纲已明确的顺序、目标、基调和伏笔安排。"),
+                    variables);
+        }
         if (context == null || StringUtils.isBlank(context.getCurrentChapterOutline())) {
             return "";
         }
@@ -1217,6 +1302,50 @@ public class StructuredMessageBuilder {
      * Message 10: 本章任务与要求
      */
     private String buildTaskAndRequirements(WritingContext context, Integer chapterNumber) {
+        if (managedPromptService != null) {
+            Map<String, Object> plan = context.getChapterPlan() != null ? context.getChapterPlan() : new HashMap<>();
+            List<String> highlights = context.getCoreNarrativeSummary() != null
+                    ? safeStringList(context.getCoreNarrativeSummary().get("highlights"))
+                    : Collections.emptyList();
+            List<String> focusNotes = context.getChapterIntent() != null
+                    ? safeStringList(context.getChapterIntent().get("focusNotes"))
+                    : Collections.emptyList();
+
+            Map<String, Object> variables = new LinkedHashMap<>();
+            variables.put("chapter_number", chapterNumber == null ? "" : chapterNumber);
+            variables.put("chapter_title_line", buildOptionalLine("章节标题", safeString(plan.get("title"), "")));
+            variables.put("core_event_line", buildOptionalLine("核心事件", safeString(plan.get("coreEvent"), "")));
+            variables.put("mood_line", buildOptionalLine("氛围基调", safeString(plan.get("mood"), "")));
+            variables.put("user_adjustment_line", buildOptionalLine("用户要求", context.getUserAdjustment()));
+            variables.put("execution_highlights", buildBulletBlock(highlights, 3));
+            variables.put("execution_focus_notes", buildBulletBlock(focusNotes, 3));
+            return renderManagedChapterWritingPrompt(
+                    "agentic.chapter_writing.task_description",
+                    "Agentic chapter writing task description",
+                    "章节写作链中的任务说明消息。",
+                    Arrays.asList("chapter_number", "chapter_title_line", "core_event_line", "mood_line", "user_adjustment_line", "execution_highlights", "execution_focus_notes"),
+                    553,
+                    String.join("\n",
+                            "【本章创作任务】",
+                            "",
+                            "章节号：第{{chapter_number}}章",
+                            "{{chapter_title_line}}{{core_event_line}}{{mood_line}}{{user_adjustment_line}}",
+                            "【硬性约束（违反将导致失败）】",
+                            "- 紧扣世界规则与既定人设，不得自创设定",
+                            "- 开篇三段必须呈现行动、冲突或抉择",
+                            "- 对话与动作交替推进，避免空洞复述",
+                            "",
+                            "【执行要点】",
+                            "{{execution_highlights}}{{execution_focus_notes}}",
+                            "【执行检查表】",
+                            "- 开篇三段是否明确冲突、目标？",
+                            "- 是否落实章节意图中的关键节点？",
+                            "- 章末是否留下未决悬念或情绪钩子？",
+                            "",
+                            "请直接输出正文内容，不要附加标题或解释。",
+                            "现在，请开始创作："),
+                    variables);
+        }
         StringBuilder sb = new StringBuilder();
         sb.append("【本章创作任务】\n\n");
 
@@ -1277,6 +1406,36 @@ public class StructuredMessageBuilder {
      * Message 11: 字数限制（单独一条消息）
      */
     private String buildWordCountLimit(WritingContext context) {
+        if (managedPromptService != null) {
+            Map<String, Object> plan = context.getChapterPlan() != null ? context.getChapterPlan() : new HashMap<>();
+            int targetWords = safeInt(plan.getOrDefault("estimatedWords", 2500), 2500);
+            int maxWords = (int) Math.ceil(targetWords * 1.1);
+
+            Map<String, Object> variables = new LinkedHashMap<>();
+            variables.put("target_words", targetWords);
+            variables.put("max_words", maxWords);
+            return renderManagedChapterWritingPrompt(
+                    "agentic.chapter_writing.word_count.strict",
+                    "Agentic chapter writing word count strict",
+                    "旧版结构化写作链中的严格字数限制消息。",
+                    Arrays.asList("target_words", "max_words"),
+                    554,
+                    String.join("\n",
+                            "【字数限制（必须严格遵守）】",
+                            "",
+                            "目标字数：{{target_words}} 字",
+                            "绝对上限：{{max_words}} 字（超过此数字必须立刻停止）",
+                            "",
+                            "【写作规则】",
+                            "1. 达到 {{target_words}} 字时，必须开始收尾",
+                            "2. 达到 {{max_words}} 字时，必须立刻停止输出，不得再多写一个字",
+                            "3. 在收尾阶段，禁止引入新情节、新角色或新线索",
+                            "4. 写作过程中，每写完一段，都在心中估算当前字数",
+                            "5. 如果字数超出限制，视为创作失败，需要重新生成",
+                            "",
+                            "字数限制不是建议，而是硬性约束，违反将导致章节质量下降。"),
+                    variables);
+        }
         Map<String, Object> plan = context.getChapterPlan() != null ? context.getChapterPlan() : new HashMap<>();
         int targetWords = safeInt(plan.getOrDefault("estimatedWords", 2500), 2500);
         int maxWords = (int) Math.ceil(targetWords * 1.1); // 允许10%容差
@@ -1615,6 +1774,39 @@ public class StructuredMessageBuilder {
     }
 
     private String buildUserReferenceMessage(Map<String, String> referenceContents) {
+        if (managedPromptService != null) {
+            if (referenceContents == null || referenceContents.isEmpty()) {
+                return null;
+            }
+
+            int idx = 1;
+            StringBuilder items = new StringBuilder();
+            for (Map.Entry<String, String> entry : referenceContents.entrySet()) {
+                String content = entry.getValue();
+                if (StringUtils.isBlank(content)) {
+                    continue;
+                }
+                String title = StringUtils.isNotBlank(entry.getKey()) ? entry.getKey() : ("参考素材" + idx);
+                items.append(idx++).append(". ").append(title).append("\n");
+                items.append(content).append("\n\n");
+            }
+            if (idx == 1) {
+                return null;
+            }
+
+            Map<String, Object> variables = new LinkedHashMap<>();
+            variables.put("reference_items", items.toString().trim());
+            return renderManagedChapterWritingPrompt(
+                    "agentic.chapter_writing.user_references",
+                    "Agentic chapter writing user references",
+                    "章节写作链中的用户参考素材消息。",
+                    Arrays.asList("reference_items"),
+                    550,
+                    String.join("\n",
+                            "【作者提供的关联素材】",
+                            "{{reference_items}}"),
+                    variables).trim();
+        }
         if (referenceContents == null || referenceContents.isEmpty()) {
             return null;
         }
@@ -1639,6 +1831,231 @@ public class StructuredMessageBuilder {
     /**
      * 角色状态内部类
      */
+    private String renderManagedChapterWritingPrompt(String promptKey,
+                                                     String name,
+                                                     String description,
+                                                     List<String> variables,
+                                                     Integer sortOrder,
+                                                     String defaultContent,
+                                                     Map<String, ?> renderVariables) {
+        // Keep defaultContent in code as a runtime fallback, so admin prompt edits stay optional.
+        return managedPromptService.render(SystemPromptDescriptor.builder()
+                .promptKey(promptKey)
+                .name(name)
+                .category("system_chain")
+                .description(description)
+                .variables(variables)
+                .sortOrder(sortOrder)
+                .defaultContent(defaultContent)
+                .build(), renderVariables);
+    }
+
+    private String buildOptionalLine(String label, String value) {
+        if (StringUtils.isBlank(value)) {
+            return "";
+        }
+        return label + "：" + value.trim() + "\n";
+    }
+
+    private String buildBulletBlock(List<String> items, int limit) {
+        if (items == null || items.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        items.stream()
+                .filter(StringUtils::isNotBlank)
+                .limit(limit)
+                .forEach(item -> sb.append("- ").append(item.trim()).append("\n"));
+        return sb.toString();
+    }
+
+    /**
+     * 对主写作链按构建顺序插入扩展消息，避免依赖文案标题定位。
+     */
+    private void appendInjectedMessages(List<Map<String, String>> messages,
+                                        String position,
+                                        Novel novel,
+                                        WritingContext context,
+                                        Integer chapterNumber) {
+        if (messages == null) {
+            return;
+        }
+        messages.addAll(writingMessageInjectionService.buildMessagesForPosition(position, novel, context, chapterNumber));
+    }
+
+    private String buildOutlineContextMessage(WritingContext context) {
+        if (context == null) {
+            return "";
+        }
+
+        if (Novel.OUTLINE_CONTEXT_MODE_FULL.equalsIgnoreCase(context.getOutlineContextMode())
+                && StringUtils.isNotBlank(context.getOutline())) {
+            if (managedPromptService == null) {
+                return String.join("\n",
+                        "【整体大纲（仅供参考，禁止开天眼）】",
+                        "下面是全书的整体大纲，用于帮助你理解全局剧情节奏和后续大致走向。",
+                        "写本章内容时：",
+                        "- 只能使用当前进度之前已经出现或合理铺垫过的信息；",
+                        "- 不能提前写后面章节才会出现的设定、角色发展、伏笔回收或重大反转；",
+                        "- 不能凭大纲“开天眼”，一次性剧透或跳跃推进剧情。",
+                        "",
+                        context.getOutline().trim());
+            }
+
+            Map<String, Object> variables = new LinkedHashMap<>();
+            variables.put("outline_content", context.getOutline().trim());
+            return renderManagedChapterWritingPrompt(
+                    "agentic.chapter_writing.outline_context",
+                    "Agentic chapter writing outline context",
+                    "章节写作链中的全书大纲上下文消息。",
+                    Arrays.asList("outline_content"),
+                    544,
+                    String.join("\n",
+                            "【整体大纲（仅供参考，禁止开天眼）】",
+                            "下面是全书的整体大纲，用于帮助你理解全局剧情节奏和后续大致走向。",
+                            "写本章内容时：",
+                            "- 只能使用当前进度之前已经出现或合理铺垫过的信息；",
+                            "- 不能提前写后面章节才会出现的设定、角色发展、伏笔回收或重大反转；",
+                            "- 不能凭大纲“开天眼”，一次性剧透或跳跃推进剧情。",
+                            "",
+                            "{{outline_content}}"),
+                    variables);
+        }
+
+        if (StringUtils.isBlank(context.getCoreSettings())) {
+            return "";
+        }
+
+        if (managedPromptService == null) {
+            return "【核心设定】\n" + context.getCoreSettings().trim();
+        }
+
+        Map<String, Object> variables = new LinkedHashMap<>();
+        variables.put("core_settings", context.getCoreSettings().trim());
+        return renderManagedChapterWritingPrompt(
+                "agentic.chapter_writing.core_settings_context",
+                "Agentic chapter writing core settings context",
+                "章节写作链中的核心设定上下文消息。",
+                Arrays.asList("core_settings"),
+                545,
+                String.join("\n",
+                        "【核心设定】",
+                        "{{core_settings}}"),
+                variables);
+    }
+
+    private String buildSystemPromptEnvelope(String systemPrompt) {
+        String normalizedPrompt = StringUtils.defaultString(systemPrompt).trim();
+        if (managedPromptService == null) {
+            return "【正文创作要求】" + normalizedPrompt;
+        }
+
+        Map<String, Object> variables = new LinkedHashMap<>();
+        variables.put("system_prompt", normalizedPrompt);
+        return renderManagedChapterWritingPrompt(
+                "agentic.chapter_writing.system_prompt_envelope",
+                "Agentic chapter writing system prompt envelope",
+                "章节写作链中的系统提示词包装消息。",
+                Arrays.asList("system_prompt"),
+                548,
+                "【正文创作要求】{{system_prompt}}",
+                variables);
+    }
+
+    private String buildIntentMessage(WritingContext context, Map<String, Object> intent) {
+        Map<String, Object> variables = new LinkedHashMap<>();
+        variables.put("outline_priority_notice", context != null && StringUtils.isNotBlank(context.getCurrentChapterOutline())
+                ? "如果下面的创作方向与【当前章节细纲（优先遵守）】冲突，以当前章节细纲为准。\n\n"
+                : "");
+        variables.put("direction_block", "");
+        variables.put("foreshadow_block", "");
+
+        if (intent != null) {
+            Object direction = intent.get("direction");
+            if (direction != null) {
+                variables.put("direction_block", "本章剧情方向：\n" + direction + "\n\n");
+            }
+
+            Object foreshadowAction = intent.get("foreshadowAction");
+            Object foreshadowDetail = intent.get("foreshadowDetail");
+            if (foreshadowAction != null && !"NONE".equals(foreshadowAction.toString())) {
+                StringBuilder foreshadowBlock = new StringBuilder();
+                foreshadowBlock.append("伏笔操作：").append(foreshadowAction).append("\n");
+                if (foreshadowDetail instanceof Map) {
+                    Map<?, ?> detail = (Map<?, ?>) foreshadowDetail;
+                    Object content = detail.get("content");
+                    if (content != null) {
+                        foreshadowBlock.append("伏笔内容：").append(content).append("\n");
+                    }
+                }
+                foreshadowBlock.append("\n");
+                variables.put("foreshadow_block", foreshadowBlock.toString());
+            }
+        }
+
+        if (managedPromptService == null) {
+            return String.join("\n",
+                    "【本章创作方向】",
+                    StringUtils.defaultString((String) variables.get("outline_priority_notice"))
+                            + StringUtils.defaultString((String) variables.get("direction_block"))
+                            + StringUtils.defaultString((String) variables.get("foreshadow_block"))).trim();
+        }
+
+        return renderManagedChapterWritingPrompt(
+                "agentic.chapter_writing.intent_direction",
+                "Agentic chapter writing intent direction",
+                "章节写作链中的本章创作方向消息。",
+                Arrays.asList("outline_priority_notice", "direction_block", "foreshadow_block"),
+                555,
+                String.join("\n",
+                        "【本章创作方向】",
+                        "{{outline_priority_notice}}{{direction_block}}{{foreshadow_block}}"),
+                variables).trim();
+    }
+
+    private String buildTaskDescriptionMessage(WritingContext context, Integer chapterNumber) {
+        Map<String, Object> variables = new LinkedHashMap<>();
+        variables.put("chapter_number", chapterNumber == null ? "" : chapterNumber);
+        variables.put("chapter_outline_notice", context != null && StringUtils.isNotBlank(context.getCurrentChapterOutline())
+                ? "优先按照当前章节细纲展开正文，确保计划中的事件、基调和伏笔节奏真正落到文本里。\n"
+                : "");
+        if (managedPromptService == null) {
+            return ("请开始创作第" + variables.get("chapter_number") + "章。\n"
+                    + StringUtils.defaultString((String) variables.get("chapter_outline_notice"))).trim();
+        }
+        return renderManagedChapterWritingPrompt(
+                "agentic.chapter_writing.task_description.simple",
+                "Agentic chapter writing task description simple",
+                "意图驱动写作链中的简化任务说明消息。",
+                Arrays.asList("chapter_number", "chapter_outline_notice"),
+                556,
+                String.join("\n",
+                        "请开始创作第{{chapter_number}}章。",
+                        "{{chapter_outline_notice}}"),
+                variables);
+    }
+
+    private String buildUserAdjustmentMessage(String userAdjustment) {
+        Map<String, Object> variables = new LinkedHashMap<>();
+        variables.put("user_adjustment", StringUtils.defaultString(userAdjustment).trim());
+        if (managedPromptService == null) {
+            return ("【作者本次特别构思 / 临时要求】\n"
+                    + StringUtils.defaultString((String) variables.get("user_adjustment"))).trim();
+        }
+        return renderManagedChapterWritingPrompt(
+                "agentic.chapter_writing.user_adjustment",
+                "Agentic chapter writing user adjustment",
+                "章节写作链中的用户临时附加要求消息。",
+                Arrays.asList("user_adjustment"),
+                557,
+                String.join("\n",
+                        "【作者本次特别构思 / 临时要求】",
+                        "{{user_adjustment}}",
+                        ""),
+                variables).trim();
+    }
+
     private static class CharacterState {
         String name;
         boolean isAlive = true;

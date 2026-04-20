@@ -47,7 +47,7 @@ public class NovelService {
             novel.setStartedAt(LocalDateTime.now());
         }
         if (!StringUtils.hasText(novel.getOutlineContextMode())) {
-            novel.setOutlineContextMode(Novel.OUTLINE_CONTEXT_MODE_SIMPLIFIED);
+            novel.setOutlineContextMode(Novel.OUTLINE_CONTEXT_MODE_FULL);
         }
 
         // 设置作者ID为当前登录用户

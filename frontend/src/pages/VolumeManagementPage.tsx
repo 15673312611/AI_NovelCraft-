@@ -406,10 +406,13 @@ const VolumeManagementPage: React.FC = () => {
   const [generateModalVisible, setGenerateModalVisible] = useState(false);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [selectedVolume, setSelectedVolume] = useState<NovelVolume | null>(null);
+  const [volumeEditModalVisible, setVolumeEditModalVisible] = useState(false);
+  const [isSavingVolume, setIsSavingVolume] = useState(false);
   const [quickStartVisible, setQuickStartVisible] = useState(false);
   const [outlineGenerationVisible, setOutlineGenerationVisible] = useState(false);
 
   const [generateForm] = Form.useForm();
+  const [volumeEditForm] = Form.useForm();
   const [hasShownQuickStart, setHasShownQuickStart] = useState(false); // 标记是否已显示过弹窗
 
   // 总字数动态计算状态
@@ -1713,6 +1716,66 @@ const handleViewDetails = async (volume: NovelVolume) => {
       // 忽略错误，保留现有数据
     }
     setDetailModalVisible(true);
+  };
+
+  const openVolumeEditModal = (volume: NovelVolume) => {
+    setSelectedVolume(volume);
+    volumeEditForm.setFieldsValue({
+      title: volume.title || '',
+      theme: volume.theme || '',
+      contentOutline: volume.contentOutline || ''
+    });
+    setVolumeEditModalVisible(true);
+  };
+
+  const handleSaveVolume = async () => {
+    if (!selectedVolume) {
+      return;
+    }
+
+    try {
+      setIsSavingVolume(true);
+      const values = await volumeEditForm.validateFields();
+      const updatedVolume = await novelVolumeService.updateVolume(selectedVolume.id, values);
+      const nextVolume = {
+        ...selectedVolume,
+        ...values,
+        ...(updatedVolume || {})
+      };
+
+      setSelectedVolume(nextVolume);
+      setVolumes((prevVolumes) =>
+        prevVolumes.map((volume) =>
+          String(volume.id) === String(selectedVolume.id) ? { ...volume, ...nextVolume } : volume
+        )
+      );
+      setVolumeEditModalVisible(false);
+      message.success('卷信息已更新');
+
+      try {
+        const detail = await novelVolumeService.getVolumeDetail(selectedVolume.id);
+        const latestVolume = (detail && (detail.volume || (detail.data && detail.data.volume))) || detail || null;
+        if (latestVolume) {
+          setSelectedVolume(latestVolume as NovelVolume);
+          setVolumes((prevVolumes) =>
+            prevVolumes.map((volume) =>
+              String(volume.id) === String(selectedVolume.id)
+                ? { ...volume, ...(latestVolume as NovelVolume) }
+                : volume
+            )
+          );
+        }
+      } catch (error) {
+        console.warn('刷新卷详情失败，已保留本地更新结果', error);
+      }
+    } catch (error: any) {
+      if (error?.errorFields) {
+        return;
+      }
+      message.error(error?.response?.data?.message || error?.message || '更新失败');
+    } finally {
+      setIsSavingVolume(false);
+    }
   };
 
   // 删除卷
@@ -3939,71 +4002,7 @@ const enterWriting = (volume: NovelVolume) => {
                     type="link"
                     size="small"
                     icon={<EditOutlined />}
-                    onClick={() => {
-                      // 创建一个临时的表单实例
-                      let editFormInstance: any = null;
-
-                      Modal.confirm({
-                        title: '编辑卷信息',
-                        width: 600,
-                        icon: null,
-                        content: (
-                          <Form
-                            layout="vertical"
-                            initialValues={{
-                              title: selectedVolume.title,
-                              theme: selectedVolume.theme,
-                              description: selectedVolume.description
-                            }}
-                            ref={(form) => { editFormInstance = form; }}
-                          >
-                            <Form.Item
-                              name="title"
-                              label="卷标题"
-                              rules={[{ required: true, message: '请输入卷标题' }]}
-                            >
-                              <Input placeholder="请输入卷标题" />
-                            </Form.Item>
-                            <Form.Item
-                              name="theme"
-                              label="主线"
-                              rules={[{ required: true, message: '请输入主线' }]}
-                            >
-                              <Input.TextArea rows={2} placeholder="高度概括本卷主线" />
-                            </Form.Item>
-                            <Form.Item
-                              name="description"
-                              label="描述"
-                              rules={[{ required: true, message: '请输入描述' }]}
-                            >
-                              <Input.TextArea rows={8} placeholder="详细描述本卷的核心看点、核心冲突、进度等" />
-                            </Form.Item>
-                          </Form>
-                        ),
-                        okText: '保存',
-                        cancelText: '取消',
-                        onOk: async () => {
-                          if (editFormInstance) {
-                            try {
-                              const values = await editFormInstance.validateFields();
-                              await novelVolumeService.updateVolume(selectedVolume.id, values);
-                              message.success('卷信息已更新');
-                              setDetailModalVisible(false);
-                              loadVolumes();
-                            } catch (error: any) {
-                              if (error.errorFields) {
-                                // 表单验证失败
-                                throw error;
-                              } else {
-                                // API 调用失败
-                                message.error(error.response?.data?.message || '更新失败');
-                                throw error;
-                              }
-                            }
-                          }
-                        }
-                      });
-                    }}
+                    onClick={() => openVolumeEditModal(selectedVolume)}
                   >
                     编辑
                   </Button>
@@ -4020,7 +4019,7 @@ const enterWriting = (volume: NovelVolume) => {
 
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: 4, fontWeight: 500 }}>
-                    主线
+                    主题
                   </div>
                   <div style={{ fontSize: '14px', color: '#374151', lineHeight: 1.6 }}>
                     {selectedVolume.theme}
@@ -4052,6 +4051,57 @@ const enterWriting = (volume: NovelVolume) => {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        title="编辑卷信息"
+        open={volumeEditModalVisible}
+        onCancel={() => setVolumeEditModalVisible(false)}
+        onOk={handleSaveVolume}
+        confirmLoading={isSavingVolume}
+        okText="保存"
+        cancelText="取消"
+        width={720}
+        destroyOnClose
+      >
+        <Form
+          form={volumeEditForm}
+          layout="vertical"
+        >
+          <Form.Item
+            name="title"
+            label="卷名称"
+            rules={[{ required: true, message: '请输入卷名称' }]}
+          >
+            <Input placeholder="请输入卷名称" maxLength={120} />
+          </Form.Item>
+
+          <Form.Item
+            name="theme"
+            label="主题"
+            rules={[{ required: true, message: '请输入卷主题' }]}
+          >
+            <Input.TextArea
+              rows={3}
+              placeholder="请输入本卷主题"
+              maxLength={300}
+              showCount
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="contentOutline"
+            label="大纲"
+            rules={[{ required: true, message: '请输入卷大纲' }]}
+          >
+            <Input.TextArea
+              rows={12}
+              placeholder="请输入本卷大纲"
+              showCount
+              maxLength={20000}
+            />
+          </Form.Item>
+        </Form>
       </Modal>
 
       {/* 浮动操作按钮 */}

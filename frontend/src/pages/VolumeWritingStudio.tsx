@@ -13,6 +13,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import novelVolumeService, { NovelVolume, VolumeGuidanceRequest } from '../services/novelVolumeService';
 import { withAIConfig, checkAIConfig, AI_CONFIG_ERROR_MESSAGE } from '../utils/aiRequest';
+import { extractHttpErrorMessage, formatAIErrorMessage } from '../utils/errorHandler';
 import { extractSseEvents } from '../utils/sse';
 import './VolumeWritingStudio.css';
 
@@ -714,8 +715,13 @@ const VolumeWritingStudio: React.FC = () => {
         body: JSON.stringify(requestBody),
       });
 
-      if (!response.ok || !response.body) {
-        throw new Error('网络请求失败');
+      if (!response.ok) {
+        const errorMessage = await extractHttpErrorMessage(response, `请求失败 (${response.status})`);
+        throw new Error(errorMessage);
+      }
+
+      if (!response.body) {
+        throw new Error('无法获取响应流');
       }
 
       const reader = response.body.getReader();
@@ -749,7 +755,7 @@ const VolumeWritingStudio: React.FC = () => {
     } catch (error: any) {
       message.destroy('optimizing');
       console.error('AI优化大纲失败:', error);
-      message.error(error.message || 'AI优化大纲失败');
+      message.error(formatAIErrorMessage(error));
       // 失败时恢复原内容
       setEditingOutline(originalOutline);
     } finally {
@@ -853,8 +859,13 @@ const VolumeWritingStudio: React.FC = () => {
         body: JSON.stringify(requestBody),
       });
 
-      if (!response.ok || !response.body) {
-        throw new Error('网络请求失败');
+      if (!response.ok) {
+        const errorMessage = await extractHttpErrorMessage(response, `请求失败 (${response.status})`);
+        throw new Error(errorMessage);
+      }
+
+      if (!response.body) {
+        throw new Error('无法获取响应流');
       }
 
       const reader = response.body.getReader();
@@ -896,7 +907,7 @@ const VolumeWritingStudio: React.FC = () => {
     } catch (error: any) {
       message.destroy('optimizing-volume');
       console.error('AI优化卷大纲失败:', error);
-      message.error(error.message || 'AI优化卷大纲失败');
+      message.error(formatAIErrorMessage(error));
       // 失败时恢复原内容
       setEditingVolumeOutline(originalOutline);
     } finally {
@@ -936,7 +947,8 @@ const VolumeWritingStudio: React.FC = () => {
       });
 
       if (!response.ok) {
-        throw new Error('概要章节失败');
+        const errorMessage = await extractHttpErrorMessage(response, `概要章节失败 (${response.status})`);
+        throw new Error(errorMessage);
       }
 
       await response.json();
@@ -1404,7 +1416,7 @@ const VolumeWritingStudio: React.FC = () => {
       guidanceForm.resetFields();
       message.success('AI指导生成成功！');
     } catch (error: any) {
-      message.error(error.response?.data?.message || 'AI指导生成失败');
+      message.error(formatAIErrorMessage(error));
     } finally {
       setGuidanceLoading(false);
     }
@@ -2461,7 +2473,8 @@ const VolumeWritingStudio: React.FC = () => {
                       });
 
                       if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
+                        const errorMessage = await extractHttpErrorMessage(response, `HTTP error! status: ${response.status}`);
+                        throw new Error(errorMessage);
                       }
 
                       const reader = response.body?.getReader();
@@ -2680,7 +2693,7 @@ const VolumeWritingStudio: React.FC = () => {
                         setIsStreaming(false);
                         setProgressHint(''); // 清除进度提示
                         message.destroy();
-                        message.error('流式读取失败');
+                        message.error(formatAIErrorMessage(streamError));
                       } finally {
                         reader.releaseLock();
                       }
@@ -2689,7 +2702,7 @@ const VolumeWritingStudio: React.FC = () => {
                       setLoading(false);
                       setIsStreaming(false);
                       setProgressHint(''); // 清除进度提示
-                      message.error(e?.message || 'AI写作失败');
+                      message.error(formatAIErrorMessage(e));
                     }
                   }}
         />
@@ -3438,7 +3451,8 @@ const VolumeWritingStudio: React.FC = () => {
                   });
 
                   if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    const errorMessage = await extractHttpErrorMessage(response, `HTTP error! status: ${response.status}`);
+                    throw new Error(errorMessage);
                   }
 
                   const reader = response.body?.getReader();
@@ -3516,7 +3530,7 @@ const VolumeWritingStudio: React.FC = () => {
                 } catch (e: any) {
                   console.error('AI消痕失败:', e);
                   setIsRemovingAITrace(false);
-                  message.error(e?.message || 'AI消痕失败');
+                  message.error(formatAIErrorMessage(e));
                 }
               }}
                style={{

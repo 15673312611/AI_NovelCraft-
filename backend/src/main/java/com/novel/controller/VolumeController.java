@@ -270,6 +270,9 @@ public class VolumeController {
             if (request.containsKey("title")) {
                 volume.setTitle((String) request.get("title"));
             }
+            if (request.containsKey("theme")) {
+                volume.setTheme((String) request.get("theme"));
+            }
             if (request.containsKey("description")) {
                 volume.setDescription((String) request.get("description"));
             }

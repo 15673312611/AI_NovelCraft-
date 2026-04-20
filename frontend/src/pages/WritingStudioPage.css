@@ -685,7 +685,7 @@
   background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
   box-shadow: 0 10px 20px -18px rgba(15, 23, 42, 0.22);
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 70px;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   min-height: 72px;
@@ -757,6 +757,8 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .vpm-outline-index {
@@ -930,15 +932,41 @@
   color: #1d4ed8;
   font-size: 12px;
   cursor: pointer;
-  padding: 6px 10px;
+  padding: 6px 12px;
   border-radius: 10px;
   transition: all 0.2s ease;
+  min-width: 52px;
+  font-weight: 600;
 }
 
 .vpm-link-btn:hover {
   border-color: #93c5fd;
   background: linear-gradient(135deg, #dbeafe 0%, #ffffff 85%);
   box-shadow: 0 10px 18px -18px rgba(29, 78, 216, 0.7);
+}
+
+.vpm-link-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  box-shadow: none;
+}
+
+.vpm-link-btn-primary {
+  border-color: #bfdbfe;
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+  color: #1d4ed8;
+}
+
+.vpm-link-btn-danger {
+  border-color: #fecaca;
+  background: linear-gradient(135deg, #fef2f2 0%, #ffffff 100%);
+  color: #dc2626;
+}
+
+.vpm-link-btn-danger:hover {
+  border-color: #fca5a5;
+  background: linear-gradient(135deg, #fee2e2 0%, #ffffff 85%);
+  box-shadow: 0 10px 18px -18px rgba(220, 38, 38, 0.7);
 }
 
 .vpm-detail {
@@ -954,12 +982,21 @@
 
 .vpm-detail-header-space {
   justify-content: space-between;
+  padding-right: 48px;
 }
 
 .vpm-detail-title {
   font-size: 18px;
   font-weight: 700;
   color: #0f172a;
+}
+
+.vpm-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .vpm-detail-body {

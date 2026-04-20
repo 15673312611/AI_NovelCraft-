@@ -205,7 +205,7 @@ public class AIController {
         try {
             String field = normalizeCreationField(request.get("field"));
             if (field == null) {
-                return Result.error("鐢熸垚瀛楁鏃犳晥锛屼粎鏀寔 title 鎴?description");
+                return Result.error("生成字段无效，仅支持 title 或 description");
             }
 
             String keyword = safeText(request.get("keyword"));
@@ -226,7 +226,7 @@ public class AIController {
             return Result.success(data);
         } catch (Exception e) {
             logger.error("❌ 新建小说字段生成失败", e);
-            return Result.error("鐢熸垚澶辫触: " + e.getMessage());
+            return Result.error("生成失败: " + e.getMessage());
         }
     }
 
@@ -497,7 +497,7 @@ public class AIController {
         String response = this.aiWritingService.generateContentWithMessages(messages, type, aiConfig);
         String normalized = normalizeGeneratedText(response);
         if (normalized.isEmpty()) {
-            throw new Exception("AI鏈兘杩斿洖鏈夋晥鍐呭");
+            throw new Exception("AI未能返回有效内容");
         }
         return normalized;
     }

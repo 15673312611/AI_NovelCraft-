@@ -1,4 +1,5 @@
 import axios, { AxiosRequestConfig, AxiosResponse } from 'axios'
+import { formatErrorMessage } from '@/utils/errorHandler'
 
 const TOKEN_STORAGE_KEY = 'token'
 const RENEWED_TOKEN_HEADER = 'x-auth-token'
@@ -51,7 +52,8 @@ api.interceptors.response.use(
       const { status, data } = error.response
       
       // 提取后端返回的错误信息
-      const errorMessage = data?.message || data?.error || getDefaultErrorMessage(status)
+      const rawErrorMessage = data?.message || data?.error || getDefaultErrorMessage(status)
+      const errorMessage = formatErrorMessage(data ?? rawErrorMessage, getDefaultErrorMessage(status))
 
       switch (status) {
         case 401:
@@ -78,6 +80,7 @@ api.interceptors.response.use(
       
       // 创建一个包含后端错误信息的错误对象
       const enhancedError = new Error(errorMessage) as any
+      enhancedError.rawMessage = rawErrorMessage
       enhancedError.response = error.response
       enhancedError.status = status
       enhancedError.data = data
@@ -97,6 +100,8 @@ function getDefaultErrorMessage(status: number): string {
   switch (status) {
     case 400:
       return '请求参数错误'
+    case 402:
+      return '字数点余额不足，请先充值'
     case 401:
       return '认证失败，请重新登录'
     case 403:

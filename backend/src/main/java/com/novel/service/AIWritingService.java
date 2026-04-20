@@ -104,14 +104,9 @@ public class AIWritingService {
             }
         }
 
-        Object messageObj = firstChoice.get("message");
-        if (messageObj instanceof Map) {
-            text = extractStreamingTextValue(((Map) messageObj).get("content"));
-            if (text != null) {
-                return text;
-            }
-        }
-
+        // Streaming responses should provide incremental delta/text payloads.
+        // Treating a terminal `message.content` field as a chunk can leak
+        // provider-side error/fallback text into the generated chapter body.
         return extractStreamingTextValue(firstChoice.get("content"));
     }
 
@@ -218,10 +213,10 @@ public class AIWritingService {
         boolean deducted = creditService.consume(userId, actualCost, null, costSnapshot.modelId,
             inputTokens, outputTokens, getTypeDescription(type));
         if (deducted) {
-            logger.info("馃挵 鎵ｈ垂鎴愬姛: {} 鐐? 鐢ㄦ埛ID: {}, 杈撳叆: {} tokens, 杈撳嚭: {} tokens",
+            logger.info("💵 扣费成功: {} 点, 用户ID: {}, 输入: {} tokens, 输出: {} tokens",
                 actualCost, userId, inputTokens, outputTokens);
         } else {
-            logger.warn("鈿狅笍 鎵ｈ垂澶辫触锛岀敤鎴稩D: {}, 閲戦: {}", userId, actualCost);
+            logger.warn("⚠️ 扣费失败，用户ID: {}, 金额: {}", userId, actualCost);
         }
     }
 
@@ -791,7 +786,7 @@ public class AIWritingService {
         int inputTokens = prompt != null ? prompt.length() : 0;
 
         if (userId != null && !creditService.hasEnoughBalance(userId, BigDecimal.ONE)) {
-            throw new InsufficientCreditsException("瀛楁暟鐐逛綑棰濅笉瓒筹紝璇峰厛鍏呭€?");
+            throw new InsufficientCreditsException("字数点余额不足，请先充值");
         }
 
         int maxTokens = getMaxTokensForProvider(aiConfig.getProvider(), model);
@@ -869,7 +864,7 @@ public class AIWritingService {
         }
 
         if (userId != null && !creditService.hasEnoughBalance(userId, BigDecimal.ONE)) {
-            throw new InsufficientCreditsException("瀛楁暟鐐逛綑棰濅笉瓒筹紝璇峰厛鍏呭€?");
+            throw new InsufficientCreditsException("字数点余额不足，请先充值");
         }
 
         int maxTokens = getMaxTokensForProvider(aiConfig.getProvider(), model);

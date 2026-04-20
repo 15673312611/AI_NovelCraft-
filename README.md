@@ -12,11 +12,9 @@
   <strong>微信：soe303（交流 / 反馈 / 合作）</strong>
 </p>
 
-<p align="center">
-  <a href="https://novel.cutb.cn/">
-    <img src="https://img.shields.io/badge/🌐_在线体验-novel.cutb.cn-blue?style=for-the-badge" alt="Live Demo"/>
-  </a>
-</p>
+<h3 align="center">
+  在线体验: <a href="https://novel.cutb.cn/">https://novel.cutb.cn/</a>
+</h3>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Java-17+-ED8B00?style=flat-square&logo=openjdk&logoColor=white" alt="Java"/>

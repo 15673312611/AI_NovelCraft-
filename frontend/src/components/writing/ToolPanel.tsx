@@ -149,7 +149,7 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
   documentsMap = {},
   aiHistory = [],
   onClearAIHistory,
-  outlineContextMode = 'SIMPLIFIED',
+  outlineContextMode = 'FULL',
   outlineContextModeSaving = false,
   onOutlineContextModeChange,
   selectedModel = '',

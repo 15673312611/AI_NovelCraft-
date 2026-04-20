@@ -248,7 +248,7 @@ public class SystemAIConfigService {
             return model.getCostMultiplier();
         }
 
-        logger.warn("妯″瀷{}涓嶅瓨鍦紝浣跨敤榛樿鍊嶇巼1.0", modelId);
+        logger.warn("模型{}不存在，使用默认倍率1.0", modelId);
         return BigDecimal.ONE;
     }
 

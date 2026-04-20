@@ -83,7 +83,7 @@ public class Novel {
     private String outline;
 
     @TableField("outline_context_mode")
-    private String outlineContextMode = OUTLINE_CONTEXT_MODE_SIMPLIFIED;
+    private String outlineContextMode = OUTLINE_CONTEXT_MODE_FULL;
 
     // 新增：创作阶段状态字段
     @TableField("creation_stage")

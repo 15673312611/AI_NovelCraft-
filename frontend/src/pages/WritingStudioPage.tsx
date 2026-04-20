@@ -7,6 +7,7 @@ import {
   RocketOutlined,
   CompassOutlined,
   BookOutlined,
+  DeleteOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   SaveOutlined,
@@ -70,13 +71,15 @@ import {
 import {
   getVolumeCharacterProfiles,
   generateVolumeCharacterProfiles,
+  createVolumeCharacterProfile,
   updateVolumeCharacterProfile,
+  deleteVolumeCharacterProfile,
   type VolumeCharacterProfile,
 } from '@/services/volumeCharacterProfileService'
 import { getChapterHistory, getDocumentHistory, type WritingVersionHistory } from '@/services/writingHistoryService'
 import api from '@/services/api'
 import { withAIConfig, checkAIConfig, AI_CONFIG_ERROR_MESSAGE } from '@/utils/aiRequest'
-import { formatAIErrorMessage } from '@/utils/errorHandler'
+import { extractHttpErrorMessage, formatAIErrorMessage } from '@/utils/errorHandler'
 import { extractSseEvents } from '@/utils/sse'
 import './WritingStudioPage.css'
 
@@ -94,6 +97,13 @@ const VOLUME_PLANNING_MODAL_Z_INDEX = 1200
 const VOLUME_PLANNING_DETAIL_MODAL_Z_INDEX = VOLUME_PLANNING_MODAL_Z_INDEX + 20
 const VOLUME_PLANNING_REGEN_MODAL_Z_INDEX = VOLUME_PLANNING_DETAIL_MODAL_Z_INDEX + 20
 const VOLUME_PLANNING_GENERATE_MODAL_Z_INDEX = VOLUME_PLANNING_REGEN_MODAL_Z_INDEX + 20
+
+type OutlineGenerationSegment = {
+  volumeId: number
+  volumeNumber: number | null
+  volumeTitle: string
+  count: number
+}
 
 type VolumeProfileEditableKey =
   | 'currentPersona'
@@ -511,6 +521,20 @@ const decodeWritingMessageChunk = (data: string): string => {
   return data
 }
 
+const isUnexpectedStreamErrorChunk = (chunk: string): boolean => {
+  const trimmed = chunk.trim()
+  if (!trimmed) {
+    return false
+  }
+
+  return (
+    trimmed.includes('消息流出现异常') ||
+    trimmed.includes('stream error') ||
+    trimmed.includes('Stream error') ||
+    /^❌\s*/.test(trimmed)
+  )
+}
+
 const WRITING_STUDIO_PREFERENCES_KEY_PREFIX = 'writing-studio.preferences.'
 
 type WritingStudioPreferences = {
@@ -625,7 +649,7 @@ const WritingStudioPage: React.FC = () => {
   const [writingStyleId, setWritingStyleId] = useState<number | null>(
     () => readWritingStudioPreferences(novelIdNumber).writingStyleId ?? null
   )
-  const [outlineContextMode, setOutlineContextMode] = useState<OutlineContextMode>('SIMPLIFIED')
+  const [outlineContextMode, setOutlineContextMode] = useState<OutlineContextMode>('FULL')
   const [outlineContextModeSaving, setOutlineContextModeSaving] = useState(false)
   const [aiHistory, setAIHistory] = useState<AIConversation[]>([])
   const [aiInput, setAIInput] = useState('')
@@ -717,6 +741,7 @@ const WritingStudioPage: React.FC = () => {
   const [profileGenerationRequirement, setProfileGenerationRequirement] = useState('')
   const [outlineGenerationRequirement, setOutlineGenerationRequirement] = useState('')
   const [planningVolumeId, setPlanningVolumeId] = useState<number | null>(null)
+  const [manualPlanningVolumeId, setManualPlanningVolumeId] = useState<number | null>(null)
   const [profileCount, setProfileCount] = useState<number | null>(null)
   const [isGeneratingProfiles, setIsGeneratingProfiles] = useState(false)
   const [volumePlanningVisible, setVolumePlanningVisible] = useState(false)
@@ -725,6 +750,7 @@ const WritingStudioPage: React.FC = () => {
   const [planningOutlinesLoading, setPlanningOutlinesLoading] = useState(false)
   const [profileDetailVisible, setProfileDetailVisible] = useState(false)
   const [profileSaving, setProfileSaving] = useState(false)
+  const [profileDeletingId, setProfileDeletingId] = useState<number | null>(null)
   const [editingProfile, setEditingProfile] = useState<VolumeCharacterProfile | null>(null)
   const [outlineDetailVisible, setOutlineDetailVisible] = useState(false)
   const [outlineDetailLoading, setOutlineDetailLoading] = useState(false)
@@ -849,7 +875,7 @@ const WritingStudioPage: React.FC = () => {
         try {
           const novel = await novelService.getNovelById(novelIdNumber)
           setNovelTitle(novel.title)
-          setOutlineContextMode(novel.outlineContextMode === 'FULL' ? 'FULL' : 'SIMPLIFIED')
+          setOutlineContextMode(novel.outlineContextMode === 'SIMPLIFIED' ? 'SIMPLIFIED' : 'FULL')
         } catch (e) {
           console.warn('获取小说信息失败', e)
         }
@@ -1159,6 +1185,30 @@ const WritingStudioPage: React.FC = () => {
     }
     return null
   }
+
+  const sortVolumesByRange = useCallback((volumeList: NovelVolume[]): NovelVolume[] => {
+    return [...volumeList].sort((a, b) => {
+      const startA = Number((a as any).chapterStart ?? 0)
+      const startB = Number((b as any).chapterStart ?? 0)
+      if (startA !== startB) return startA - startB
+      const numA = Number((a as any).volumeNumber ?? 0)
+      const numB = Number((b as any).volumeNumber ?? 0)
+      return numA - numB
+    })
+  }, [])
+
+  const findNextVolume = useCallback((volumeId: number, volumeList: NovelVolume[]): NovelVolume | null => {
+    const sorted = sortVolumesByRange(volumeList)
+    const index = sorted.findIndex((item) => Number(item.id) === Number(volumeId))
+    if (index < 0 || index + 1 >= sorted.length) {
+      return null
+    }
+    return sorted[index + 1] || null
+  }, [sortVolumesByRange])
+
+  useEffect(() => {
+    setManualPlanningVolumeId(null)
+  }, [editingType, selectedChapter?.id, selectedChapter?.chapterNumber])
 
   useEffect(() => {
     try {
@@ -2260,7 +2310,8 @@ const WritingStudioPage: React.FC = () => {
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        const errorMessage = await extractHttpErrorMessage(response, `HTTP error! status: ${response.status}`)
+        throw new Error(errorMessage)
       }
 
       const reader = response.body?.getReader()
@@ -2307,7 +2358,14 @@ const WritingStudioPage: React.FC = () => {
         }
 
         if (normalizedEvent === 'message') {
-          accumulatedContent += decodeWritingMessageChunk(data)
+          const chunk = decodeWritingMessageChunk(data)
+          if (isUnexpectedStreamErrorChunk(chunk)) {
+            receivedError = true
+            message.error(formatAIErrorMessage(chunk))
+            return
+          }
+
+          accumulatedContent += chunk
           if (!hasStreamContent) {
             hasStreamContent = true
             setHasContentStarted(true)
@@ -2382,7 +2440,7 @@ const WritingStudioPage: React.FC = () => {
 
       if (accumulatedContent.trim()) {
         flushAIOutput(accumulatedContent)
-        message.warning('流式生成连接已中断，内容可能不完整，请重试')
+        message.success('AI写作完成')
       } else {
         setHasContentStarted(false)
         message.error('流式生成已中断，请重试')
@@ -2624,7 +2682,8 @@ const WritingStudioPage: React.FC = () => {
       })
       
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        const errorMessage = await extractHttpErrorMessage(response, `HTTP error! status: ${response.status}`)
+        throw new Error(errorMessage)
       }
       
       const reader = response.body?.getReader()
@@ -2752,7 +2811,8 @@ const WritingStudioPage: React.FC = () => {
       })
       
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        const errorMessage = await extractHttpErrorMessage(response, `HTTP error! status: ${response.status}`)
+        throw new Error(errorMessage)
       }
       
       const reader = response.body?.getReader()
@@ -2826,7 +2886,7 @@ const WritingStudioPage: React.FC = () => {
 
   // 处理章纲生成
   const handleGenerateChapterOutline = async (countOverride?: number) => {
-    let volumeId = planningVolumeId || chapterOutlineVolumeId || Number(currentVolume?.id)
+    let volumeId = manualPlanningVolumeId || planningVolumeId || chapterOutlineVolumeId || Number(currentVolume?.id)
     
     // 如果还没有确定卷ID，尝试加载并确定
     if (!volumeId) {
@@ -2900,28 +2960,103 @@ const WritingStudioPage: React.FC = () => {
       const targetCount = typeof countOverride === 'number' && Number.isFinite(countOverride)
         ? countOverride
         : outlineBatchSize
-      const result = await generateVolumeChapterOutlines(
-        volumeId,
-        targetCount,
-        selectedModel,
-        outlineGenerationRequirement
-      )
+      let volumeList = volumes
+      if ((!volumeList || volumeList.length === 0) && novelIdNumber) {
+        volumeList = await novelVolumeService.getVolumesByNovelId(novelIdNumber.toString())
+        setVolumes(volumeList)
+      }
+      volumeList = sortVolumesByRange(volumeList)
+
+      let remaining = targetCount
+      let currentTargetVolumeId = volumeId
+      let lastGeneratedVolumeId = volumeId
+      const segments: OutlineGenerationSegment[] = []
+
+      while (remaining > 0 && currentTargetVolumeId) {
+        const targetVolume = volumeList.find((item) => Number(item.id) === Number(currentTargetVolumeId))
+        if (!targetVolume) {
+          break
+        }
+
+        const volumeLabel = targetVolume.volumeNumber ? `第${targetVolume.volumeNumber}卷` : '当前卷'
+        setOutlineGenerateProgress(
+          segments.length === 0
+            ? `正在生成${volumeLabel}细纲...`
+            : `当前卷已满，正在续接${volumeLabel}细纲...`
+        )
+
+        const result = await generateVolumeChapterOutlines(
+          currentTargetVolumeId,
+          remaining,
+          selectedModel,
+          outlineGenerationRequirement
+        )
+
+        const generatedCount = Math.max(0, Number(result.count ?? 0))
+        if (generatedCount > 0) {
+          segments.push({
+            volumeId: Number(targetVolume.id),
+            volumeNumber: targetVolume.volumeNumber ?? null,
+            volumeTitle: targetVolume.title || volumeLabel,
+            count: generatedCount,
+          })
+          lastGeneratedVolumeId = Number(targetVolume.id)
+          remaining -= generatedCount
+        }
+
+        if (remaining <= 0) {
+          break
+        }
+
+        const nextVolume = findNextVolume(currentTargetVolumeId, volumeList)
+        if (!nextVolume) {
+          break
+        }
+
+        currentTargetVolumeId = Number(nextVolume.id)
+      }
+
       clearInterval(progressInterval)
       setOutlineGeneratePercent(100)
       setOutlineGenerateProgress('生成完成！')
 
       setTimeout(() => {
-        message.success(`成功生成 ${result.count} 个细纲`)
+        const totalGenerated = segments.reduce((sum, item) => sum + item.count, 0)
+        const summaryText = segments
+          .map((item) => `${item.volumeNumber ? `第${item.volumeNumber}卷` : item.volumeTitle}${item.count}章`)
+          .join('，')
+
+        if (totalGenerated <= 0) {
+          message.warning('当前卷及后续卷暂无可生成的细纲范围')
+        } else if (segments.length > 1) {
+          const lastSegment = segments[segments.length - 1]
+          const switchedLabel = lastSegment?.volumeNumber ? `，已自动切到第${lastSegment.volumeNumber}卷` : ''
+          message.success(`已连续生成 ${totalGenerated} 个细纲：${summaryText}${switchedLabel}`)
+        } else {
+          message.success(`成功生成 ${totalGenerated} 个细纲`)
+        }
+
+        if (remaining > 0 && totalGenerated > 0) {
+          message.warning(`后续卷不足，本次还剩 ${remaining} 章未生成`)
+        }
+
         setOutlineGenerateModalVisible(false)
         setOutlineMissingModalVisible(false)
         setOutlineGenerateProgress('')
         setOutlineGeneratePercent(0)
       }, 500)
 
-      // 刷新章纲列表（使用 summary=true 提升性能）
-      if (volumeId) {
-        const list = await getChapterOutlinesByVolume(volumeId, true)
+      if (lastGeneratedVolumeId) {
+        setManualPlanningVolumeId(lastGeneratedVolumeId)
+        setPlanningVolumeId(lastGeneratedVolumeId)
+        setChapterOutlineVolumeId(lastGeneratedVolumeId)
+      }
+
+      // 刷新最后一个实际生成卷的章纲列表，并把卷规划焦点切过去
+      if (lastGeneratedVolumeId) {
+        const list = await getChapterOutlinesByVolume(lastGeneratedVolumeId, true)
         setChapterOutlineList(list)
+        refreshPlanningProfiles(lastGeneratedVolumeId)
       }
     } catch (error: any) {
       clearInterval(progressInterval)
@@ -2936,7 +3071,7 @@ const WritingStudioPage: React.FC = () => {
 
   // 重新生成指定范围的细纲
   const handleRegenerateChapterOutline = async (fromChapter: number, toChapter: number) => {
-    const volumeId = planningVolumeId || chapterOutlineVolumeId || Number(currentVolume?.id)
+    const volumeId = manualPlanningVolumeId || planningVolumeId || chapterOutlineVolumeId || Number(currentVolume?.id)
     if (!volumeId) { message.error('无法确定卷ID'); return }
     if (!checkAIConfig()) { message.error(AI_CONFIG_ERROR_MESSAGE); return }
 
@@ -2983,7 +3118,7 @@ const WritingStudioPage: React.FC = () => {
 
 
   const handleGenerateVolumeProfiles = async () => {
-    const volumeId = planningVolumeId || chapterOutlineVolumeId || Number(currentVolume?.id)
+    const volumeId = manualPlanningVolumeId || planningVolumeId || chapterOutlineVolumeId || Number(currentVolume?.id)
     if (!volumeId) {
       message.error('无法确定卷ID，请刷新页面重试')
       return
@@ -3018,8 +3153,41 @@ const WritingStudioPage: React.FC = () => {
     }
   }
 
+  const handleOpenCreateProfile = () => {
+    const volumeId = manualPlanningVolumeId || planningVolumeId || chapterOutlineVolumeId || Number(currentVolume?.id)
+    if (!volumeId) {
+      message.error('无法确定卷ID，请刷新页面重试')
+      return
+    }
+
+    const currentPlanningVolume = volumes.find((item) => Number(item.id) === Number(volumeId)) || planningVolume || null
+    const emptyProfile: VolumeCharacterProfile = {
+      volumeId,
+      volumeNumber: currentPlanningVolume?.volumeNumber,
+      characterName: '',
+      currentPersona: '',
+      coreMotivation: '',
+      stanceRelationships: '',
+      unfinishedGoals: '',
+      behaviorBottomLine: '',
+      rawProfile: '',
+    }
+
+    setDetailProfile(emptyProfile)
+    setEditingProfile(emptyProfile)
+    setProfileDetailVisible(true)
+  }
+
   const handleSaveDetailProfile = async () => {
-    if (!detailProfile?.id || !editingProfile) return
+    if (!detailProfile || !editingProfile) return
+
+    const trimmedCharacterName = typeof editingProfile.characterName === 'string'
+      ? editingProfile.characterName.trim()
+      : ''
+    if (!detailProfile.id && !trimmedCharacterName) {
+      message.warning('请先填写角色名')
+      return
+    }
 
     const payload = VOLUME_PROFILE_EDITABLE_FIELDS.reduce((acc, field) => {
       const rawValue = editingProfile[field.key]
@@ -3027,21 +3195,46 @@ const WritingStudioPage: React.FC = () => {
       return acc
     }, {} as Partial<VolumeCharacterProfile>)
 
+    if (!detailProfile.id) {
+      payload.characterName = trimmedCharacterName
+    }
+
     setProfileSaving(true)
     try {
-      const updated = await updateVolumeCharacterProfile(detailProfile.id, payload)
+      let savedProfile: VolumeCharacterProfile
+      if (detailProfile.id) {
+        savedProfile = await updateVolumeCharacterProfile(detailProfile.id, payload)
+      } else {
+        const volumeId = Number(detailProfile.volumeId ?? manualPlanningVolumeId ?? planningVolumeId ?? chapterOutlineVolumeId ?? currentVolume?.id)
+        if (!Number.isFinite(volumeId) || volumeId <= 0) {
+          throw new Error('无法确定卷ID，请刷新页面重试')
+        }
+        savedProfile = await createVolumeCharacterProfile(volumeId, payload)
+      }
+
       const nextProfile = normalizeVolumeCharacterProfile({
         ...detailProfile,
-        ...updated,
+        ...savedProfile,
         rawProfile: '',
       })
 
       setDetailProfile(nextProfile)
-      setPlanningProfiles((prev) =>
-        prev.map((item) => (item.id === detailProfile.id ? nextProfile : item))
-      )
+      setPlanningProfiles((prev) => {
+        const exists = nextProfile.id != null && prev.some((item) => item.id === nextProfile.id)
+        if (exists) {
+          return prev.map((item) => (item.id === nextProfile.id ? nextProfile : item))
+        }
+        return [...prev, nextProfile]
+      })
+      setProfileCount((prev) => {
+        if (detailProfile.id) {
+          return prev
+        }
+        const nextCount = (prev ?? planningProfiles.length) + 1
+        return nextCount
+      })
       setEditingProfile(null)
-      message.success('人设已保存')
+      message.success(detailProfile.id ? '人设已保存' : '人设已新增')
     } catch (error: any) {
       message.error(formatAIErrorMessage(error))
     } finally {
@@ -3049,8 +3242,51 @@ const WritingStudioPage: React.FC = () => {
     }
   }
 
+  const handleDeletePlanningProfile = async (profile: VolumeCharacterProfile) => {
+    const profileId = Number(profile.id)
+    if (!Number.isFinite(profileId) || profileId <= 0) {
+      message.warning('未保存的人设无法删除')
+      return
+    }
+
+    const profileName = profile.characterName?.trim() || '未命名角色'
+    modal.confirm({
+      title: '确认删除',
+      content: `确定要删除人设“${profileName}”吗？`,
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      centered: true,
+      onOk: async () => {
+        setProfileDeletingId(profileId)
+        try {
+          await deleteVolumeCharacterProfile(profileId)
+          let nextProfileCount = 0
+          setPlanningProfiles((prev) => {
+            const next = prev.filter((item) => item.id !== profileId)
+            nextProfileCount = next.length
+            return next
+          })
+          setProfileCount(nextProfileCount)
+
+          if (detailProfile?.id === profileId) {
+            setProfileDetailVisible(false)
+            setDetailProfile(null)
+            setEditingProfile(null)
+          }
+
+          message.success('人设删除成功')
+        } catch (error: any) {
+          message.error(formatAIErrorMessage(error))
+        } finally {
+          setProfileDeletingId(null)
+        }
+      },
+    })
+  }
+
   const refreshPlanningProfiles = async (volumeIdOverride?: number) => {
-    const volumeId = volumeIdOverride || planningVolumeId || chapterOutlineVolumeId || Number(currentVolume?.id)
+    const volumeId = volumeIdOverride || manualPlanningVolumeId || planningVolumeId || chapterOutlineVolumeId || Number(currentVolume?.id)
     if (!volumeId) return
     setPlanningProfilesLoading(true)
     try {
@@ -3069,7 +3305,7 @@ const WritingStudioPage: React.FC = () => {
   }
 
   const refreshPlanningOutlines = async (volumeIdOverride?: number) => {
-    const volumeId = volumeIdOverride || planningVolumeId || chapterOutlineVolumeId || Number(currentVolume?.id)
+    const volumeId = volumeIdOverride || manualPlanningVolumeId || planningVolumeId || chapterOutlineVolumeId || Number(currentVolume?.id)
     if (!volumeId) return
     setPlanningOutlinesLoading(true)
     try {
@@ -3096,7 +3332,10 @@ const WritingStudioPage: React.FC = () => {
       }
     }
     if (!volumeList || volumeList.length === 0) return null
-    const volumeForChapter = findVolumeForChapter(selectedChapter?.chapterNumber ?? null)
+    const manualVolume = manualPlanningVolumeId
+      ? volumeList.find((item) => Number(item.id) === Number(manualPlanningVolumeId))
+      : null
+    const volumeForChapter = manualVolume || findVolumeForChapter(selectedChapter?.chapterNumber ?? null)
     const volumeId = Number(volumeForChapter?.id ?? volumeList[0].id)
     if (!Number.isFinite(volumeId)) return null
     setPlanningVolumeId(volumeId)
@@ -3153,13 +3392,13 @@ const WritingStudioPage: React.FC = () => {
   }, [outlineReminderInfo, outlineBatchSize])
 
   const planningVolume = useMemo(() => {
-    const candidateId = planningVolumeId || chapterOutlineVolumeId || currentVolume?.id
+    const candidateId = manualPlanningVolumeId || planningVolumeId || chapterOutlineVolumeId || currentVolume?.id
     if (candidateId && volumes && volumes.length > 0) {
       const matched = volumes.find((v) => Number(v.id) === Number(candidateId))
       if (matched) return matched
     }
     return currentVolume || volumes[0] || null
-  }, [planningVolumeId, chapterOutlineVolumeId, currentVolume, volumes])
+  }, [manualPlanningVolumeId, planningVolumeId, chapterOutlineVolumeId, currentVolume, volumes])
 
   const sortedOutlineList = useMemo(() => {
     if (!Array.isArray(chapterOutlineList)) return []
@@ -3185,6 +3424,37 @@ const WritingStudioPage: React.FC = () => {
     : outlineReminderInfo?.currentChapterInVolume
     ? `当前进度 第 ${outlineReminderInfo.currentChapterInVolume} 章`
     : '当前进度待定'
+  const outlineGenerationHint = useMemo(() => {
+    if (!planningVolume) {
+      return '若本次生成数量超出当前卷剩余范围，系统会自动续接下一卷并切换上下文。'
+    }
+
+    const totalChapters = resolveTotalChaptersInVolume(planningVolume)
+    const lastOutlineChapter = sortedOutlineList.reduce((max, item) => {
+      const civ = Number(item.chapterInVolume ?? 0)
+      return civ > max ? civ : max
+    }, 0)
+    const nextChapter = Math.max(1, lastOutlineChapter + 1)
+
+    if (!totalChapters || nextChapter > totalChapters) {
+      const nextVolume = findNextVolume(Number(planningVolume.id), volumes)
+      if (nextVolume) {
+        return `当前卷已接近完成；若继续生成，系统会直接切换到第${nextVolume.volumeNumber || '?'}卷续接。`
+      }
+      return '当前卷已无可生成范围；若没有后续卷，本次不会继续外溢生成。'
+    }
+
+    const remainingInCurrentVolume = totalChapters - nextChapter + 1
+    if (outlineBatchSize > remainingInCurrentVolume) {
+      const nextVolume = findNextVolume(Number(planningVolume.id), volumes)
+      if (nextVolume) {
+        return `本次会先补完当前卷剩余 ${remainingInCurrentVolume} 章，再自动切换到第${nextVolume.volumeNumber || '?'}卷继续生成。`
+      }
+      return `当前卷只剩 ${remainingInCurrentVolume} 章可生成；若没有后续卷，超出部分不会生成。`
+    }
+
+    return '若本次生成数量超出当前卷剩余范围，系统会自动续接下一卷并切换上下文。'
+  }, [planningVolume, sortedOutlineList, outlineBatchSize, volumes, findNextVolume])
 
   const toolPanelNode = (
     <ToolPanel
@@ -3711,6 +3981,12 @@ const WritingStudioPage: React.FC = () => {
                     >
                       {profileReady ? '重新生成人设' : '生成人设'}
                     </Button>
+                    <Button
+                      onClick={handleOpenCreateProfile}
+                      disabled={planningProfilesLoading || isGeneratingProfiles}
+                    >
+                      新增人设
+                    </Button>
                   </div>
                   <div className="vpm-panel-icon-actions">
                     <Tooltip title="刷新本卷人设">
@@ -3753,7 +4029,7 @@ const WritingStudioPage: React.FC = () => {
                           </div>
                           <div className="vpm-li-actions">
                             <button
-                              className="vpm-link-btn"
+                              className="vpm-link-btn vpm-link-btn-primary"
                               onClick={() => {
                                 setDetailProfile(profile)
                                 setEditingProfile(null)
@@ -3761,6 +4037,13 @@ const WritingStudioPage: React.FC = () => {
                               }}
                             >
                               查看
+                            </button>
+                            <button
+                              className="vpm-link-btn vpm-link-btn-danger"
+                              onClick={() => handleDeletePlanningProfile(profile)}
+                              disabled={profileDeletingId === profile.id}
+                            >
+                              {profileDeletingId === profile.id ? '删除中...' : '删除'}
                             </button>
                           </div>
                         </div>
@@ -3901,7 +4184,7 @@ const WritingStudioPage: React.FC = () => {
                                 // 拉完整数据（summary=false）
                                 try {
                                   const detailVolumeId = Number(
-                                    item.volumeId ?? planningVolumeId ?? chapterOutlineVolumeId ?? currentVolume?.id
+                                    item.volumeId ?? manualPlanningVolumeId ?? planningVolumeId ?? chapterOutlineVolumeId ?? currentVolume?.id
                                   )
                                   if (!Number.isFinite(detailVolumeId) || detailVolumeId <= 0) {
                                     return
@@ -3937,6 +4220,7 @@ const WritingStudioPage: React.FC = () => {
         open={profileDetailVisible}
         onCancel={() => {
           setProfileDetailVisible(false)
+          setDetailProfile(null)
           setEditingProfile(null)
         }}
         footer={null}
@@ -3954,25 +4238,69 @@ const WritingStudioPage: React.FC = () => {
           ? (() => {
               const profile = normalizeVolumeCharacterProfile(detailProfile)
               const profileDraft = editingProfile ?? profile
+              const isCreatingProfile = !profile.id
               return (
                 <div className="vpm-detail">
                   <div className="vpm-detail-header vpm-detail-header-space">
                     <div className="vpm-detail-title">
-                      {profile.characterName || '未命名角色'}
+                      {isCreatingProfile ? '新增人设' : (profile.characterName || '未命名角色')}
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div className="vpm-detail-actions">
                       {editingProfile ? (
                         <>
-                          <Button size="small" onClick={() => setEditingProfile(null)}>取消</Button>
-                          <Button size="small" type="primary" loading={profileSaving} onClick={handleSaveDetailProfile}>保存</Button>
+                          <Button
+                            size="small"
+                            onClick={() => {
+                              if (isCreatingProfile) {
+                                setProfileDetailVisible(false)
+                                setDetailProfile(null)
+                              }
+                              setEditingProfile(null)
+                            }}
+                          >
+                            取消
+                          </Button>
+                          <Button size="small" type="primary" loading={profileSaving} onClick={handleSaveDetailProfile}>
+                            {isCreatingProfile ? '创建' : '保存'}
+                          </Button>
                         </>
                       ) : (
-                        <Button size="small" onClick={() => setEditingProfile({ ...profile })}>编辑</Button>
+                        <>
+                          <Button size="small" onClick={() => setEditingProfile({ ...profile })}>编辑</Button>
+                          {!isCreatingProfile && (
+                            <Button
+                              size="small"
+                              danger
+                              icon={<DeleteOutlined />}
+                              loading={profileDeletingId === profile.id}
+                              onClick={() => handleDeletePlanningProfile(profile)}
+                            >
+                              删除
+                            </Button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
 
                   <div className="vpm-profile-detail-grid">
+                    <div className="vpm-detail-block">
+                      <div className="vpm-detail-key">角色名</div>
+                      {editingProfile ? (
+                        <textarea
+                          className="vpm-edit-textarea"
+                          value={typeof profileDraft.characterName === 'string' ? profileDraft.characterName : ''}
+                          onChange={(e) =>
+                            setEditingProfile((prev) =>
+                              prev ? { ...prev, characterName: e.target.value } : prev
+                            )
+                          }
+                          rows={2}
+                        />
+                      ) : (
+                        <div className="vpm-detail-value prewrap">{profile.characterName || '暂无'}</div>
+                      )}
+                    </div>
                     {getVolumeProfileDetailFields(profileDraft).map((field) => (
                       <div className="vpm-detail-block" key={field.key}>
                         <div className="vpm-detail-key">{field.label}</div>
@@ -5903,7 +6231,8 @@ const WritingStudioPage: React.FC = () => {
                     filter: 'blur(8px)'
                   }} />
                   {(() => {
-                    const vol = volumes.find(v => Number(v.id) === chapterOutlineVolumeId) || volumes[0]
+                    const focusVolumeId = manualPlanningVolumeId || chapterOutlineVolumeId
+                    const vol = volumes.find(v => Number(v.id) === focusVolumeId) || volumes[0]
                     return vol?.volumeNumber || '1'
                   })()}
                 </div>
@@ -5916,7 +6245,8 @@ const WritingStudioPage: React.FC = () => {
                     letterSpacing: '0.2px'
                   }}>
                     {(() => {
-                      const vol = volumes.find(v => Number(v.id) === chapterOutlineVolumeId) || volumes[0]
+                      const focusVolumeId = manualPlanningVolumeId || chapterOutlineVolumeId
+                      const vol = volumes.find(v => Number(v.id) === focusVolumeId) || volumes[0]
                       return vol?.title || `第${vol?.volumeNumber || 1}卷`
                     })()}
                   </div>
@@ -5935,7 +6265,8 @@ const WritingStudioPage: React.FC = () => {
                       background: '#94a3b8'
                     }} />
                     {(() => {
-                      const vol = volumes.find(v => Number(v.id) === chapterOutlineVolumeId) || volumes[0]
+                      const focusVolumeId = manualPlanningVolumeId || chapterOutlineVolumeId
+                      const vol = volumes.find(v => Number(v.id) === focusVolumeId) || volumes[0]
                       if (vol?.chapterStart && vol?.chapterEnd) {
                         return `第 ${vol.chapterStart} - ${vol.chapterEnd} 章`
                       }
@@ -6059,6 +6390,16 @@ const WritingStudioPage: React.FC = () => {
               }}>
                 细纲将为本卷的每个章节生成<strong style={{ color: '#334155' }}>详细的写作指导</strong>，包括章节方向、情节要点、情感基调等，帮助 AI 更好地把握故事走向。
               </p>
+              <p style={{
+                marginTop: 10,
+                marginBottom: 0,
+                fontSize: 12,
+                color: '#6366f1',
+                lineHeight: 1.7,
+                paddingLeft: 8
+              }}>
+                {outlineGenerationHint}
+              </p>
             </div>
           )}
           
@@ -6145,5 +6486,3 @@ const WritingStudioPage: React.FC = () => {
 }
 
 export default WritingStudioPage
-
-

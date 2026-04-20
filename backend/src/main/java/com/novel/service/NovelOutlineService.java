@@ -534,13 +534,13 @@ public class NovelOutlineService {
         );
         if (renderedPrompt != null && !renderedPrompt.trim().isEmpty()) {
             logger.info("=".repeat(100));
-            logger.info("馃摛 浣跨敤妯℃澘鐢熸垚鐨勫畬鏁存彁绀鸿瘝:");
+            logger.info("📤 使用模板生成的完整提示词:");
             logger.info(renderedPrompt);
             logger.info("=".repeat(100));
             return renderedPrompt;
         }
 
-        logger.warn("鈿狅笍 鑷畾涔夊ぇ绾叉ā鏉挎覆鏌撶粨鏋滀负绌猴紝鑷姩鍒囧洖榛樿鍏ㄤ功澶х翰妯℃澘");
+        logger.warn("⚠️ 自定义大纲模板占位符异常，自动切回默认全书大纲模板");
         return buildSuperOutlinePromptCompat(novel, basicIdea, targetChapters, targetWords);
 
         }

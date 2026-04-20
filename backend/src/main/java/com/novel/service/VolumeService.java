@@ -468,9 +468,9 @@ public class VolumeService {
         com.novel.dto.AIConfigRequest aiConfig,
         Long volumeTemplateId) {
         
-        logger.info("馃摑 姝ｅ湪涓哄皬璇?'{}' 鐢熸垚 {} 涓嵎鐨勮鍒掞紙涓€娆℃€х敓鎴愮瓥鐣ワ級...", novel.getTitle(), volumeCount);
+        logger.info("📝 正在为小说 '{}' 生成 {} 个卷的规划（一次性生成策略）...", novel.getTitle(), volumeCount);
         
-        // 鐩存帴浣跨敤浼樺寲鍚庣殑涓€娆℃€х敓鎴愰€昏緫
+        // 直接使用优化后的一次性生成逻辑
         return generateVolumePlansFromOutlineOldWay(novel, outline, volumeCount, aiConfig, volumeTemplateId);
     }
     
